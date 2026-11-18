@@ -29,6 +29,14 @@ model": 18 joints in the arcade slot order, two-matrix vertices; nothing else dr
   TFX decal, its alpha): the floor is **multiplied** by 1 - TA1 / 0x80 under the silhouette (arena 0: x 0.625).
   Arena 14 (UNKNOWN) takes 0x342A38 instead (not read).
 
+The shadow's length is not limited [H]: 0x34A5D0 makes the view's axes from the light alone (normalised; across
+it, `(z, 0, -x)` normalised), 0x342128 scales them by 1 / 5800 and adds 0.5: an orthographic projection with no
+clamp on the light's height, the shadow's length or a fade (none in 0x340E28's callers either). A floor point
+takes the silhouette's texel wherever its line along the light meets the fighter, so a low light (arena 10, Eddy-A:
+y 0.073) lays a shadow some 13 times the fighter's height across the floor, bounded only by the picture's 5.8 m
+square in the light's axes (CLAMP). In a fight (gp-0x74D0 = 4) 0x353C88 turns the light about y by the camera's
+turn (0x366EC8) [M]; its height stays.
+
 Alpha (x / 0x80) by arena 0-22: 30 48 30 40 40 40 50 40 40 40 48 40 40 48 20 40 40 40 40 20 40 40 40.
 
 Lights (the shadow's direction, and the fighters' light): the arena's table **0x416288 + 0x54 x arena**: three
