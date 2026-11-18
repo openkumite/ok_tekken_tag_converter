@@ -230,6 +230,10 @@ converter's layout and shapes. Written by `src/pack.rs` (`assets.rs`, `model::fi
 | `gamedata/roster.json` | Tekken 3's shape: `characters` (a body each: `id`, `name`, `moveset_id`, `selections`), `selections.entries` (each character file: `selection` = body x 8 + costume, `character` = body, `costume`, `name`, `model_record`, `glb`, `moveset_file`, `moveset_id`), `select_grid.entries` (every character, in body order: the select screen's layout is not decoded) |
 | `gamedata/movesets/index.json` | as above: its `models` are the characters (`model_record`, `glb` = `model_NNN.glb`), the shape of Tekken 3's |
 | `gamedata/movesets/motions_NN.json` | `{"moveset_id", "motions": ["motion_NNNN.glb", ...]}`: the motions moveset NN's moves play |
+| `gamedata/sound.json`, `music.json`, `rounds.json` | the sound, music and round-flow tables (below; written by `src/sound.rs` and `fight::rounds`) |
+| `audio/sfx/NNN/KKK.wav` | sample KKK of the sound bank in file NNN of TEKKEN.BIN (all 156 banks, 2 350 samples, 16-bit mono, at the rate of its `VAGp` header; 45 MB) |
+| `audio/music/NN.flac` | the music stream in file NN (25, 16-bit stereo 44 100 Hz; 197 MB, 291 MB as WAV) |
+| `audio/index.json` | Tekken 3's shape: `sfx` (a bank each: `bank` its file, `samples`: `file` = `NNN/KKK.wav`, `rate`, `seconds`, `name` from the `VAGp` header; no `tones`: Tekken Tag has no VAB programs), `music` (`name`, `file` = `NN.flac`, `seconds`) |
 
 **A character** is every section of the model (the fight draws them all: FORMATS.md section 7) in one mesh, skinned
 with up to 4 influences on the first 98 nodes, which every fighter shares, in their bind pose (`skins[0].joints` =
@@ -260,3 +264,50 @@ ones (shadows, dirt; on Lei's arena the wet street's, so its reflections show ba
 background characters and the objects the game moves. Each primitive (a picture and a blend mode) has its own
 positions, texture coordinates and vertex colours; the first image is a white texel, which strips without a texture
 draw; each picture is cut to the texels its strips reach (all of it along an axis they repeat it on).
+
+### `gamedata/sound.json`
+
+Tekken 3's keys where the concept is the same, but the numbers are **sound ids**, not Tekken 3's SePlay codes or
+sound-list table indices: an entry is `type << 12 | id`, and `id & 0xFFF` is the sound (0 none). The engine needs
+this dialect: an id is played as sample `id - first_id` of the group whose range holds it.
+
+- `groups.entries` (**new**, 0x42EBD8, 62): `group`, `first_id`, `count`, `kind` (0 resident, 1 loaded with the
+  arena, 2 a voice bank), `bank_bytes`, `bank` (the bank file: `audio/sfx/NNN/`; group 0 is file 1, groups 1-20
+  arena k - 1's file 187 + 7k, 21 Tekken Bowl's 327, 22 file 45; null for a voice group), `voice_row` (groups 23-61:
+  row group - 23), `samples` (`pitch`: 0x1000 = 48 kHz, the rate the game plays it at, which differs from the WAV's
+  for some voices; `volume`; `channel`: classes 6 and 8 take one voice per side).
+- `voice_banks.characters` (**new**): each character file's `model_record`, its voice `bank` (the file before it)
+  and its `voice_row`: the row whose group has that bank's size and sample count (the game picks the row by player
+  +0x2C, the roster's byte 6, not the body: Tiger, Eddy's fifth costume, has row 21).
+- `voice_rows.rows` (0x501808, 39): `row`, `counts` (types 2-5 = categories 0-3), `codes` (sound ids:
+  `codes[sum(counts[:cat]) + index]`), **new** `cooldown` (10 frames; 6 for rows 21 and 35): a type-2 voice plays
+  only when the fighter's cooldown is out, and sets it.
+- `entry_types` (**new**): what each entry type does (0x375B60). Type 6, Tekken 3's swing, plays nothing here.
+- `impact_rules`: Tekken 3's keys `blocked` (0x7010), `ko` (arm, leg), `auto`, `legs` (by damage band), `arms`
+  (`rows` by band, column 0, or 0 / 1 by `rand()` in band 0; **new** `rows_of_bodies` for attacker bodies 5, 7, 10,
+  18), **new** `damage_bands` [13, 23, 33] and `ko_arm_end_bone_below`; an arm is a move whose end bone is below 0xC.
+  `special_victims`: rows whose hits have their own handlers, not decoded.
+- `ko_voice`, `move_sounds` (`take_off`, **new** `footsteps` with `footsteps_gap_frames`, `landing`), **new**
+  `arena_sounds` (`by_arena`: [landing, step, step] for arenas 0-20, ids 0x321 / 0x322; `specials`: ids 0x323-0x326
+  and the arenas that have them), `scripts` (Tekken 3's `entries`, 668, but each step is `[frame, kind, sound]`),
+  `announcer` (Tekken 3's keys; entries, `call_frames`, `result`).
+
+### `gamedata/music.json`
+
+`bgm` (0x50CD00, 28 ids): Tekken 3's `{id, columns, characters}` with **one** column (no arranged / arcade choice):
+`file` (`NN.flac`, null for id 0, a sound bank), `loop`, `raw`, **new** `kind`, `source_file`, `start_seconds` (id 7
+is the endings' piece of file 20, from sector 3319), `loop_seconds` (the driver's restart point). `by_arena.bgm`
+(**new**, 0x4FB9C0): the fight's BGM id of arenas 0-22. The table is what 0x397A00 sends the sound driver
+(RSPU2DRV.IRX) at boot, so the id -> file map is read, not guessed: arena themes 9-22 are files 22, 24, 25, 26, 27,
+23, 28-35 (not id + 13). Which ids loop: kind 1, from the driver's code (medium confidence).
+
+### `gamedata/rounds.json` (**new**)
+
+The round machine's constants (0x36E198; FIGHT_DATA.md sections 11, 13): `call` (the fight starts on frame 151 / 91,
+banner and READY frames), `start_motions` (aliases 4 / 6 in round 1, picked by pad bits or `rand() & 1`, 5 later; the
+start frame rule; alias 9 for Unknown), `end` (K.O.: replay from frame 16, played twice, ends at 110, done at 135, or
+120 without a replay; time up done at 160; others 600), `win_poses` (aliases 4770-4773, the pick by pad bits, else
+the frame counter's parity; the partner poses too; 300 frames), `team_lose` (alias 4780, 60 frames), `result_flags`
+(bits, perfect, great when the winner's score is at most 0xCC of 0x1000), `round_time` (frames by option, the
+untimed option 5, the displayed second of 70 frames), `rounds_to_win`. The default round-time and rounds options are
+null: no code was found that writes them. The pad bits are the game's pad word, not yet tied to buttons.

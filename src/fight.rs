@@ -15,7 +15,7 @@ const CANCELS: (usize, usize) = (0x482248 - VADDR, 0x82cf); // 14 bytes each, th
 const SHARED: (usize, usize) = (0x47f780 - VADDR, 782); // the lists a CALL enters, each up to a RETURN
 const SEQUENCES: usize = 0x4efd44 - VADDR; // the motion input of command c is at + 2 * c
 const PROPS: usize = 0x524690 - VADDR; // timed properties: u16 frame, u16 op << 8 | arg; a list ends at frame 0
-const SOUNDS: usize = 0x52c448 - VADDR; // sound lists: u16 type << 12 | index; a list ends at 0xffff
+pub(crate) const SOUNDS: usize = 0x52c448 - VADDR; // sound lists: u16 type << 12 | index; a list ends at 0xffff
 const HITS: usize = 0x5e8978 - VADDR; // hit records of 10 bytes; a chain ends at gate 0xffff
 const REVERSALS: usize = 0x5e8608 - VADDR; // s16 motion lists ending in -1, up to the hit records
 const REACTIONS: (usize, usize) = (0x46be78 - VADDR, 1431); // 56 bytes each, up to the shared cancels
@@ -38,7 +38,7 @@ const MISSING: u16 = 7350;
 const MAX_LIST: usize = 256;
 
 /// A u16 / u8 inside an entry already read.
-fn h(e: &[u8], o: usize) -> u16 {
+pub(crate) fn h(e: &[u8], o: usize) -> u16 {
     u16le(e, o).unwrap_or_default()
 }
 fn b(e: &[u8], o: usize) -> u8 {
@@ -49,7 +49,7 @@ fn w(e: &[u8], o: usize) -> u32 {
 }
 
 /// The `size`-byte entries from entry `i` of the table at `base` up to (not with) the one `last` knows.
-fn until<'a>(
+pub(crate) fn until<'a>(
     elf: &'a [u8],
     base: usize,
     i: u32,
@@ -431,6 +431,38 @@ pub fn rules(elf: &[u8]) -> Result<Value> {
         "chip_damage": {"divisor": 10, "add": 0, "enabled_when": "the match flag byte 0x43B804, or the attacker's ki timer"},
         "juggle": {"first_air_hit_percent": 80, "later_air_hits_percent": 50, "counter": "player +0x100"},
     }))
+}
+
+/// rounds.json: the round machine (0x36E198, docs/FIGHT_DATA.md sections 11 and 13), constants of the code written as
+/// data. Frames count from 1; aliases are Tekken Tag's.
+pub fn rounds() -> Value {
+    json!({
+        "dialect": "ttt",
+        "machine": {"routine": "0x36E198", "state": "gp-0x7268", "states": ["call", "fight", "ko_or_time_up", "result", "pose"]},
+        "call": {"note": "state 0: inputs off; the fight (state 1) starts on fight_starts, whether the start motion ended or not",
+            "fight_starts": {"first_round": 151, "other_rounds": 91},
+            "banner": {"first_round": [66, 104], "other_rounds": [6, 44]}, "ready_from": {"first_round": 106, "other_rounds": 46}},
+        "start_motions": {"routine": "0x368398", "first_round": [4, 6], "other_rounds": 5, "unknown_body": 33, "unknown_alias": 9,
+            "first_round_pick": "pad bits 0x90 held: alias 4; 0x60: alias 6; else rand() & 1 picks 4 or 6 (the pad: gp-0x74B0 side 0, gp-0x74AC side 1)",
+            "first_round_start_frame": "a motion of 151 frames or more starts at frame frames - 149 (it ends with the call), a shorter one at 1",
+            "other_rounds_start_frame": 1, "unknown_when": "body 33 in the mode 0x3B6220 tests"},
+        "end": {"note": "state 2, counting from the end of the fight (gp-0x71C8); inputs go off except a K.O.'d fight's winner's",
+            "ko": {"replay_from": 16, "replay_plays": 2, "match_over_at": 50, "replay_ends": 110, "done": 135, "done_without_replay": 120},
+            "time_up": {"match_over_at": 50, "done": 160, "winner_motion": "player +0x420 = 4, +0x430 = 0x1000"}, "other_done": 600},
+        "win_poses": {"routine": "0x368528", "aliases": [4770, 4771, 4772, 4773],
+            "pick": {"pad_bits": [[0x80, 0], [0x10, 1], [0x40, 2], [0x20, 3]], "else": "the frame counter gp-0x74D8 & 1"},
+            "unknown_body": 33, "unknown_pick": "4771 + gp-0x74D8 % 3",
+            "partner": "the loser's player becomes the winner's partner, at x 0x400, z -0xC00 from the winner, and poses the same alias; solo: the loser is hidden",
+            "frames": 300, "start_skips_from": 2},
+        "team_lose": {"routine": "0x36E6C8", "alias": 4780, "frames": 60, "when": "arcade (settings +0x1F), the match over and the human side lost: the loser's partner joins it"},
+        "result_flags": {"routine": "0x36F570", "address": "gp-0x7444", "time_up": 0x01, "ko": 0x02, "double_ko": 0x04, "perfect": 0x08, "great": 0x10, "draw": 0x20,
+            "perfect_when": "the winning team's two members at their caps (+0x2C == +0x10) and gp-0x6A80[side] == 0",
+            "great_score_at_most": 0xcc, "score_unit": "1/4096 of full health (+0x408, 0x36F408)",
+            "draw": "both sides win the round; the round limit drops by 1"},
+        "round_time": {"routine": "0x36D640", "options_frames": [2160, 2820, 4260, 5640, 6960], "options_seconds": [30, 40, 60, 80, 99],
+            "untimed_option": 5, "display": "(frames * 6 / 7 - 1) / 60: a displayed second is 70 frames", "default_option": null},
+        "rounds_to_win": {"formula": "min(5, rounds option + 1)", "round_limit": "2 * wins - 1", "default_option": null},
+    })
 }
 
 /// Writes `gamedata/` into `out`; returns its files. `anims`, `frames`: each motion's file in the pack and its

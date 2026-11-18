@@ -438,7 +438,7 @@ voice per player). Kind 0 is resident, kind 1 loads with the arena, kind 2 is a 
 | 0x060-0x0A7 | 1-20 | 187 + 7k for arena k (3-7 each) | arena sounds: floor steps and landings, ambience |
 | 0x0A8-0x0B5 | 21 | 327 or 334 (14, identical) | not placed |
 | 0x0B6-0x0D1 | 22 | 45 (28) | floor sets and effects of another mode |
-| 0x0D2-0x31F | 23 + body | 344 + 3 * costume slot (FORMATS.md) | the body's voice; sample counts match bank files (Paul 22, Law 20, Lei 19...) |
+| 0x0D2-0x31F | 23 + voice row | 344 + 3 * costume slot (FORMATS.md) | a voice row's bank; the row is player +0x2C, the roster's byte 6, not the body (Bryan 13, Panda 12, Tiger 21); bank sizes and sample counts match |
 
 Ids 0x321-0x326 (0x3755C8, jump table 0x500900) depend on the arena gp-0x743A: 0x321 = floor table 0x5007F8[arena]
 word 1 or 2, alternating (footsteps), 0x322 = word 0 (landing / fall); 0x323 arena 0 -> 0x63; 0x324 arenas 9, 11,
@@ -446,9 +446,10 @@ word 1 or 2, alternating (footsteps), 0x322 = word 0 (landing / fall); 0x323 are
 
 **Move sound lists** (0x375B60(self, opponent), every frame): up to 3 entries `type << 12 | index` (jump table
 0x500CC0):
+- 0, 6: nothing (6 is Tekken 3's swing; Paul's jab, move 806, has only 0x600F and the hit sound 0x7008).
 - 2, 3: a voice on frame 1 (type 2 only when no voice cooldown runs; it then sets the cooldown to the body's
-  table +0xC, 10 frames, 6 for bodies 21 and 35); 5: a voice at once. Voice (0x375AA8): body table 0x501808 + 16 *
-  body points at four s16 counts (types 2-5) then the ids; id = ids[sum of the earlier counts + index]. Paul: 8, 5, 3, 5
+  table +0xC, 10 frames, 6 for bodies 21 and 35); 5: a voice at once. Voice (0x375AA8): table 0x501808 + 16 *
+  voice row (+0x2C) points at four s16 counts (types 2-5) then the ids; id = ids[sum of the earlier counts + index]. Paul: 8, 5, 3, 5
   voices, ids 0xD3-0xE7 (group 23, samples 1-21). Only types 2-5 are voices; a fighter with +0xB6 set is silent.
 - 4: an effect `index` on the fighter's side, each frame the entry is reached.
 - 1, 7: hit sound, only on the frame the move connects (+0x132), on the victim's side. Guarded (victim +0x130):
@@ -456,8 +457,8 @@ word 1 or 2, alternating (footsteps), 0x322 = word 0 (landing / fall); 0x323 are
   attacker's damage +0xCA (bands < 13, < 23, < 33, more): move end bone (+0x28) >= 0x0C -> 0x09, 0x0C, 0x0B,
   0x0D; end bone < 0x0C -> 0x06 or 0x23 (random), 0x07, 0x08, 0x0A (tables 0x500D10 for attacker +0x2A = 5, 7, 10,
   18, i.e. Nina, Xiaoyu, Julia, Anna, and 0x500D30 for the rest; their first two columns are equal, the other
-  columns are not read). Other ids play as written. Victims whose +0x2C is 16 / 17
-  (Gun Jack, Roger; with gp-0x71D8[side]) or 18, 30, 34 take special handlers (0x376818, 0x376790, 0x376728).
+  columns are not read). Other ids play as written. Victims whose voice row +0x2C is 16 / 17
+  (Mokujin, Tetsujin; with gp-0x71D8[side]) or 18, 30, 34 (Gun Jack, Jack-2, P. Jack) take special handlers (0x376818, 0x376790, 0x376728).
 - 8: a timed script, index into 0x505C10 -> 4-byte steps at 0x501A78 `{u8 frame, u8 kind, u16 sound}` (kind 0
   effect, 1 own voice or effect, 2 the opponent's, 3 0x376578); sound 0x13 starts a footstep pair.
 - 9: 0x376578(self, opponent, index).
@@ -473,11 +474,22 @@ themes. Arena numbers (stage select 0x440770):
 | Name | Paul | Law A | Yoshimitsu A | Xiaoyu | Hwoarang | Lei | Ogre | School A | Jin A | Nina A | Eddy A | King | Heihachi | Eddy B | Unknown | Law B | School B | Jin B | Nina B | Yoshimitsu B |
 | BGM | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 | 20 | 21 | 19 | 22 | 10 | 16 | 17 | 18 | 11 |
 
-The A / B arenas share a theme. One mode (settings mode 8) picks 9 + rand() % 14, or 12 (0x3BFEC0). The BGM id ->
-stream file map lives in the IOP driver's protocol and was not found; the 14 long stream files 22-35 (57-110 s) are
-the likely themes 9-22 in order (file = id + 13), unconfirmed.
+The A / B arenas share a theme. One mode (settings mode 8) picks 9 + rand() % 14, or 12 (0x3BFEC0).
 
-Confidence: high on groups, ids, voice and hit selection, arena music ids; low on the BGM -> file guess.
+**BGM id -> file** (0x397A00 at boot): for each id 0-27 the table 0x50CD00 (10 bytes: u8 kind, s8, u16, s16, u16 file,
+s16 loop sector) is sent with the file's TEKKEN.BIN sector and size (from the table at 0x509E40) to the sound driver,
+RSPU2DRV.IRX (Namco's, on the disc: `0x205E` calls 0x3110, a 20-byte entry per id; command 0x40 at 0xCE8 plays one).
+Id 7 starts 0xCF7 sectors into its file. The files:
+
+| Id | 0 | 1 | 2 | 3, 4 | 5 | 6, 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15-22 | 23-27 |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| File | 2 (a bank) | 21 | 17 | 44 | 19 | 20 | 18 | 22 | 24 | 25 | 26 | 27 | 23 | 28-35 | 36-40 |
+
+So the guess "file = id + 13" was wrong for 10-14 (Lei's theme is file 23). Kind 1 entries keep a restart point (the
+loop sector, negative read as 0), kind 3 (id 3) clears it; kind 2 (id 0) is the select screen's two-sample bank.
+
+Confidence: high on groups, ids, voice and hit selection, arena music ids and the BGM -> file map; medium on which
+ids loop.
 
 ## 15. Tag (third pass)
 
@@ -507,7 +519,7 @@ survives, 0x35C0D8 when chip K.O.s (both lead to 0x35BF10 / 0x3A2FF8, likely vib
 
 - The fight camera's framing constants and per-move camera scripts; the camera during a tag (section 16).
 - Hit sparks and their table (section 17).
-- The BGM id -> stream file map; ids 0xA8-0xB5 (group 21) and kind-1 group 22's use; the type-8 script semantics in
+- Ids 0xA8-0xB5 (group 21) and kind-1 group 22's use; the type-8 script semantics in
   full; what 0x376578 (type 9) does.
 - The K.O. replay's speed and window (0x364B50); the default round-time and rounds options.
 - Which pad bits pick the intro and win pose (as buttons).

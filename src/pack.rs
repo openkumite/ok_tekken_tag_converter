@@ -19,21 +19,25 @@
 //!   characters/model_NNN.glb  the roster's fighters (NNN: the file's number in TEKKEN.BIN, as models/)
 //!   motions/motion_NNNN.glb   the motions the characters' movesets play, a clip `motion_NNNN` each (NNNN: as anims/)
 //!   stages/stage_NN.glb       the arenas (NN: the arena's number), stages/index.json
-//!   gamedata/                 the fight data again (moves' `anim`: their clip), roster.json
+//!   gamedata/                 the fight data again (moves' `anim`: their clip), roster.json; sound.json, music.json,
+//!                             rounds.json (the sound, music and round-flow tables)
+//!   audio/sfx/NNN/KKK.wav     the sound banks' samples (NNN: the bank's file in TEKKEN.BIN); audio/music/NN.flac the
+//!                             music streams (NN: their file); audio/index.json
 //! ```
 //!
 //! The layout outside `assets/` is the research tool's, to look at in any glTF viewer.
 
 use crate::archive::{self, Archive};
-use crate::{anim, assets, audio, fight, model, moves, stage, tex, u32le};
+use crate::{anim, assets, audio, fight, model, moves, sound, stage, tex, u32le};
 use anyhow::{Context, Result, bail};
 use ok_converter_common::io::{Ctx, DiscFile, Sub, Vfs};
+use ok_converter_common::psx;
 use serde_json::{Value, json};
 use std::collections::{BTreeSet, HashMap, HashSet};
 
 /// The pack's layout and contents; another one is converted again (3: `assets/`; 4: every section of a fighter; 5:
-/// the air reactions, the default life, the damage constants).
-pub const FORMAT: i64 = 5;
+/// the air reactions, the default life, the damage constants; 6: `assets/audio/`, sound, music and rounds).
+pub const FORMAT: i64 = 6;
 /// What a pack's manifest names it.
 pub const KIND: &str = "ttt";
 
@@ -97,6 +101,8 @@ pub fn convert(ctx: &Ctx, src: &dyn DiscFile) -> Result<Value> {
     let (mut characters, mut arenas) = (vec![], vec![]);
     let (mut sounds, mut music, mut video, mut raw, mut models, mut textures, mut stages) =
         (vec![], vec![], vec![], vec![], vec![], vec![], vec![]);
+    // OpenKumite's audio/index.json, and each bank's (file, bytes, samples) and each music stream's file
+    let (mut sfx, mut tracks, mut banks, mut streams) = (vec![], vec![], vec![], vec![]);
     let roster = moves::roster(&a.elf)?;
     ctx.log(&format!("[ttt] {}: the {} files of TEKKEN.BIN", src.name(), archive::FILES));
     // (the first and the last file are random filler)
@@ -109,12 +115,19 @@ pub fn convert(ctx: &Ctx, src: &dyn DiscFile) -> Result<Value> {
         let pack = archive::pack(&d);
         let mut unknown = false;
         if d.starts_with(b"VAGp") {
-            let mut items = vec![];
+            let (mut items, mut samples) = (vec![], vec![]);
             for (k, (name, rate, pcm)) in audio::vag_bank(&d).into_iter().enumerate() {
-                let file = format!("audio/{i:03}_{k:03}.wav");
-                out.write(&file, &audio::wav(rate, 1, &pcm))?;
-                items.push(json!({"name": name, "file": file, "seconds": pcm.len() as f64 / rate as f64}));
+                let (file, wav, seconds) =
+                    (format!("audio/{i:03}_{k:03}.wav"), audio::wav(rate, 1, &pcm), pcm.len() as f64 / rate as f64);
+                out.write(&file, &wav)?;
+                // OpenKumite's: audio/sfx/NNN/KKK.wav, a folder a bank
+                let sample = format!("{i:03}/{k:03}.wav");
+                assets.write(&format!("audio/sfx/{sample}"), &wav)?;
+                samples.push(json!({"file": sample, "rate": rate, "seconds": seconds, "name": name}));
+                items.push(json!({"name": name, "file": file, "seconds": seconds}));
             }
+            banks.push((i, d.len(), items.len()));
+            sfx.push(json!({"bank": i, "samples": samples}));
             sounds.push(json!({"id": i, "sounds": items}));
         } else if plain {
             let (pcm, pss) = audio::stream(&d);
@@ -123,6 +136,14 @@ pub fn convert(ctx: &Ctx, src: &dyn DiscFile) -> Result<Value> {
             let seconds = pcm.len() as f64 / 88200.0;
             if pss.is_empty() {
                 music.push(json!({"id": i, "file": wav, "seconds": seconds}));
+                // OpenKumite's: audio/music/NN.flac
+                let flac = format!("{i:02}.flac");
+                assets.write(
+                    &format!("audio/music/{flac}"),
+                    &psx::flac(&psx::Pcm { rate: 44100, channels: 2, samples: pcm })?,
+                )?;
+                tracks.push(json!({"name": format!("stream file {i}"), "file": flac, "seconds": seconds}));
+                streams.push(i);
             } else {
                 // not converted yet: the pictures as on the disc, the sound beside them
                 let file = format!("video/{i:03}.pss");
@@ -336,6 +357,14 @@ pub fn convert(ctx: &Ctx, src: &dyn DiscFile) -> Result<Value> {
     }
     let clips: Vec<Option<String>> = (0..offsets.len()).map(|v| motion(v).map(|c| format!("motion_{c:04}"))).collect();
     fight::export(&assets, &a.elf, &clips, &frames, &characters)?;
+    for (name, v) in [
+        ("sound", sound::sound(&a.elf, &banks, &characters)?),
+        ("music", sound::music(&a.elf, &streams)?),
+        ("rounds", fight::rounds()),
+    ] {
+        assets.write(&format!("gamedata/{name}.json"), serde_json::to_string(&v)?.as_bytes())?;
+    }
+    assets.write("audio/index.json", serde_json::to_string(&json!({"sfx": sfx, "music": tracks}))?.as_bytes())?;
     assets.write("gamedata/roster.json", serde_json::to_string(&assets::roster(&roster, &characters))?.as_bytes())?;
     assets.write("stages/index.json", serde_json::to_string(&arenas)?.as_bytes())?;
     let fingerprint = assets::fingerprint(&assets)?;
