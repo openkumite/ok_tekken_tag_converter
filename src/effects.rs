@@ -39,7 +39,7 @@ pub fn shadow(m: &Model, record: usize) -> Value {
             })
             .collect();
         // (a vertex without a joint: none of the strip's triangles through it)
-        triangles.extend(ids.windows(3).filter_map(|t| Some([t[0]?, t[1]?, t[2]?])));
+        triangles.extend(ids.windows(3).filter_map(|t| t.iter().copied().collect::<Option<Vec<u32>>>()));
     }
     json!({"models": [record], "joints": RIG.map(|r| r.0), "vertices": vertices, "triangles": triangles, "quads": []})
 }
@@ -109,6 +109,7 @@ pub fn atlas(pics: &[Vec<(usize, usize, Vec<u8>)>]) -> Option<(Vec<u8>, Value)> 
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::indexing_slicing)]
 mod tests {
     use super::*;
     use crate::model::{Inf, Node, Strip};
