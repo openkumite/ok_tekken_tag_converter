@@ -146,22 +146,25 @@ pub fn parse(c: &[u8]) -> Option<Model> {
     Some(Model { nodes, sections })
 }
 
-/// A background character of an arena: 18 nodes, which are the joints of `RIG` in order, then VIF
+/// A background character of an arena, or a fighter's low-detail model (its shadow, pack part 8): 18 nodes, which
+/// are the joints of `RIG` in order, and as many more as `+8` says (hair, cloth: a few fighters'), then VIF
 /// packets for VU1. A strip is UNPACK V4-32 of a GIF tag and five quadwords a vertex:
 ///   s, t, matrix A, matrix B (address 7 * node - 6, 0 = none) | normal A | normal B | position A, weight | position B, weight
 /// after an UNPACK V4-32 x4 with its material (GIF tag, ALPHA, CLAMP, TEX0).
 // shortcut: a vertex follows its heavier node only. The file has no rest pose in which its two
 // positions meet (a glTF skin needs one); to blend them, fit the rest rotations from the shared vertices.
 pub fn parse_low(c: &[u8]) -> Option<Model> {
-    const MESH: usize = 0x2b0;
-    if c.len() < MESH + 16 || u32le(c, 0)? != 0 || u32le(c, 12)? as usize != MESH {
+    // 18 joints, and as many more as +8 says (a fighter's hair or cloth: the shadow's)
+    let count = 18 + (u32le(c, 8)? as usize).min(16);
+    let mesh = 0x70 + 0x20 * count;
+    if c.len() < mesh + 16 || u32le(c, 0)? != 0 || u32le(c, 12)? as usize != mesh {
         return None;
     }
-    let nodes = (0..18)
+    let nodes = (0..count)
         .map(|i| 0x70 + 0x20 * i)
         .map(|o| Some(Node { parent: u32le(c, o)? as i32, pos: v3(c, o + 4)?, rot: [0.; 3] }));
     let nodes: Vec<Node> = nodes.collect::<Option<_>>()?;
-    let (mut o, mut tex0, mut strips) = (MESH, 0, vec![]);
+    let (mut o, mut tex0, mut strips) = (mesh, 0, vec![]);
     while let Some(&[_, _, num, cmd]) = c.get(o..).and_then(|c| c.first_chunk::<4>()) {
         let (num, cmd) = (num as usize, cmd & 0x7f);
         o += 4;
@@ -183,7 +186,7 @@ pub fn parse_low(c: &[u8]) -> Option<Model> {
                 let k = (u(12) > 0 && f(76) > f(60)) as usize;
                 let (m, w) = (u(8 + 4 * k) as usize, f(60 + 16 * k));
                 let at = |o: usize| [f(o), f(o + 4), f(o + 8)];
-                let inf = if m > 0 && m / 7 < 17 && w > 0.0 {
+                let inf = if m > 0 && m / 7 + 1 < count && w > 0.0 {
                     vec![Inf { node: m / 7 + 1, n: at(16 + 16 * k), p: at(48 + 16 * k).map(|x| x / w), w: 1.0 }]
                 } else {
                     vec![]

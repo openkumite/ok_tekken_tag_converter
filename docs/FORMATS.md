@@ -282,8 +282,9 @@ that are not exported. Collision. One sky quad in arena 14 shows a palm-shadow t
 ## 11. Not decoded
 
 - What [FIGHT_DATA.md](FIGHT_DATA.md) lists as not decoded.
-- **Low-detail fighter model** (part 8): header `{0, 100.0, 0, data offset, 1, size in quadwords}`,
-  18 joints of `{i32 parent, float offset[3], 16 bytes}` in Tekken 3 slot order, then VIF packets.
+- **Low-detail fighter model** (part 8; the fighter's shadow, EFFECTS.md 2): header `{0, 100.0, extra joints,
+  data offset, 1, size in quadwords}`, 18 joints of `{i32 parent, float offset[3], 16 bytes}` in Tekken 3 slot
+  order and the extra ones (hair, cloth: 62 character files have 3), then VIF packets.
   Each strip: a 4-quadword material packet and `1 + 5n` quadwords of
   `{s, t, matrix A, matrix B}, normal A, normal B, position A·w + w, position B·w + w`
   where a matrix number is `1 + 7 * index`.
