@@ -158,6 +158,10 @@ Tekken 3's throw victims and close-range tables are not here: not found as table
   damage times each tenth in turn (truncating), then x its frame / its startup (Tekken 3's would be [3, 3]).
 - `chip_damage`: `divisor` 10, `add` 0 (Tekken 3: D / 10 + 2), only under the match flag or a ki charge.
 - `juggle`: `first_air_hit_percent` 80, `later_air_hits_percent` 50 (Tekken 3's keys and values).
+- **new** `tag` (FIGHT_DATA.md section 10): `regen_divisor` (the benched partner regains max / 6000 a frame) and
+  `anger`: `start` 100, `angry` 120, `hit` 4 (`hit_no_damage` 6) added to the partner per hit on the active member,
+  `damage_tenths` 13 (x 1.3 while angry), `any_body` 0x22, and `relations` (the 76 entries of 0x5207F0:
+  `partner_body`, `partner_mask`, `active_body`, `active_mask`, `effect`: -1 adds 3, 1 adds 5, -9 none).
 
 These four are constants of the code (0x3720C8, 0x3C1350), written as data. There are no damage zones (the hurt
 sphere does not scale damage). Throws and round time are not here.

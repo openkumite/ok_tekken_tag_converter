@@ -4,7 +4,7 @@
 //! bits, property ops) are Tekken Tag's own, as stored. Integers only, but two float constants written with their bits.
 
 use crate::moves::{self, ALIAS_COUNT, ALIASES, BODIES, MOVE_COUNT, MOVES, MOVESETS, VADDR};
-use crate::{bytes, u16_at, u16le, u32_at};
+use crate::{bytes, u8_at, u16_at, u16le, u32_at};
 use anyhow::{Context, Result, bail, ensure};
 use ok_converter_common::io::Vfs;
 use serde_json::{Value, json};
@@ -24,6 +24,7 @@ const LIFE: usize = 0x51f5a0 - VADDR; // 8 x u32 health, 20.12 fixed point; then
 const HURT: (usize, usize) = (0x42f060 - VADDR, 14); // u32 bone slot per sphere, then a pointer per body to s16 radii
 const PUSH: (usize, usize) = (0x42efb8 - VADDR, 8);
 const RECOVERABLE: usize = 0x5f5168 - VADDR; // f32 0.6, f32 1.4: the part of a hit's damage the recoverable cap loses
+const ANGER: (usize, usize) = (0x5207f0 - VADDR, 76); // 5 x s8: partner body, its variant mask, active body, its mask, effect
 // air reactions of 28 bytes (0x374010): entries 0-7 in the first table, entry k >= 8 at the second + 28 * k
 const AIR: (usize, usize) = (0x500678 - VADDR, 0x5f2ba8 - VADDR);
 /// The life option every match uses (0x3B1488, the only writer of the option, sets 3).
@@ -412,6 +413,13 @@ pub fn rules(elf: &[u8]) -> Result<Value> {
         let bits = u32_at(elf, RECOVERABLE + 4 * k, "the recoverable health factors")?;
         Ok(json!({"bits": bits, "value": f32::from_bits(bits)}))
     };
+    let relations = (0..ANGER.1)
+        .map(|k| {
+            let b = |i: usize| u8_at(elf, ANGER.0 + 5 * k + i, "the anger relations");
+            Ok(json!({"partner_body": b(0)?, "partner_mask": b(1)?, "active_body": b(2)?, "active_mask": b(3)?,
+                      "effect": b(4)? as i8}))
+        })
+        .collect::<Result<Vec<_>>>()?;
     Ok(json!({
         // which game's numbers the fight data holds (docs/GAMEDATA.md "Numbering")
         "dialect": "ttt",
@@ -430,6 +438,9 @@ pub fn rules(elf: &[u8]) -> Result<Value> {
             "bonus": "3 * |victim move damage| / 10 * f / startup; 3 * damage / 10 when a ki timer caused it"},
         "chip_damage": {"divisor": 10, "add": 0, "enabled_when": "the match flag byte 0x43B804, or the attacker's ki timer"},
         "juggle": {"first_air_hit_percent": 80, "later_air_hits_percent": 50, "counter": "player +0x100"},
+        // the tag system (0x3C1900, 0x3C1B38, 0x3CF278; docs/FIGHT_DATA.md section 10)
+        "tag": {"regen_divisor": 6000, "anger": {"start": 100, "angry": 120, "hit": 4, "hit_no_damage": 6,
+            "damage_tenths": 13, "any_body": 0x22, "relations_table": "0x5207F0", "relations": relations}},
     }))
 }
 
@@ -748,6 +759,7 @@ mod tests {
             (Some(125), Some(120))
         );
         assert_eq!(v["health"]["recoverable"]["damage_factor"]["bits"], 0x3f19_999a);
+        assert_eq!(v["tag"]["anger"]["relations"].as_array().unwrap().len(), 76);
         // a radius pointer outside the executable
         elf[HURT.0 + 4 * 14..][..4].copy_from_slice(&0xffff_fff0u32.to_le_bytes());
         assert!(rules(&elf).is_err());
