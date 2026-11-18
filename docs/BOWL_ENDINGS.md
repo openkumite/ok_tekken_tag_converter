@@ -5,7 +5,8 @@ Seventh pass, worked out on 2026-11-18 from `SLUS_200.01` (static analysis) and 
 [L] a guess. "FE n" is a section of [FRONTEND.md](FRONTEND.md), "FD n" one of [FIGHT_DATA.md](FIGHT_DATA.md).
 Characters are character ids (FE: 0 Paul ... 33 Unknown). Units are the game's: 60 frames a second, y is down,
 angles in 1/65536 turns (0x800 = 11.25 degrees). The VU0 macro code (`lqc2` / `vadd` ...) that capstone misreads
-was read with `docs/re/vdis.py`.
+was read with `docs/re/vdis.py`. Sections 1-6 are exported for OpenKumite as `assets/gamedata/bowl.json`, the motions
+`assets/motions/bowl_NNN.glb` and the ball, pin and pin deck `assets/stages/bowl_*.glb` (GAMEDATA.md).
 
 ## 1. Tekken Bowl: structure
 
@@ -197,7 +198,18 @@ leaving. Music: FE 6.
 Camera modes (0x3EBC98, table 0x523970, set through 0x1FC51B0 +0x24): 0 fixed behind the lane (0, -2300, -12000),
 1 behind the bowler (bowler x, y -2350, bowler z, bowler yaw) during the throw, 2 follows the ball, easing to
 (0, -1500, 4000) as the ball nears z 4000, 3-6 the replay's random angles (pi/12, -0.88, pi/6, -pi/4 ... rad), 7 hold.
-The aiming guide is a 7-triangle overlay (0x3EA978). HUD texts: SPEED / MPH, BOWL STYLE, SWITCH HANDS (swaps the
+The aiming guide is a 7-triangle overlay (0x3EA978).
+
+**The ball and the pins drawn** [H]: the roll's draw 0x3EEF00 calls the arena-object drawer 0x3D10D0 with object 0 at
+the ball (its matrix from 0x1FC61A0, its roll angles +0x50), object 2 its shadow, then for each pin on the deck
+(+0x174) object 1 at the pin (matrix 0x1FC6160, angles +0x40) and object 3 its shadow. The objects are the arena's
+(0x367938 -> 0x3D0CC8 / 0x3D0E18): table 0x520FC0 + 16 x arena `{u32 links, u32 *links, u32 count, u32 *objects}`,
+an object 64 bytes `{s16 model, ..., +0x20 f32 x, y, z}`, a link `{s16 parent, s16 child}`; the models are the blocks
+of the geometry pack's object part (file 329's part 3, a grid of one cell and 13 blocks). Arena 20: object 0 = model
+1 (the ball, radius 158), 1 = model 2 (the pin, 661 tall: the hall's gold pin), 2 / 3 = models 3 / 4 (the shadows),
+4-6 = models 5-7 (three more pins, not drawn by the bowl), 10 = model 12 at z 10000 (the pin deck's masking unit)
+with 7-9 (models 8, 10, 11) linked to it at (0, 0, 3000), (0, 2500, 2000), (0, 2500, 1000): its back, its round
+sign and the sign's glow. 0x3D2280 (objects 8, 9's script) is not read. HUD texts: SPEED / MPH, BOWL STYLE, SWITCH HANDS (swaps the
 hand, 0x3EAE28), REPLAY, OVER CHARGED / TIME UP, the callouts; the score card is drawn by 0x3E4BC0. Gauge art: FE 1
 (file 130) [L]. Strings at 0x5232F8 (DISTANCE, ANGLE, FRICTION, WEIGHT, POWER, ENERGY, DR.BOSKONOVITCH) look like
 an unused debug display [L].

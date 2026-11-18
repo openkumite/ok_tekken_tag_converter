@@ -179,10 +179,10 @@ pub fn glb(frames: &[Frame]) -> Vec<u8> {
     g.finish(json!({"scene": 0, "scenes": [{"nodes": all}], "nodes": nodes, "animations": [{"name": "motion", "samplers": samplers, "channels": channels}]}))
 }
 
-/// A motion as OpenKumite's clip `name` (`motion_NNNN`; an ending's track `ending_EE_K`), in a GLB of no mesh: its
-/// channels on the joints by name (the fighters' character glbs have the same), one key a frame at 60 fps; the
-/// rotations as normalised 16-bit integers, as the Tekken 3 converter writes them, and the root's position (metres)
-/// as its translation.
+/// A motion as OpenKumite's clip `name` (`motion_NNNN`; an ending's track `ending_EE_K`; `bowl_NNN`), in a GLB of no
+/// mesh: its channels on the joints by name (the fighters' character glbs have the same), one key a frame at 60 fps;
+/// the rotations as normalised 16-bit integers, as the Tekken 3 converter writes them, and the root's position
+/// (metres) as its translation.
 pub fn clip_glb(name: &str, frames: &[Frame]) -> Vec<u8> {
     let mut g = Glb::default();
     let n = frames.len();

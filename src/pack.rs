@@ -17,8 +17,10 @@
 //! assets/              what OpenKumite reads, laid out as it reads Tekken 3's (`assets`, docs/GAMEDATA.md "assets/"):
 //!   manifest.json             {"game": "ttt", "format": assets::FORMAT, "fingerprint"}
 //!   characters/model_NNN.glb  the roster's fighters (NNN: the file's number in TEKKEN.BIN, as models/)
-//!   motions/motion_NNNN.glb   the motions the characters' movesets play, a clip `motion_NNNN` each (NNNN: as anims/)
-//!   stages/stage_NN.glb       the arenas (NN: the arena's number), stages/index.json
+//!   motions/motion_NNNN.glb   the motions the characters' movesets play, a clip `motion_NNNN` each (NNNN: as anims/);
+//!                             bowl_NNN.glb Tekken Bowl's bowler motions (file 128 part 0), clips `bowl_NNN`
+//!   stages/stage_NN.glb       the arenas (NN: the arena's number), stages/index.json; bowl_ball.glb, bowl_pin.glb,
+//!                             bowl_deck.glb the bowling hall's ball, pin and pin deck
 //!   gamedata/                 the fight data again (moves' `anim`: their clip), roster.json (with the front end's
 //!                             tables, `front_end`); sound.json, music.json, rounds.json (the sound, music and
 //!                             round-flow tables)
@@ -34,7 +36,7 @@
 //! The layout outside `assets/` is the research tool's, to look at in any glTF viewer.
 
 use crate::archive::{self, Archive};
-use crate::{anim, assets, audio, ending, fight, front, model, moves, sound, stage, tex, u32le};
+use crate::{anim, assets, audio, bowl, ending, fight, front, model, moves, sound, stage, tex, u32le};
 use anyhow::{Context, Result, bail};
 use ok_converter_common::io::{Ctx, DiscFile, Sub, Vfs};
 use ok_converter_common::psx;
@@ -44,8 +46,9 @@ use std::collections::{BTreeSet, HashMap, HashSet};
 /// The pack's layout and contents; another one is converted again (3: `assets/`; 4: every section of a fighter; 5:
 /// the air reactions, the default life, the damage constants; 6: `assets/audio/`, sound, music and rounds; 7: the
 /// camera, the camera id from bit 23; 8: ai.json; 9: the front end, `assets/pictures/` and roster.json `front_end`, the
-/// 2D files' palettes as drawn; 10: the endings, `assets/endings/` and gamedata/endings.json).
-pub const FORMAT: i64 = 10;
+/// 2D files' palettes as drawn; 10: the endings, `assets/endings/` and gamedata/endings.json; 11: Tekken Bowl, `bowl.json`,
+/// its motions, ball, pin and deck).
+pub const FORMAT: i64 = 11;
 /// What a pack's manifest names it.
 pub const KIND: &str = "ttt";
 
@@ -206,7 +209,15 @@ pub fn convert(ctx: &Ctx, src: &dyn DiscFile, research: bool) -> Result<Value> {
             let mut bare = b.clone();
             b.extend(floors.iter().flat_map(|f| f.laid()));
             if i == BOWL {
-                bare.extend(objects.iter().cloned());
+                // OpenKumite's: its objects apart, the ball, the pin and the pin deck where the object table puts
+                // them; the object part (taken for scenery and objects, all at the origin) not in its stage
+                let part = archive::pack(&d).map(|p| p.into_iter().filter(|c| !c.is_empty()).collect::<Vec<_>>());
+                let models = part.as_ref().and_then(|p| p.get(bowl::OBJECT_PART)).map(|m| stage::blocks(m));
+                let [ball, pin, deck] = bowl::models(&a.elf, &models.unwrap_or_default())?;
+                bare.retain(|x| x.bank != bowl::OBJECT_PART);
+                for (name, m) in [("ball", ball), ("pin", pin), ("deck", deck)] {
+                    assets.write(&format!("stages/bowl_{name}.glb"), &stage::game_glb(name, &m, &[], &banks))?;
+                }
                 b.append(&mut objects);
             }
             let file = format!("stages/{i:03}.glb");
@@ -397,7 +408,20 @@ pub fn convert(ctx: &Ctx, src: &dyn DiscFile, research: bool) -> Result<Value> {
     }
     let clips: Vec<Option<String>> = (0..offsets.len()).map(|v| motion(v).map(|c| format!("motion_{c:04}"))).collect();
     fight::export(&assets, &a.elf, &clips, &frames, &characters)?;
+    // Tekken Bowl's bowler motions (file 128 part 0: unpacked, as the arenas' people's) as clips `bowl_NNN`, and
+    // their frame counts for bowl.json (0: a track not read)
+    let scene = a.read(bowl::MOTIONS)?;
+    let bowler = archive::pack(&scene).and_then(|p| archive::parts(p.first()?, 128)).unwrap_or_default();
+    let mut lengths = vec![];
+    for (k, t) in bowler.iter().enumerate() {
+        let f = anim::raw(t).unwrap_or_default();
+        if !f.is_empty() {
+            assets.write(&format!("motions/bowl_{k:03}.glb"), &anim::clip_glb(&format!("bowl_{k:03}"), &f))?;
+        }
+        lengths.push(f.len());
+    }
     for (name, v) in [
+        ("bowl", bowl::bowl(&a.elf, &lengths)?),
         ("sound", sound::sound(&a.elf, &banks, &characters)?),
         ("music", sound::music(&a.elf, &streams)?),
         ("rounds", fight::rounds()),

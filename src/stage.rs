@@ -31,10 +31,22 @@ pub struct Batch {
 }
 
 #[allow(clippy::indexing_slicing)] // (fixed arrays of three within constant bounds)
-fn bbox<'a>(points: impl Iterator<Item = &'a [f32; 3]>) -> ([f32; 3], [f32; 3]) {
+pub(crate) fn bbox<'a>(points: impl Iterator<Item = &'a [f32; 3]>) -> ([f32; 3], [f32; 3]) {
     points.fold(([f32::MAX; 3], [f32::MIN; 3]), |(lo, hi), p| {
         (std::array::from_fn(|k| lo[k].min(p[k])), std::array::from_fn(|k| hi[k].max(p[k])))
     })
+}
+
+/// What opens a grid's block (FLUSH, BASE, OFFSET).
+const CELL: [u8; 16] = [4, 4, 0, 1, 0, 0, 0, 0x11, 0, 0, 0, 3, 0, 2, 0, 2];
+
+/// The blocks of a grid part, each one's batches (its vertices as stored): an arena's object part is a grid of one
+/// cell whose blocks are its models (0x3D0E18 draws them by number).
+pub fn blocks(d: &[u8]) -> Vec<Vec<Batch>> {
+    let starts: Vec<usize> =
+        (0..d.len().saturating_sub(16)).step_by(4).filter(|&o| d.get(o..o + 16) == Some(&CELL[..])).collect();
+    let end = |k: usize| starts.get(k + 1).copied().unwrap_or(d.len());
+    starts.iter().enumerate().map(|(k, &s)| batches(d.get(s..end(k)).unwrap_or_default())).collect()
 }
 
 /// An arena from the parts of its geometry pack: (scenery, objects), both in arena space.
@@ -50,7 +62,6 @@ fn bbox<'a>(points: impl Iterator<Item = &'a [f32; 3]>) -> ([f32; 3], [f32; 3]) 
 ///   recognised by standing over the centre, and kept apart.
 /// - Anything else is scenery in arena space.
 pub fn arena(parts: &[(usize, &[u8])]) -> (Vec<Batch>, Vec<Batch>, Vec<Floor>) {
-    const CELL: [u8; 16] = [4, 4, 0, 1, 0, 0, 0, 0x11, 0, 0, 0, 3, 0, 2, 0, 2];
     let (mut scenery, mut objects, mut floors) = (vec![], vec![], vec![]);
     for &(bank, d) in parts {
         if d.len() < 0x30 {

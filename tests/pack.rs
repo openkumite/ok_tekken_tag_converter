@@ -51,6 +51,7 @@ impl Vfs for Hashed {
                 "gamedata/",
                 "motions/",
                 "stages/index.json",
+                "stages/bowl_",
                 "characters/",
                 "audio/index.json",
                 "pictures/141_000",
@@ -165,6 +166,7 @@ fn the_disc_converts_twice_the_same() {
     fight_data(&a);
     openkumite(&a);
     front_end(&a);
+    bowl(&a);
     endings(&a);
     // the same disc again, without the research outputs: the same assets/, and a manifest of the source alone
     assert_eq!(m2, serde_json::json!({"pack": "ttt", "format": pack::FORMAT, "source": m["source"]}));
@@ -317,7 +319,8 @@ fn openkumite(pack: &Hashed) {
     assert_eq!((&m["game"], &m["format"], m["fingerprint"].as_str().unwrap().len()), (&"ttt".into(), &8.into(), 32));
     let written = pack.0.lock().unwrap().clone();
     let count = |dir: &str| written.keys().filter(|k| k.starts_with(&format!("assets/{dir}/"))).count();
-    assert_eq!((count("characters"), count("motions"), count("stages")), (127, 4231, 23 + 1));
+    // (and Tekken Bowl's 114 motions, its ball, pin and pin deck)
+    assert_eq!((count("characters"), count("motions"), count("stages")), (127, 4231 + 114, 23 + 1 + 3));
     let roster = load("gamedata/roster.json");
     let entries = roster["selections"]["entries"].as_array().unwrap();
     assert_eq!((entries.len(), roster["characters"].as_array().unwrap().len()), (127, 34));
@@ -604,4 +607,54 @@ fn sound(load: &dyn Fn(&str) -> serde_json::Value, samples: usize, tracks: usize
     assert!(canned.iter().any(|c| c["id"] == "throws_stand_0" && c["words"] == serde_json::json!([5, 6, 3, 1283, 3])));
     let sine = ai["distance_jitter"]["sine"].as_array().unwrap();
     assert_eq!((sine.len(), &sine[1024], &sine[3072]), (4096, &4096.into(), &(-4096).into()));
+}
+
+/// Tekken Bowl (docs/BOWL_ENDINGS.md sections 1-5): bowl.json's tables and constants, the bowler's motions as clips,
+/// the ball and the pin.
+fn bowl(pack: &Hashed) {
+    let b: serde_json::Value = serde_json::from_slice(&pack.read("assets/gamedata/bowl.json").unwrap()).unwrap();
+    let c = b["characters"].as_array().unwrap();
+    assert_eq!(c.len(), 34);
+    assert_eq!(
+        c[0],
+        serde_json::json!({"id": 0, "s": 360, "left": false, "female": false, "reactions": [8, 39, 70, 71], "voices": [0x2001, 0x2000, 0x4002]})
+    );
+    assert_eq!(
+        (&c[16]["s"], &c[8]["left"], &c[7]["female"], &c[33]["left"]),
+        (&500.into(), &true.into(), &true.into(), &true.into())
+    );
+    let rack = b["pins"]["rack"].as_array().unwrap();
+    assert_eq!(rack.len(), 10);
+    assert!(
+        (rack[0][1].as_f64().unwrap() - 7211.9).abs() < 0.1 && rack[9] == serde_json::json!([682.5, 8394.041564941406])
+    );
+    assert!((b["pins"]["y"].as_f64().unwrap() + 250.66).abs() < 0.01);
+    let people = b["spectators"]["people"].as_array().unwrap();
+    assert!(people.len() == 25 && people.iter().all(|p| p["z"].as_f64().unwrap() > 0.0));
+    assert_eq!(b["callouts"]["strikes"], serde_json::json!(["STRIKE!", "DOUBLE!!", "TURKEY!!!", "!!GREAT!!"]));
+    assert_eq!((&b["callouts"]["perfect"], &b["callouts"]["nice_cover"]), (&"PERFECT".into(), &"NICE COVER".into()));
+    assert_eq!(b["strike_poses"].as_array().unwrap().len(), 33);
+    // the motions: 114, the throws 150 frames, the charges 175
+    let frames: Vec<u64> = b["motions"]["frames"].as_array().unwrap().iter().map(|f| f.as_u64().unwrap()).collect();
+    assert_eq!((frames.len(), frames[3], frames[7], frames[0x6A]), (114, 150, 150, 175));
+    let (doc, ..) = gltf::import_slice(pack.read("assets/motions/bowl_003.glb").unwrap()).unwrap();
+    assert_eq!(doc.animations().next().unwrap().name(), Some("bowl_003"));
+    // the ball a sphere of radius 0.158 m about the origin, the pin standing 0.66 m tall
+    for (file, lo, hi) in [("ball", [-0.158; 3], [0.158; 3]), ("pin", [-0.135, 0.001, -0.149], [0.135, 0.661, 0.202])] {
+        let (doc, ..) = gltf::import_slice(pack.read(&format!("assets/stages/bowl_{file}.glb")).unwrap()).unwrap();
+        let p = doc.meshes().next().unwrap().primitives().next().unwrap();
+        let bb = p.bounding_box();
+        assert!(
+            bb.min.iter().zip(lo).chain(bb.max.iter().zip(hi)).all(|(a, b)| (a - b).abs() < 0.002),
+            "{file}: {bb:?}"
+        );
+    }
+    // the pin deck where the object table puts it: behind the pins (z 10 m and on), its sign up to 4.9 m
+    let (doc, ..) = gltf::import_slice(pack.read("assets/stages/bowl_deck.glb").unwrap()).unwrap();
+    let (mut lo, mut hi) = ([f32::MAX; 3], [f32::MIN; 3]);
+    for p in doc.meshes().flat_map(|m| m.primitives().collect::<Vec<_>>()) {
+        let bb = p.bounding_box();
+        (0..3).for_each(|k| (lo[k], hi[k]) = (lo[k].min(bb.min[k]), hi[k].max(bb.max[k])));
+    }
+    assert!(lo[2] > 9.0 && hi[2] < 13.5 && hi[1] > 4.5, "{lo:?} {hi:?}");
 }

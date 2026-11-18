@@ -11,6 +11,7 @@ pub mod anim;
 pub mod archive;
 pub mod assets;
 pub mod audio;
+pub mod bowl;
 pub mod ending;
 pub mod fight;
 pub mod front;
