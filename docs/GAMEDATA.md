@@ -20,8 +20,8 @@ a fixed order: the same disc gives the same bytes on every platform.
 | `moves.json` | 6.3 MB | the 7 351 move records, with their sound and timed property lists |
 | `cancels.json` | 8.4 MB | the moves' cancel lists, the shared lists, the input sequences, the reversal motion lists |
 | `hits.json` | 0.4 MB | the 4 174 hit records (**new**) |
-| `reactions.json` | 0.2 MB | the 1 431 reactions and the 74 pushback curves |
-| `rules.json` | 8 KB | health, hurt and push spheres |
+| `reactions.json` | 0.2 MB | the 1 431 reactions, the 74 pushback curves, the 44 air reactions |
+| `rules.json` | 8 KB | health, hurt and push spheres, damage constants |
 | `movesets/index.json` | 20 KB | which fighter and which model uses which moveset |
 | `movesets/moveset_NN.json` | 28 KB each | the 5 532 aliases of moveset NN (0-32) |
 
@@ -51,7 +51,7 @@ bank: a moveset reaches its moves through its aliases, and shared moves are the 
 | `bytes_18` | +18..+1B | `frame_count_ram` (0), `jump_start`, `jump_end`, `hold_frame` |
 | `active` | +2C, +2D | first and last active frame |
 | `hitstop` | +2E | signed |
-| `byte_2F` | +2F | unknown, non-zero in 36 moves |
+| `air_reaction` | +2F | the move's own air reaction (an index of `reactions.json` `air_reactions`, 8-43; 0: none), taken when the move juggles; non-zero in 36 moves. Tekken 3 has none |
 | `flags24` | +24 | `raw` (the whole word) and `camera_script`: **the top byte** (Tekken 3: the low byte). No bit names: see "Numbering" |
 | `push_control` | +30 | `raw`, `mode` (bits 0-3), `disable_mask` (bits 4-11), `mask_only_near_active` (bit 12): Tekken 3's modes |
 | `word_32` | +32 | always 0 |
@@ -130,12 +130,21 @@ fit that shape.
   entry of `pushback_curves`**, or null (Tekken 3: an offset in 16-bit units, a multiple of 10).
 - A curve has **10 impulses** (Tekken 3: 8).
 
-Tekken 3's air reactions, throw victims and close-range tables are not here: not found as tables in Tekken Tag.
+`air_reactions`: `{"address", "entries": [{"index", "alias", "target_height", "rise", "words", "pushback"}]}`, the
+juggle reactions (FIGHT_DATA.md section 9): 0 normal, 1 spike, 2 / 3 side hits (quadrant 3 / 1), 4 the launch of
+transition 30, 5 / 6 / 7 the face-down victims (by height; 7 a spike), 8-43 a move's own (`moves.json`
+`air_reaction`). `alias` is the victim's move, `target_height` the height the pop reaches at least, `rise` a fixed
+rise speed (400 for the spikes; 0 none), `words` three values not decoded, `pushback` 8 per-frame samples away from
+the attacker. Tekken 3's shape is `{index, target_height, alias}` with one `air_pushback_curve` for all; here each
+entry has its own.
+
+Tekken 3's throw victims and close-range tables are not here: not found as tables in Tekken Tag.
 
 ## `rules.json`
 
 - `health`: `life_options` (8 words of the table, `life_options_raw` in 20.12 fixed point: 125, 130, 135, 140, 160
-  and three more 135; which is the default is not decoded), **new** `percent_per_character` (34 bodies: a body's
+  and three more 135), `default_life_option` (3: every match's, set by 0x3B1488) and `default_max` (140, its
+  value; Tekken 3's key), **new** `percent_per_character` (34 bodies: a body's
   health is the option times its percent), **new** `recoverable`: the part of a hit's damage the recoverable cap
   loses, `damage_factor` (0.6) and `damage_factor_flag_12a` (1.4), each `{bits, value}`.
 - `dialect`: `"ttt"`, the game whose numbers the files hold (section "Numbering").
@@ -145,7 +154,13 @@ Tekken 3's air reactions, throw victims and close-range tables are not here: not
   character here is a body (0-33). Costume bodies 34-38 are not in the tables; they are assumed to use their host
   body's (8, 11, 15, 17, 29).
 
-Tekken 3's other rules (damage zones, counter-hit and juggle scaling, throws, round time) are not decoded.
+- `counter_hit`: `multiplier` [12, 10] (D x 12 / 10) and `bonus_tenths` [3]: the bonus is the victim's move
+  damage times each tenth in turn (truncating), then x its frame / its startup (Tekken 3's would be [3, 3]).
+- `chip_damage`: `divisor` 10, `add` 0 (Tekken 3: D / 10 + 2), only under the match flag or a ki charge.
+- `juggle`: `first_air_hit_percent` 80, `later_air_hits_percent` 50 (Tekken 3's keys and values).
+
+These four are constants of the code (0x3720C8, 0x3C1350), written as data. There are no damage zones (the hurt
+sphere does not scale damage). Throws and round time are not here.
 
 ## `movesets/`
 
@@ -177,9 +192,12 @@ The engine needs a table per game for these; nothing below is translated in the 
 | 0xC9-0xEA | own body != req - 0xC9 |
 | 0xEB-0xED | flags; 0xEC / 0xED = Kazuya-Devil pair or not |
 
-- **cond**: 0-43 as Tekken 3; Tekken 3's 44-68 are + 3; reversal codes start at 0x60 (Tekken 3's 0x45 + k is
-  0x60 + k); 0x48-0x5F are new and not decoded; bit 0x80 is `cond_tag`.
-- **Transition types**: 46; 0-28 as Tekken 3, Tekken 3's 33 is 32, 44 ("use the END entry") is 46.
+- **cond** (FIGHT_DATA.md section 7): 0-0x24 as Tekken 3; 0x25-0x27 are new (0x25 not back turned); Tekken 3's
+  0x25-0x44 are + 3 (0x28-0x47); reversal codes start at 0x60 (Tekken 3's 0x45 + k is 0x60 + k); 0x48-0x5F are new
+  camera, screen-side and round tests; bit 0x80 is `cond_tag`, a test on the opponent's tagging.
+- **Transition types** (section 8): 46; 0-28 as Tekken 3, 29 / 30 are Tekken 3's 0x1D / 0x1E, 31 and 32 its 33
+  (throw link), 33 a restart facing the opponent, 34 / 35 a turn to the screen axis / its perpendicular, 36 Tekken
+  3's 0x22, 37-45 its 0x23-0x2B, 46 its 44 ("use the END entry").
 - **Flag bits** (`flags24.raw`), Tekken 3 bit -> Tekken Tag bit: 8, 11, 12, 13 -> 0, 3, 4, 5; 18 -> 11; 28, 29,
   30 -> 19, 20, 22. By code: 0x04 unthrowable, 0x08 not parryable, 0x40 guard by input, 0x200 ki charge, 0x400
   drops push spheres, bit 19 commits the root. New: 0x100 the posture follows the stick. Unknown: 0x4000, 0x8000,
@@ -191,10 +209,10 @@ The engine needs a table per game for these; nothing below is translated in the 
 
 ## Raw or unknown
 
-`byte_2F`; posture and attack-mask bits beyond those named; flag bits 0x4000, 0x8000, 17, 21; cond 0x48-0x5F;
-most transition types; req 0xEB; property ops past the ones listed; sound index -> sample; camera scripts; the
-`prefilter`'s classes (table 0x4FF8D0); how a reversal condition picks its motion list; the step bits of a
-sequence other than direction, buttons and tag; the default life option.
+Posture and attack-mask bits beyond those named; flag bits 0x4000, 0x8000, 17, 21; the camera values cond
+0x48-0x5B test; transition bit 0x4000's effect; req 0xEB; property ops past the ones listed; sound index -> sample;
+camera scripts; the `prefilter`'s classes (table 0x4FF8D0); how a reversal condition picks its motion list; the
+step bits of a sequence other than direction, buttons and tag; the air reactions' three `words`.
 
 ## `assets/`: what OpenKumite reads
 

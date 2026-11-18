@@ -24,6 +24,10 @@ const LIFE: usize = 0x51f5a0 - VADDR; // 8 x u32 health, 20.12 fixed point; then
 const HURT: (usize, usize) = (0x42f060 - VADDR, 14); // u32 bone slot per sphere, then a pointer per body to s16 radii
 const PUSH: (usize, usize) = (0x42efb8 - VADDR, 8);
 const RECOVERABLE: usize = 0x5f5168 - VADDR; // f32 0.6, f32 1.4: the part of a hit's damage the recoverable cap loses
+// air reactions of 28 bytes (0x374010): entries 0-7 in the first table, entry k >= 8 at the second + 28 * k
+const AIR: (usize, usize) = (0x500678 - VADDR, 0x5f2ba8 - VADDR);
+/// The life option every match uses (0x3B1488, the only writer of the option, sets 3).
+const LIFE_OPTION: usize = 3;
 
 const END: u16 = 0x8000;
 const CALL: u16 = 0x8004;
@@ -120,7 +124,7 @@ pub fn moves(elf: &[u8], anims: &[Option<String>], frames: &[u8]) -> Result<Valu
             "damage": hit & 0x3fff, "damage_runtime": (hit & 0x3fff) as u32 + bonus, "damage_type": hit >> 14,
             "air_drift": h(r, 0x16) as i16,
             "bytes_18": {"frame_count_ram": b(r, 0x18), "jump_start": b(r, 0x19), "jump_end": b(r, 0x1a), "hold_frame": b(r, 0x1b)},
-            "active": active, "hitstop": b(r, 0x2e) as i8, "byte_2F": b(r, 0x2f),
+            "active": active, "hitstop": b(r, 0x2e) as i8, "air_reaction": b(r, 0x2f),
             "flags24": {"raw": flags, "camera_script": flags >> 24},
             "push_control": {"raw": push, "mode": push & 15, "disable_mask": push >> 4 & 0xff, "mask_only_near_active": push & 0x1000 != 0},
             "word_32": h(r, 0x32),
@@ -307,6 +311,20 @@ pub fn reactions(elf: &[u8]) -> Result<Value> {
             json!({"index": i, "constant_frames": h(e, 0) as i16, "velocity": h(e, 2) as i16, "impulses": impulses}),
         );
     }
+    // the moves' own air reactions (move +0x2F) are the entries from 8 up
+    let mut air_count = 8;
+    for i in 0..MOVE_COUNT {
+        air_count = air_count.max(b(bytes(elf, MOVES + 52 * i, 52, "the moves")?, 0x2f) as usize + 1);
+    }
+    let mut air = Vec::with_capacity(air_count);
+    for i in 0..air_count {
+        let e = bytes(elf, if i < 8 { AIR.0 } else { AIR.1 } + 28 * i, 28, "the air reactions")?;
+        let s = |k: usize| h(e, 2 * k) as i16;
+        air.push(
+            json!({"index": i, "alias": h(e, 0), "target_height": s(1), "rise": s(2), "words": [s(3), s(4), s(5)],
+            "pushback": (6..14).map(s).collect::<Vec<_>>()}),
+        );
+    }
     Ok(json!({
         "reaction_table": "0x46BE78 (1431 x 56 bytes: u32 params[7], u16 victims[14])",
         "slot_names": ["front_standing", "front_crouching", "counter_standing", "counter_crouching", "side_a_standing",
@@ -317,6 +335,7 @@ pub fn reactions(elf: &[u8]) -> Result<Value> {
         "none": 0x592,
         "entries": entries,
         "pushback_curves": {"address": "0x523FA0 (74 x 24 bytes)", "count": CURVES.1, "entries": curves},
+        "air_reactions": {"address": "0x500678 (0-7), 0x5F2BA8 + 28 x index (8 on): 28 bytes", "entries": air},
     }))
 }
 
@@ -399,12 +418,18 @@ pub fn rules(elf: &[u8]) -> Result<Value> {
         "health": {
             "representation": "20.12 fixed point at player +0x3F4; a body's health = life option x its percent / 100",
             "life_table": "0x51F5A0", "life_options": life.iter().map(|v| v >> 12).collect::<Vec<_>>(), "life_options_raw": life,
+            "default_life_option": LIFE_OPTION, "default_max": life.get(LIFE_OPTION).map_or(0, |v| v >> 12),
             "percent_table": "0x51F5C0", "percent_per_character": percent,
             "recoverable": {"address": "0x5F5168", "damage_factor": factor(0)?, "damage_factor_flag_12a": factor(1)?},
         },
         // sphere 8 (the head) is lifted 120, sphere 11 (the root) 60: y is down
         "hurt_spheres": spheres(HURT, elf, &[(8, -120), (11, -60)], &names)?,
         "push_spheres": spheres(PUSH, elf, &[], &names)?,
+        // constants of the damage code (0x3720C8, docs/FIGHT_DATA.md section 9)
+        "counter_hit": {"multiplier": [12, 10], "bonus_tenths": [3],
+            "bonus": "3 * |victim move damage| / 10 * f / startup; 3 * damage / 10 when a ki timer caused it"},
+        "chip_damage": {"divisor": 10, "add": 0, "enabled_when": "the match flag byte 0x43B804, or the attacker's ki timer"},
+        "juggle": {"first_air_hit_percent": 80, "later_air_hits_percent": 50, "counter": "player +0x100"},
     }))
 }
 
@@ -620,7 +645,21 @@ mod tests {
         elf[r + 24..r + 28].copy_from_slice(&curve(1));
         put(&mut elf, r + 28, &[3011, 3011, 3012]);
         put(&mut elf, CURVES.0 + 24, &[3, 0xffce, 200, 100, 50, 40, 20, 0, 0, 0, 0, 0xffff]);
+        // air reactions: 1 in the first table, a move's own 9 in the second
+        put(&mut elf, AIR.0 + 28, &[4762, 550, 400, 6, 31, 40]);
+        put(&mut elf, AIR.1 + 28 * 9, &[3469, 0, 0, 0, 0xffec, 0xffec, 0xffec]);
+        elf[MOVES + 52 * 5 + 0x2f] = 9;
         let v = reactions(&elf).unwrap();
+        let air = v["air_reactions"]["entries"].as_array().unwrap();
+        assert_eq!(air.len(), 10);
+        assert_eq!(
+            air[1],
+            json!({"index": 1, "alias": 4762, "target_height": 550, "rise": 400, "words": [6, 31, 40], "pushback": [0, 0, 0, 0, 0, 0, 0, 0]})
+        );
+        assert_eq!(
+            (&air[9]["alias"], &air[9]["words"], &air[9]["pushback"][0]),
+            (&json!(3469), &json!([0, -20, -20]), &json!(-20))
+        );
         assert_eq!(
             (v["entries"].as_array().unwrap().len(), v["pushback_curves"]["entries"].as_array().unwrap().len()),
             (1431, 74)

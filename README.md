@@ -37,7 +37,7 @@ A pack (about 2.1 GB, 12 855 files):
 | `gamedata/` | the fight data: 7 351 moves, cancel lists, hit records, reactions, hurt and push volumes, health, the 33 movesets' aliases | JSON ([docs/GAMEDATA.md](docs/GAMEDATA.md)) |
 | `assets/` | what OpenKumite reads (236 MB, 4 455 files): below | GLB, JSON |
 
-`manifest.json`: `{"pack": "ttt", "format": 4, "source": {"image", "disc": "SLUS-20001", "version": "2.00"}}` and
+`manifest.json`: `{"pack": "ttt", "format": 5, "source": {"image", "disc": "SLUS-20001", "version": "2.00"}}` and
 the index of the files above: `models` (each fighter's `name`, `body`, `moveset`, `file`), `movesets` (the motions
 of each moveset, a fighter's own first) and `own` (how many of them are its own), `anims`, `stages` (each arena's
 `name`, `file`, `people`, `motions`, and `cast`: who stands where), `textures`, `sounds`, `music`, `video` (each
