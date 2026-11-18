@@ -77,8 +77,8 @@ Padding between parts is `0xAB`.
 - **Movie**: 16 KiB MPEG-2 program-stream packs (`00 00 01 BA`, video stream `E0`, 640x448, 30 fps),
   with sound sectors of the stream format between them (7 before the first pack).
 
-Not done: one stream file can hold several pieces (the endings' music is sectors 3319–4495 of
-file 20). The cue table that splits them is not located, so each file is one WAV.
+One stream file can hold several pieces: the endings' music is sectors 3319–4495 of file 20 (BGM id 7 starts
+there, a constant of 0x397AB8; FIGHT_DATA.md section 14). Each file is one WAV (and one FLAC under `assets/`).
 Movie 15's sound is 3 s shorter than its pictures, so it probably holds more than one piece too.
 
 ## 6. Textures (verified on fighters and 2D art)

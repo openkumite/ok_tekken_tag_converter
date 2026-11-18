@@ -46,7 +46,9 @@ impl Vfs for Hashed {
         let kept = |p: &str| path.strip_prefix("assets/").is_some_and(|a| a.starts_with(p));
         if path == "manifest.json"
             || path.starts_with("gamedata/")
-            || ["manifest.json", "gamedata/", "motions/", "stages/index.json", "characters/"].iter().any(|p| kept(p))
+            || ["manifest.json", "gamedata/", "motions/", "stages/index.json", "characters/", "audio/index.json"]
+                .iter()
+                .any(|p| kept(p))
         {
             self.1.lock().unwrap().insert(path.into(), data.to_vec());
         }
@@ -305,6 +307,7 @@ fn openkumite(pack: &Hashed) {
                 && e["model_record"].is_u64())
     );
     assert_eq!(load("stages/index.json")[20]["name"], "Tekken Bowl");
+    sound(&load, count("audio/sfx"), count("audio/music"));
     let rules = load("gamedata/rules.json");
     assert_eq!((&rules["dialect"], &rules["hurt_spheres"]["layout"][8]["gltf_joint"]), (&"ttt".into(), &"head".into()));
     // Paul: his character, skinned on the 98 nodes, the 18 joints named, one picture
@@ -400,4 +403,51 @@ fn openkumite(pack: &Hashed) {
             }
         }
     }
+}
+
+/// OpenKumite's sound, music and round flow: the samples per bank and voice group, a voice row, Paul's jab, every
+/// arena's music (docs/FIGHT_DATA.md sections 13-14).
+fn sound(load: &dyn Fn(&str) -> serde_json::Value, samples: usize, tracks: usize) {
+    let (index, sound, music) = (load("audio/index.json"), load("gamedata/sound.json"), load("gamedata/music.json"));
+    assert_eq!((samples, tracks, index["music"].as_array().unwrap().len()), (2350, 25, 25));
+    let bank = |n: u64| {
+        let b = index["sfx"].as_array().unwrap().iter().find(|b| b["bank"] == n).unwrap();
+        b["samples"].as_array().unwrap().len() as u64
+    };
+    assert_eq!((bank(1), bank(2), bank(45), bank(344)), (96, 2, 28, 22));
+    let groups = sound["groups"]["entries"].as_array().unwrap();
+    assert_eq!(groups.len(), 62);
+    for g in groups.iter().filter(|g| g["bank"].is_u64()) {
+        assert_eq!(bank(g["bank"].as_u64().unwrap()), g["count"].as_u64().unwrap(), "{}", g["group"]);
+    }
+    // every character's voice bank holds its voice row's group; Paul's row 0, Tiger (Eddy's 5th costume) Tiger's
+    let banks = sound["voice_banks"]["characters"].as_array().unwrap();
+    assert_eq!(banks.len(), 127);
+    for c in banks {
+        let row = c["voice_row"].as_u64().unwrap();
+        assert_eq!(bank(c["bank"].as_u64().unwrap()), groups[23 + row as usize]["count"].as_u64().unwrap());
+    }
+    let row = |model: u64| banks.iter().find(|c| c["model_record"] == model).unwrap()["voice_row"].clone();
+    assert_eq!((row(351), row(462)), (0.into(), 21.into()));
+    let paul = &sound["voice_rows"]["rows"][0];
+    assert_eq!((&paul["counts"], &paul["cooldown"]), (&serde_json::json!([8, 5, 3, 5]), &10.into()));
+    assert_eq!((&paul["codes"][0], &paul["codes"][20]), (&0xd3.into(), &0xe7.into()));
+    assert_eq!(sound["voice_rows"]["rows"][21]["cooldown"], 6);
+    // Paul's jab (n+1: alias 346, move 806): no voice, a type-6 entry (silent in this game) and hit sound 8
+    let moves = load("gamedata/moves.json");
+    let raw: Vec<u64> =
+        moves["moves"][806]["sounds"].as_array().unwrap().iter().map(|e| e["raw"].as_u64().unwrap()).collect();
+    assert_eq!(raw, [0x600f, 0x7008]);
+    assert_eq!(sound["scripts"]["entries"].as_array().unwrap().len(), 668);
+    // every arena has a theme, in a stream written; Lei's (BGM 14) is file 23, not 14 + 13
+    let bgm = music["bgm"].as_array().unwrap();
+    let by_arena = music["by_arena"]["bgm"].as_array().unwrap();
+    assert_eq!(by_arena.len(), 23);
+    for id in by_arena {
+        let file = bgm[id.as_u64().unwrap() as usize]["columns"][0]["file"].as_str().unwrap();
+        assert!(index["music"].as_array().unwrap().iter().any(|m| m["file"] == file), "{file}");
+    }
+    assert_eq!((&bgm[9]["columns"][0]["file"], &bgm[14]["columns"][0]["file"]), (&"22.flac".into(), &"23.flac".into()));
+    let rounds = load("gamedata/rounds.json");
+    assert_eq!(rounds["win_poses"]["aliases"], serde_json::json!([4770, 4771, 4772, 4773]));
 }

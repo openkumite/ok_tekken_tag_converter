@@ -29,11 +29,11 @@ groups = []
 for i in range(62):
     p, size, kind, first, count = struct.unpack_from('<IIHHH', d, 0x42EBD8 - V + 16 * i)
     groups.append({'group': i, 'first_id': first, 'count': count, 'kind': kind, 'bank_bytes': size,
-                   'file': FILES[i] if i < 23 else 'voice bank of body %d (344 + 3*slot)' % (i - 23),
+                   'file': FILES[i] if i < 23 else 'voice bank of voice row %d (player +0x2C, roster byte 6; 344 + 3*slot)' % (i - 23),
                    'samples': [dict(zip(('spu_offset', 'pitch', 'volume', 'channel'),
                                         struct.unpack_from('<IHBB', d, p - V + 8 * j))) for j in range(count)]})
 
-voices = {}
+voices = {}  # by voice row
 for b in range(39):
     p, a, _, c, _, cool, e = struct.unpack_from('<IhhhhHH', d, 0x501808 - V + 16 * b)
     n = sh(p, 4)
@@ -52,6 +52,8 @@ out = {
     'stage_select_0x440770': [{'name': name(struct.unpack_from('<I', d, a - V)[0]), 'stage': d[a - V + 4]}
                               for a in range(0x440770, 0x440818, 8)],
     'bgm_by_stage_0x4FB9C0': sh(0x4FB9C0, 24),
+    # what 0x397A00 sends RSPU2DRV.IRX at boot: kind, s8, u16, s16, file of TEKKEN.BIN, loop sector
+    'bgm_files_0x50CD00': [list(struct.unpack_from('<BbHhHh', d, 0x50CD00 - V + 10 * k)) for k in range(28)],
     'bgm_names_0x455D80': {struct.unpack_from('<b', d, a - V)[0]: name(struct.unpack_from('<I', d, a - V + 4)[0])
                            for a in range(0x455D80, 0x455D80 + 8 * 21, 8)},
 }
