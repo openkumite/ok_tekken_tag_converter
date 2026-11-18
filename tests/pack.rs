@@ -75,7 +75,7 @@ impl Vfs for Hashed {
 }
 
 fn convert(disc: &dyn DiscFile, out: &Hashed) -> anyhow::Result<serde_json::Value> {
-    pack::convert(&Ctx { out, log: &|_| {}, jobs: 1 }, disc)
+    pack::convert(&Ctx { out, log: &|_| {}, jobs: 1 }, disc, true)
 }
 
 #[test]
@@ -124,7 +124,7 @@ fn the_disc_converts_twice_the_same() {
     a.write("old", b"of a pack before: removed").unwrap();
     // (side by side: a conversion takes most of a minute)
     let (m, m2) = std::thread::scope(|s| {
-        let second = s.spawn(|| convert(track, &b).unwrap());
+        let second = s.spawn(|| pack::convert(&Ctx { out: &b, log: &|_| {}, jobs: 1 }, track, false).unwrap());
         (convert(track, &a).unwrap(), second.join().unwrap())
     });
     assert_eq!(pack::manifest(&a).unwrap(), m);
@@ -164,9 +164,11 @@ fn the_disc_converts_twice_the_same() {
     fight_data(&a);
     openkumite(&a);
     front_end(&a);
-    // the same disc again: the same bytes
-    assert_eq!(m, m2);
-    assert_eq!(written, *b.0.lock().unwrap());
+    // the same disc again, without the research outputs: the same assets/, and a manifest of the source alone
+    assert_eq!(m2, serde_json::json!({"pack": "ttt", "format": pack::FORMAT, "source": m["source"]}));
+    let game: Vec<_> = written.iter().filter(|(k, _)| k.starts_with("assets/")).collect();
+    let b = b.0.lock().unwrap();
+    assert_eq!(game, b.iter().filter(|(k, _)| *k != "manifest.json").collect::<Vec<_>>());
 }
 
 /// The fight data's known facts (docs/FIGHT_DATA.md), and damage values equal to Tekken 3's for the same move.

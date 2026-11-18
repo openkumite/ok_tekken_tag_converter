@@ -19,8 +19,9 @@ resource), one file of its table at a time. Another disc, or another version of 
 
 ## The library
 
-- `pack::convert(ctx, disc)`: the disc's data track (an `ok_converter_common::io::DiscFile`) into a pack (any
-  `Vfs`, emptied first); returns its manifest. It runs no other program and reads no file but the disc's.
+- `pack::convert(ctx, disc, research)`: the disc's data track (an `ok_converter_common::io::DiscFile`) into a pack
+  (any `Vfs`, emptied first); returns its manifest. It runs no other program and reads no file but the disc's.
+  Without `research` it writes `assets/` and a manifest of the source alone: what OpenKumite plays.
 - `pack::manifest(pack)`: a pack's manifest, checked.
 
 A pack (about 2.2 GB, 15 234 files):
