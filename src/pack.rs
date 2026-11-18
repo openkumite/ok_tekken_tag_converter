@@ -25,7 +25,9 @@
 //!                             tables, `front_end`); sound.json, music.json, rounds.json (the sound, music and
 //!                             round-flow tables)
 //!   pictures/FFF_NNN.png      the front end's 2D pictures (as textures/, the files front_end names), and
-//!                             003_NNN_angry.png the angry health-bar strips
+//!                             003_NNN_angry.png the angry health-bar strips; effects/ the hit and move effects'
+//!                             atlas.png and effects.json
+//!   gamedata/shadows.json, stages.json  the fighters' shadow meshes, each arena's shadow (docs/EFFECTS.md)
 //!   audio/sfx/NNN/KKK.wav     the sound banks' samples (NNN: the bank's file in TEKKEN.BIN); audio/music/NN.flac the
 //!                             music streams (NN: their file); audio/index.json
 //!   endings/ending_EE_*       ending EE's scene (gamedata/endings.json names the files): its camera path
@@ -36,7 +38,7 @@
 //! The layout outside `assets/` is the research tool's, to look at in any glTF viewer.
 
 use crate::archive::{self, Archive};
-use crate::{anim, assets, audio, bowl, ending, fight, front, model, moves, sound, stage, tex, u32le};
+use crate::{anim, assets, audio, bowl, effects, ending, fight, front, model, moves, sound, stage, tex, u32le};
 use anyhow::{Context, Result, bail};
 use ok_converter_common::io::{Ctx, DiscFile, Sub, Vfs};
 use ok_converter_common::psx;
@@ -47,8 +49,8 @@ use std::collections::{BTreeSet, HashMap, HashSet};
 /// the air reactions, the default life, the damage constants; 6: `assets/audio/`, sound, music and rounds; 7: the
 /// camera, the camera id from bit 23; 8: ai.json; 9: the front end, `assets/pictures/` and roster.json `front_end`, the
 /// 2D files' palettes as drawn; 10: the endings, `assets/endings/` and gamedata/endings.json; 11: Tekken Bowl, `bowl.json`,
-/// its motions, ball, pin and deck).
-pub const FORMAT: i64 = 11;
+/// its motions, ball, pin and deck; 12: the shadows and effects, `shadows.json`, `stages.json`, `pictures/effects/`).
+pub const FORMAT: i64 = 12;
 /// What a pack's manifest names it.
 pub const KIND: &str = "ttt";
 
@@ -118,6 +120,8 @@ pub fn convert(ctx: &Ctx, src: &dyn DiscFile, research: bool) -> Result<Value> {
     let roster = moves::roster(&a.elf)?;
     // file 3's uploads: the HUD and select atlas, whose pictures the front end's tables name
     let mut atlas = vec![];
+    // the fighters' shadow meshes, and the effect files' pictures (files 4-8)
+    let (mut shadows, mut effect_pics, mut effect_paths) = (vec![], vec![vec![]; 5], vec![vec![]; 4]);
     ctx.log(&format!("[ttt] {}: the {} files of TEKKEN.BIN", src.name(), archive::FILES));
     // (the first and the last file are random filler)
     for i in 1..archive::FILES - 1 {
@@ -194,6 +198,10 @@ pub fn convert(ctx: &Ctx, src: &dyn DiscFile, research: bool) -> Result<Value> {
                         let file = format!("model_{i:03}.glb");
                         assets.write(&format!("characters/{file}"), &glb)?;
                         characters.push(json!({"id": i, "name": name, "body": body, "costume": costume, "moveset": set, "file": file}));
+                        // its shadow: the low-detail model, part 8
+                        if let Some(low) = pack.as_ref().and_then(|p| model::parse_low(p.get(8)?)) {
+                            shadows.push(effects::shadow(&low, i));
+                        }
                     }
                     None => ctx.log(&format!("[ttt] {name} (file {i}): not a fighter OpenKumite can read")),
                 }
@@ -295,6 +303,12 @@ pub fn convert(ctx: &Ctx, src: &dyn DiscFile, research: bool) -> Result<Value> {
                     assets.write(&format!("pictures/{i:03}_{k:03}.png"), &png)?;
                 }
                 images.push(file);
+            }
+            if let Some(e) = i.checked_sub(4).and_then(|k| effect_pics.get_mut(k)) {
+                *e = pics.clone();
+            }
+            if let Some(e) = i.checked_sub(4).and_then(|k| effect_paths.get_mut(k)) {
+                *e = effects::paths(&d);
             }
             if i == 3 {
                 atlas = tex::uploads(&d);
@@ -427,6 +441,15 @@ pub fn convert(ctx: &Ctx, src: &dyn DiscFile, research: bool) -> Result<Value> {
         ("rounds", fight::rounds()),
     ] {
         assets.write(&format!("gamedata/{name}.json"), serde_json::to_string(&v)?.as_bytes())?;
+    }
+    assets.write("gamedata/shadows.json", serde_json::to_string(&json!({"meshes": shadows}))?.as_bytes())?;
+    assets.write("gamedata/stages.json", serde_json::to_string(&effects::stages(&a.elf))?.as_bytes())?;
+    match effects::atlas(&effect_pics, &effect_paths) {
+        Some((png, json)) => {
+            assets.write("pictures/effects/atlas.png", &png)?;
+            assets.write("pictures/effects/effects.json", serde_json::to_string(&json)?.as_bytes())?;
+        }
+        None => ctx.log("[ttt] the effect files' pictures are not as expected: no hit effects"),
     }
     assets.write("audio/index.json", serde_json::to_string(&json!({"sfx": sfx, "music": tracks}))?.as_bytes())?;
     // the endings: their tables, and each scene's files

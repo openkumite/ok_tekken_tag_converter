@@ -25,7 +25,7 @@ impl DiscFile for MemDisc {
 }
 
 /// A pack in memory that keeps each file's size and hash (the pack is 3 GB), and the manifests, the fight data, the
-/// motions, the characters and King's ending whole.
+/// motions, the characters, the effects' table and King's ending whole.
 #[derive(Default)]
 struct Hashed(Mutex<BTreeMap<String, (usize, u64)>>, Mutex<BTreeMap<String, Vec<u8>>>);
 
@@ -55,6 +55,7 @@ impl Vfs for Hashed {
                 "characters/",
                 "audio/index.json",
                 "pictures/141_000",
+                "pictures/effects/effects.json",
                 "endings/ending_04_",
             ]
             .iter()
@@ -339,6 +340,17 @@ fn openkumite(pack: &Hashed) {
                 && e["model_record"].is_u64())
     );
     assert_eq!(load("stages/index.json")[20]["name"], "Tekken Bowl");
+    // every character file's shadow mesh; each arena's shadow (Paul's: alpha 0x30)
+    let shadows = load("gamedata/shadows.json");
+    let meshes = shadows["meshes"].as_array().unwrap();
+    assert!(meshes.len() == 127 && meshes.iter().all(|m| m["triangles"].as_array().unwrap().len() > 150));
+    let stages = load("gamedata/stages.json");
+    assert_eq!(
+        (stages["stages"].as_array().unwrap().len(), &stages["stages"][0]["shadow"]["alpha"]),
+        (23, &0.375.into())
+    );
+    let effects = load("pictures/effects/effects.json");
+    assert_eq!((&effects["atlas"]["rows"], &effects["strips"]["spark"]["life"]), (&3.into(), &35.into()));
     sound(&load, count("audio/sfx"), count("audio/music"));
     let rules = load("gamedata/rules.json");
     assert_eq!((&rules["dialect"], &rules["hurt_spheres"]["layout"][8]["gltf_joint"]), (&"ttt".into(), &"head".into()));
