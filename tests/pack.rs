@@ -25,7 +25,7 @@ impl DiscFile for MemDisc {
 }
 
 /// A pack in memory that keeps each file's size and hash (the pack is 3 GB), and the manifests, the fight data, the
-/// motions, the characters and King's ending whole.
+/// motions, the characters, the effects' table and King's ending whole.
 #[derive(Default)]
 struct Hashed(Mutex<BTreeMap<String, (usize, u64)>>, Mutex<BTreeMap<String, Vec<u8>>>);
 
@@ -55,6 +55,7 @@ impl Vfs for Hashed {
                 "characters/",
                 "audio/index.json",
                 "pictures/141_000",
+                "pictures/effects/effects.json",
                 "endings/ending_04_",
             ]
             .iter()
