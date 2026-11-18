@@ -348,12 +348,15 @@ its file. Motions are stored once (80 MB): a file per moveset with every motion 
 
 **A stage** is laid out as the arcade converter's `write_game`: node `sky` is the scenery, which the game keeps
 centred on the fighters (scene extras `drum: "model"`, `drum_cull: false`: the strips' winding is not stored, both
-sides are drawn; `background_rgb` black); node `floor` holds copies `floor_K` of the floor mesh, a period apart, to a
+sides are drawn; **new** (format 13) `drum_depth: "floor"`: the PS2 draws the arena with one z-buffer, so the floor
+hides the ground below it, unlike the arcade stages' model; `background_rgb` black); node `floor` holds copies `floor_K` of the floor mesh, a period apart, to a
 little past the hole in the far ground, and the scene extras' `floor_period` (metres) is that period. An arena's
 floors are one: the one of the longest period, each shorter one (2 or 4 m in 8 or 4 m) laid inside it. Only the
 opaque, cut-out and ordinarily blended strips are there: the additive ones (lights, floor gloss) and the darkening
 ones (shadows, dirt; on Lei's arena the wet street's, so its reflections show bare) are left out, and so are the
-background characters and the objects the game moves. Each primitive (a picture and a blend mode) has its own
+background characters and the objects the game moves: since format 13 all of part 3, the object models (the object
+table 0x520FC0 places them, the arena's tasks move them: King's helicopters and their rotors, which stood at the
+centre). Each primitive (a picture and a blend mode) has its own
 positions, texture coordinates and vertex colours; the first image is a white texel, which strips without a texture
 draw; each picture is cut to the texels its strips reach (all of it along an axis they repeat it on).
 

@@ -50,7 +50,7 @@ use std::collections::{BTreeSet, HashMap, HashSet};
 /// camera, the camera id from bit 23; 8: ai.json; 9: the front end, `assets/pictures/` and roster.json `front_end`, the
 /// 2D files' palettes as drawn; 10: the endings, `assets/endings/` and gamedata/endings.json; 11: Tekken Bowl, `bowl.json`,
 /// its motions, ball, pin and deck; 12: the shadows and effects, `shadows.json`, `stages.json`, `pictures/effects/`).
-pub const FORMAT: i64 = 12;
+pub const FORMAT: i64 = 13;
 /// What a pack's manifest names it.
 pub const KIND: &str = "ttt";
 
@@ -100,7 +100,15 @@ fn arena(geometry: &[u8], textures: &[u8]) -> Option<Arena> {
         let all: Vec<tex::Upload> = banks.into_iter().flatten().chain(own).collect();
         banks = (0..g.len()).map(|_| all.clone()).collect();
     }
-    let (scenery, objects, floors) = stage::arena(&parts);
+    // part 3 (counted with the empty ones) holds the arena's object models, which the object table (0x520FC0) places
+    // and the arena's tasks move (King's arena: the helicopters and their rotors): not scenery at the origin
+    let raw = archive::pack(geometry)?;
+    let object = raw.get(3).filter(|c| !c.is_empty()).map(|_| raw.iter().take(3).filter(|c| !c.is_empty()).count());
+    let (models, parts): (Vec<_>, Vec<_>) = parts.into_iter().partition(|p| Some(p.0) == object);
+    let (scenery, mut objects, floors) = stage::arena(&parts);
+    for (k, d) in models {
+        objects.extend(stage::batches(d).into_iter().map(|b| stage::Batch { bank: k, ..b }));
+    }
     Some((scenery, objects, floors, banks))
 }
 
