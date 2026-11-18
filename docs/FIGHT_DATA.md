@@ -98,11 +98,12 @@ u16 gate | u16 damage (14 bits) + type (2 bits) | u16 reaction | u16 close react
 - Damage equals Tekken 3's on 1164/1194, damage type on 1194/1194.
 - The boot routine adds timed-property op 0x0C arguments into the damage, as Tekken 3 does with 0x0B.
 
-Reactions are at 0x46BE78 (file 0x12CE78), 1429 entries of 56 bytes; id 0x592 means none.
+Reactions are at 0x46BE78 (file 0x12CE78), 1431 entries of 56 bytes, up to the shared cancel lists (first counted
+as 1429; hit records 3053 and 3872 use 1429 and 1430); id 0x592 means none.
 - Layout: 7 x u32 (pushback angle, hit curve, second angle, counter curve, grounded angle, grounded curve, block
   curve), then 14 x u16 victim aliases in Tekken 3's slot order.
-- Curves are pointers into 72 records of 24 bytes at 0x523FA0: frames, velocity, 10 impulses. Values match
-  Tekken 3's.
+- Curves are pointers into 74 records of 24 bytes at 0x523FA0, up to the timed properties (first counted as 72;
+  two reactions point at 72 and 73): frames, velocity, 10 impulses. Values match Tekken 3's.
 
 Hit volumes are not baked paths. They are bare segments between bone positions, at most two per move (code
 0x34F288, 0x34F820):
@@ -118,7 +119,11 @@ Timed properties: ops 1-10 kept their numbers on paired moves; damage to the opp
 to self 0x0D; hand poses moved up (0x0E -> 0x0F, 0x15 -> 0x18). 221 of 233 paired entries have equal frame and
 argument.
 
-Sound lists keep the type nibbles (6, 7, 2, 8, 9); the indices are renumbered.
+Sound lists keep the type nibbles (6, 7, 2, 8, 9; a few entries have 0, 1 and 3); the indices are renumbered.
+
+Over the whole data: 4174 hit records (3676 chains; the gates used are 0x4E, 0x51, 0x53, 0x56, 0x57, 0x5C: the
+opponent's moveset is 11, 14, 16, 19, 20 or 25), 2283 timed property lists (ops up to 0x58, and 10 entries with op 0), 4064 sound
+lists, 100 input sequences, 54 reversal motion lists.
 
 ## 4. Hurt and push volumes
 
@@ -137,7 +142,7 @@ Sound lists keep the type nibbles (6, 7, 2, 8, 9); the indices are renumbered.
 - Alias numbers differ from Tekken 3: stand is 58 (was 3), crouch 80 (was 40).
 - There is no common bank: shared moves are the same record reached from several movesets.
 - Health is 20.12 fixed point at player +0x3F4. Base comes from the life options at 0x51F5A0 (125, 130, 135, 140,
-  160...), times a per-body percent at 0x51F5C0 (Paul 100, Lei 108, King 109, Kuma 120, Ogre 115, Armor King
+  160, then 135 three times: the table has 8 words), times a per-body percent at 0x51F5C0 (Paul 100, Lei 108, King 109, Kuma 120, Ogre 115, Armor King
   111...).
 - Reversal motion lists are s16 lists ending in -1 at 0x5E8608.
 

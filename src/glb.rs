@@ -19,7 +19,8 @@ pub fn dir(m: &M4, p: [f32; 3]) -> [f64; 3] {
 }
 /// Rz(z)·Ry(y)·Rx(x) with a translation: the engine's joint transform.
 pub fn joint(r: [f64; 3], t: [f64; 3]) -> M4 {
-    let ((sx, cx), (sy, cy), (sz, cz)) = (r[0].sin_cos(), r[1].sin_cos(), r[2].sin_cos());
+    // (libm, not std: the same bits on every platform)
+    let [(sx, cx), (sy, cy), (sz, cz)] = r.map(|a| (libm::sin(a), libm::cos(a)));
     [
         [cy * cz, sx * sy * cz - cx * sz, sx * sz + cx * sy * cz, t[0]],
         [cy * sz, cx * cz + sx * sy * sz, cx * sy * sz - sx * cz, t[1]],
@@ -45,16 +46,16 @@ pub fn inv(m: &M4) -> M4 {
 pub fn quat(m: &M4) -> [f32; 4] {
     let t = m[0][0] + m[1][1] + m[2][2];
     let q = if t > 0. {
-        let s = (t + 1.).sqrt() * 2.;
+        let s = libm::sqrt(t + 1.) * 2.;
         [(m[2][1] - m[1][2]) / s, (m[0][2] - m[2][0]) / s, (m[1][0] - m[0][1]) / s, s / 4.]
     } else if m[0][0] > m[1][1] && m[0][0] > m[2][2] {
-        let s = (1. + m[0][0] - m[1][1] - m[2][2]).sqrt() * 2.;
+        let s = libm::sqrt(1. + m[0][0] - m[1][1] - m[2][2]) * 2.;
         [s / 4., (m[0][1] + m[1][0]) / s, (m[0][2] + m[2][0]) / s, (m[2][1] - m[1][2]) / s]
     } else if m[1][1] > m[2][2] {
-        let s = (1. + m[1][1] - m[0][0] - m[2][2]).sqrt() * 2.;
+        let s = libm::sqrt(1. + m[1][1] - m[0][0] - m[2][2]) * 2.;
         [(m[0][1] + m[1][0]) / s, s / 4., (m[1][2] + m[2][1]) / s, (m[0][2] - m[2][0]) / s]
     } else {
-        let s = (1. + m[2][2] - m[0][0] - m[1][1]).sqrt() * 2.;
+        let s = libm::sqrt(1. + m[2][2] - m[0][0] - m[1][1]) * 2.;
         [(m[0][2] + m[2][0]) / s, (m[1][2] + m[2][1]) / s, s / 4., (m[1][0] - m[0][1]) / s]
     };
     q.map(|v| v as f32)

@@ -274,8 +274,10 @@ impl Model {
                         }
                         (*j, *w) = (f.node as u16, f.w);
                     }
-                    let (sw, ln) =
-                        (w.iter().sum::<f32>().max(1e-6), (n[0] * n[0] + n[1] * n[1] + n[2] * n[2]).sqrt().max(1e-9));
+                    let (sw, ln) = (
+                        w.iter().sum::<f32>().max(1e-6),
+                        libm::sqrt(n[0] * n[0] + n[1] * n[1] + n[2] * n[2]).max(1e-9),
+                    );
                     pos.push(p.map(|x| (x / sw as f64) as f32));
                     nrm.push(n.map(|x| (x / ln) as f32));
                     uv.extend([st[0] * k[0], st[1] * k[1]]);

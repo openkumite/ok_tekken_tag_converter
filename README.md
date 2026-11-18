@@ -35,17 +35,20 @@ A pack (about 1.7 GB, 8 361 files):
 | `audio/` | 2 350 sounds, 25 music tracks, the 3 movies' sound | WAV |
 | `video/` | the 3 movies' pictures, **not converted yet**: as on the disc (`NNN.pss`, an MPEG-2 program stream) | PSS |
 | `raw/` | files and packs not (fully) decoded | as on the disc, unscrambled |
+| `gamedata/` | the fight data: 7 351 moves, cancel lists, hit records, reactions, hurt and push volumes, health, the 33 movesets' aliases | JSON ([docs/GAMEDATA.md](docs/GAMEDATA.md)) |
 
-`manifest.json`: `{"pack": "ttt", "format": 1, "source": {"image", "disc": "SLUS-20001", "version": "2.00"}}` and
+`manifest.json`: `{"pack": "ttt", "format": 2, "source": {"image", "disc": "SLUS-20001", "version": "2.00"}}` and
 the index of the files above: `models` (each fighter's `name`, `body`, `moveset`, `file`), `movesets` (the motions
 of each moveset, a fighter's own first) and `own` (how many of them are its own), `anims`, `stages` (each arena's
 `name`, `file`, `people`, `motions`, and `cast`: who stands where), `textures`, `sounds`, `music`, `video` (each
-with `"converted": false` and its `sound`), `raw`. `NNN` is a file's number in TEKKEN.BIN.
+with `"converted": false` and its `sound`), `raw`, `gamedata`. `NNN` is a file's number in TEKKEN.BIN.
 
 A motion file holds no mesh. Its channels target joints by name (`root`, `chest`, `thigh_A`...), which are the same
 in every fighter. The disc has no move names, only numbers. Converting the same disc again gives the same bytes.
 
-The formats are described in [docs/FORMATS.md](docs/FORMATS.md).
+The formats are described in [docs/FORMATS.md](docs/FORMATS.md), the fight data in the executable in
+[docs/FIGHT_DATA.md](docs/FIGHT_DATA.md), and the JSON written from it in [docs/GAMEDATA.md](docs/GAMEDATA.md).
+The pack is the same bytes on every platform: float math goes through a pinned `libm`.
 
 ## The developer tool, `ttt_convert`
 

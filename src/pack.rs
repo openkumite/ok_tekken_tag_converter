@@ -5,7 +5,7 @@
 //! ```text
 //! manifest.json        {"pack": "ttt", "format": FORMAT, "source": {"image", "disc": "SLUS-20001", "version": "2.00"},
 //!                       "models", "movesets", "own", "anims", "stages", "textures", "sounds", "music", "video",
-//!                       "raw": the index of the files below (README.md)}
+//!                       "raw", "gamedata": the index of the files below (README.md)}
 //! models/NNN.glb       the fighters, skinned, with their textures (NNN: the file's number in TEKKEN.BIN)
 //! anims/NNNN.glb       the motions, one animation each, by joint name
 //! stages/NNN.glb       the arenas; NNN_pK.glb their background characters, NNN_mK.glb those characters' motions
@@ -13,20 +13,21 @@
 //! audio/NNN_KKK.wav    the sounds; audio/NNN.wav the music, and the movies' sound
 //! video/NNN.pss        the movies' pictures as on the disc (MPEG-2 program stream): not converted yet
 //! raw/NNN.bin          files and packs not (fully) decoded, as on the disc, unscrambled
+//! gamedata/*.json      the fight data: moves, cancels, hits, reactions, rules, movesets/ (docs/GAMEDATA.md)
 //! ```
 //!
 //! shortcut: the layout is the research tool's, to look at in any glTF viewer; the one OpenKumite reads comes with
 //! the engine's side of it (another FORMAT).
 
 use crate::archive::{self, Archive};
-use crate::{anim, audio, model, moves, stage, tex, u32le};
+use crate::{anim, audio, fight, model, moves, stage, tex, u32le};
 use anyhow::{Context, Result, bail};
 use ok_converter_common::io::{Ctx, DiscFile, Vfs};
 use serde_json::{Value, json};
 use std::collections::{HashMap, HashSet};
 
 /// The pack's layout and contents; another one is converted again.
-pub const FORMAT: i64 = 1;
+pub const FORMAT: i64 = 2;
 /// What a pack's manifest names it.
 pub const KIND: &str = "ttt";
 
@@ -265,9 +266,22 @@ pub fn convert(ctx: &Ctx, src: &dyn DiscFile) -> Result<Value> {
         own.push(m.iter().filter(|v| !shared(v)).count());
     }
     models.sort_by_key(|m| (m["body"].as_u64().unwrap_or(99), m["name"].as_str().unwrap_or("").to_string()));
+    // the fight data: a move's motion is the one of its number
+    let written: HashSet<u64> = anims.iter().filter_map(|a| a["id"].as_u64()).collect();
+    let file = |k: &usize| written.contains(&(*k as u64)).then(|| format!("anims/{k:04}.glb"));
+    let files: Vec<Option<String>> = canon.iter().map(file).collect();
+    let frames: Vec<u8> = (offsets.iter())
+        .map(|&o| match (o as usize).checked_sub(0x400_0000) {
+            Some(o) => bank2.get(o),
+            None => bank.get(o as usize),
+        })
+        .map(|f| f.copied().unwrap_or(0))
+        .collect();
+    let gamedata = fight::export(out, &a.elf, &files, &frames, &models)?;
+    ctx.log(&format!("[ttt] the fight data: {} files", gamedata.len()));
     let source = json!({"image": src.name(), "disc": "SLUS-20001", "version": "2.00"});
     let manifest = json!({"pack": KIND, "format": FORMAT, "source": source, "models": models, "movesets": movesets, "own": own,
-        "anims": anims, "stages": stages, "textures": textures, "sounds": sounds, "music": music, "video": video, "raw": raw});
+        "anims": anims, "stages": stages, "textures": textures, "sounds": sounds, "music": music, "video": video, "raw": raw, "gamedata": gamedata});
     out.write("manifest.json", serde_json::to_string_pretty(&manifest)?.as_bytes())?;
     out.checkpoint(&[])?;
     Ok(manifest)
