@@ -320,6 +320,7 @@ bodies 0-38 (34-38 Tiger, Panda, Tetsujin, Alex, Angel).
 | `gamedata/sound.json`, `music.json`, `rounds.json` | the sound, music and round-flow tables (below; written by `src/sound.rs` and `fight::rounds`) |
 | `audio/sfx/NNN/KKK.wav` | sample KKK of the sound bank in file NNN of TEKKEN.BIN (all 156 banks, 2 350 samples, 16-bit mono, at the rate of its `VAGp` header; 45 MB) |
 | `audio/music/NN.flac` | the music stream in file NN (25, 16-bit stereo 44 100 Hz; 197 MB, 291 MB as WAV) |
+| `endings/ending_EE_*` | ending EE's scene (EE 00-37, `gamedata/endings.json` names the files; BOWL_ENDINGS.md 7.3): `_camera.bin` its camera path as on the disc (file 2EE + 47: `u32 frames`, then eye xyz, target xyz, H as f32 a frame, game units, y down), `_0.glb` / `_1.glb` the body tracks of actor slots 0 and 1 (file 2EE + 48 part 0) as clips `ending_EE_0` / `ending_EE_1` in `anim::clip_glb`'s shape (the root's track places the actor in the arena), `_face.bin` / `_hands.bin` parts 1 and 2 as on the disc (packs of tracks `u16 frames, u16 triples`, then s16 triples) |
 | `audio/index.json` | Tekken 3's shape: `sfx` (a bank each: `bank` its file, `samples`: `file` = `NNN/KKK.wav`, `rate`, `seconds`, `name` from the `VAGp` header; no `tones`: Tekken Tag has no VAB programs), `music` (`name`, `file` = `NN.flac`, `seconds`) |
 
 **A character** is every section of the model (the fight draws them all: FORMATS.md section 7) in one mesh, skinned
@@ -398,3 +399,17 @@ the frame counter's parity; the partner poses too; 300 frames), `team_lose` (ali
 (bits, perfect, great when the winner's score is at most 0xCC of 0x1000), `round_time` (frames by option, the
 untimed option 5, the displayed second of 70 frames), `rounds_to_win`. The default round-time and rounds options are
 null: no code was found that writes them. The pad bits are the game's pad word, not yet tied to buttons.
+
+### `gamedata/endings.json` (**new**)
+
+The endings, the staff roll and Theater (BOWL_ENDINGS.md 7-8). `table` (0x51B678): 34 characters x 8 costumes ->
+the ending, -1 none. `endings` (0x51B488, 38): `arena` (the stage's number), `cast` (`[character, costume]`, costume
+-1 the player's), `script` (the 10-byte records `[frame, op, a, b, c]` to op -1, as in the executable: records run
+in order once their frame has come), `camera`, `body`, `face`, `hands` (the files in `endings/`), `camera_file`,
+`pack_file` (their files in TEKKEN.BIN). `staff_roll`: `lines` (0x51B880, 434: `kind`, `text`, `font`,
+`alternative`: of the two flagged lines the first shows until Tekken Bowl is unlocked), `cards`, `card_frames`,
+`frames` (the roll alone before the scene), `scroll_px`, `line_px`, `start_y`, `bgm`. `playback`: `ending_bgm`,
+`fade_in`, `skip_fade`, `max_frames`, `unknown` (Unknown's ending, which plays the movie `unknown_movie`). `theater`:
+`labels` (0x455E50: per character 8 costume labels or null), `music` (0x455D80: the music player's `{bgm, name}` to
+EXIT, 254), `extras` (the movies and the EMBU entries after the rows). The constants are the code's, read in
+BOWL_ENDINGS.md 7.5, not tables.

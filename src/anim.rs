@@ -179,11 +179,11 @@ pub fn glb(frames: &[Frame]) -> Vec<u8> {
     g.finish(json!({"scene": 0, "scenes": [{"nodes": all}], "nodes": nodes, "animations": [{"name": "motion", "samplers": samplers, "channels": channels}]}))
 }
 
-/// Motion `motion` as OpenKumite's clip, in a GLB of no mesh: an animation `motion_NNNN`, its channels on the
-/// joints by name (the fighters' character glbs have the same), one key a frame at 60 fps; the rotations as
-/// normalised 16-bit integers, as the Tekken 3 converter writes them, and the root's position (metres) as its
-/// translation.
-pub fn clip_glb(motion: usize, frames: &[Frame]) -> Vec<u8> {
+/// A motion as OpenKumite's clip `name` (`motion_NNNN`; an ending's track `ending_EE_K`), in a GLB of no mesh: its
+/// channels on the joints by name (the fighters' character glbs have the same), one key a frame at 60 fps; the
+/// rotations as normalised 16-bit integers, as the Tekken 3 converter writes them, and the root's position (metres)
+/// as its translation.
+pub fn clip_glb(name: &str, frames: &[Frame]) -> Vec<u8> {
     let mut g = Glb::default();
     let n = frames.len();
     let times: Vec<f32> = (0..n).map(|i| i as f32 / 60.0).collect();
@@ -203,7 +203,7 @@ pub fn clip_glb(motion: usize, frames: &[Frame]) -> Vec<u8> {
     channels.push(json!({"sampler": samplers.len() - 1, "target": {"node": 0, "path": "translation"}}));
     let all: Vec<usize> = (0..nodes.len()).collect();
     let nodes: Vec<Value> = nodes.into_iter().map(|n| n.0).collect();
-    let clip = json!({"name": format!("motion_{motion:04}"), "samplers": samplers, "channels": channels});
+    let clip = json!({"name": name, "samplers": samplers, "channels": channels});
     g.finish(json!({"scene": 0, "scenes": [{"nodes": all}], "nodes": nodes, "animations": [clip]}))
 }
 
@@ -218,7 +218,7 @@ mod tests {
         let mut f = [[0u16; CHANNELS]; 2];
         f[1][3 + 3 + 2] = 16384;
         f[1][2] = 1000;
-        let (doc, buffers, _) = gltf::import_slice(clip_glb(806, &f)).unwrap();
+        let (doc, buffers, _) = gltf::import_slice(clip_glb("motion_0806", &f)).unwrap();
         let a = doc.animations().next().unwrap();
         assert_eq!((a.name(), a.channels().count()), (Some("motion_0806"), 34 + 1));
         let get = |b: gltf::Buffer| Some(&buffers[b.index()].0[..]);
