@@ -25,7 +25,7 @@ impl DiscFile for MemDisc {
 }
 
 /// A pack in memory that keeps each file's size and hash (the pack is 3 GB), and the manifests, the fight data, the
-/// motions and the characters whole.
+/// motions, the characters and King's ending whole.
 #[derive(Default)]
 struct Hashed(Mutex<BTreeMap<String, (usize, u64)>>, Mutex<BTreeMap<String, Vec<u8>>>);
 
@@ -54,6 +54,7 @@ impl Vfs for Hashed {
                 "characters/",
                 "audio/index.json",
                 "pictures/141_000",
+                "endings/ending_04_",
             ]
             .iter()
             .any(|p| kept(p))
@@ -164,6 +165,7 @@ fn the_disc_converts_twice_the_same() {
     fight_data(&a);
     openkumite(&a);
     front_end(&a);
+    endings(&a);
     // the same disc again, without the research outputs: the same assets/, and a manifest of the source alone
     assert_eq!(m2, serde_json::json!({"pack": "ttt", "format": pack::FORMAT, "source": m["source"]}));
     let game: Vec<_> = written.iter().filter(|(k, _)| k.starts_with("assets/")).collect();
@@ -493,6 +495,44 @@ fn front_end(pack: &Hashed) {
     let mut px = vec![0; reader.output_buffer_size().unwrap()];
     reader.next_frame(&mut px).unwrap();
     assert!(px.chunks(4).filter(|p| p[3] == 255 && p[2] > 100).count() > 10_000);
+}
+
+/// The endings (docs/BOWL_ENDINGS.md 7-8): endings.json's tables, and each scene's files.
+fn endings(pack: &Hashed) {
+    let e: serde_json::Value = serde_json::from_slice(&pack.read("assets/gamedata/endings.json").unwrap()).unwrap();
+    // Xiaoyu's costumes 4, 6, 7 and Eddy's (Tiger) take another ending
+    assert_eq!((&e["table"][7], &e["table"][8][4]), (&serde_json::json!([9, 9, 9, 9, 10, 9, 10, 10]), &33.into()));
+    let all = e["endings"].as_array().unwrap();
+    assert_eq!(all.len(), 38);
+    // King's: arena 11, King in the player's costume, Armor King, Mokujin 6; 1800 frames, op -1 last
+    let king = &all[4];
+    assert_eq!((&king["arena"], &king["cast"]), (&11.into(), &serde_json::json!([[3, -1], [26, 0], [15, 6]])));
+    assert_eq!(king["script"].as_array().unwrap().last().unwrap(), &serde_json::json!([1799, -1, 0, 0, 0]));
+    let camera = pack.read("assets/endings/ending_04_camera.bin").unwrap();
+    assert_eq!((u32::from_le_bytes(camera[..4].try_into().unwrap()), camera.len()), (1800, 4 + 1800 * 28));
+    for (k, d) in all.iter().enumerate() {
+        for f in d["body"].as_array().unwrap().iter().chain([&d["camera"], &d["face"], &d["hands"]]) {
+            assert!(pack.exists(&format!("assets/endings/{}", f.as_str().unwrap())), "ending {k}: {f}");
+        }
+    }
+    // a body track: a clip of the ending's frames on the joints by name
+    let (doc, _, _) = gltf::import_slice(pack.read("assets/endings/ending_04_1.glb").unwrap()).unwrap();
+    let a = doc.animations().next().unwrap();
+    assert_eq!((a.name(), a.channels().next().unwrap().sampler().input().count()), (Some("ending_04_1"), 1800));
+    let roll = e["staff_roll"]["lines"].as_array().unwrap();
+    assert_eq!(
+        (roll.len(), &roll[0]["text"], &roll[431]["text"]),
+        (434, &"PROJECT DIRECTORS".into(), &"NAMCO LTD.".into())
+    );
+    assert_eq!(roll.iter().filter(|l| l["alternative"] == true).count(), 2);
+    assert_eq!(
+        (&e["theater"]["labels"][0][0], &e["theater"]["labels"][0][4]),
+        (&"(1P)PAUL".into(), &serde_json::Value::Null)
+    );
+    assert_eq!(
+        e["theater"]["music"].as_array().unwrap().last().unwrap(),
+        &serde_json::json!({"bgm": 254, "name": "EXIT"})
+    );
 }
 
 /// OpenKumite's sound, music and round flow: the samples per bank and voice group, a voice row, Paul's jab, every

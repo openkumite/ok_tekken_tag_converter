@@ -38,7 +38,7 @@ A pack (about 2.2 GB, 15 234 files):
 | `gamedata/` | the fight data: 7 351 moves, cancel lists, hit records, reactions, hurt and push volumes, health, the fight camera, the 33 movesets' aliases | JSON ([docs/GAMEDATA.md](docs/GAMEDATA.md)) |
 | `assets/` | what OpenKumite reads (518 MB, 7 087 files): below | GLB, JSON, WAV, FLAC |
 
-`manifest.json`: `{"pack": "ttt", "format": 9, "source": {"image", "disc": "SLUS-20001", "version": "2.00"}}` and
+`manifest.json`: `{"pack": "ttt", "format": 10, "source": {"image", "disc": "SLUS-20001", "version": "2.00"}}` and
 the index of the files above: `models` (each fighter's `name`, `body`, `moveset`, `file`), `movesets` (the motions
 of each moveset, a fighter's own first) and `own` (how many of them are its own), `anims`, `stages` (each arena's
 `name`, `file`, `people`, `motions`, and `cast`: who stands where), `textures`, `sounds`, `music`, `video` (each
@@ -62,6 +62,7 @@ music, and the front end around it:
 | `gamedata/` | the fight data again (a move's `anim` is its clip), `movesets/motions_NN.json` (the clips of each moveset), `roster.json` (with the front end's tables, `front_end`: the main menu, the select grid, the HUD's pictures and places, the arcade ladder's rules, the unlock schedule, the options); `sound.json` (sound ids -> banks, voices, hit sounds, footsteps, scripts, announcer), `music.json` (the BGM table, each arena's), `rounds.json` (the round flow's frames, start motions, win poses) | 17 MB |
 | `pictures/` | the front end's 252 pictures (title, fonts, faces, name plates, health-bar strips, portraits), named as `textures/`, in the palettes the code draws them with | 5 MB |
 | `audio/` | `sfx/NNN/KKK.wav`: the 2 350 samples of the 156 sound banks (NNN: the bank's file); `music/NN.flac`: the 25 music streams (NN: their file); `index.json` | 45 MB WAV, 197 MB FLAC |
+| `endings/` | the 38 ending scenes (`gamedata/endings.json`: their arena, cast and script, the ending table, the staff roll, Theater's lists): each one's camera path as on the disc, its two actor slots' body tracks as clips `ending_EE_K`, its face and hand tracks as on the disc | 39 MB |
 
 The details: [docs/GAMEDATA.md](docs/GAMEDATA.md) ("assets/").
 
@@ -84,7 +85,11 @@ ttt_convert list DISC           # the 748 files of TEKKEN.BIN: sector, size, str
 - Move data (damage, frames, cancels), hit and hurt volumes.
 - Names of the two unlisted arenas after Tekken Bowl (the stage-select menu does not list them); how the game
   places an arena's moving objects.
-- Cloth, hair, face and finger movement: those nodes stay in their bind pose.
+- Cloth, hair, face and finger movement: those nodes stay in their bind pose. The endings' face and hand tracks are
+  written as on the disc (a hand track's 15 triples look like the 15 nodes under `hand_A` / `hand_B`, thumb first,
+  but how they compose with the bind pose is not known).
+- The endings' effect ops (sparks, objects, show / hide) and the arenas' background-character swaps; the EMBU
+  exhibition's sequencing (files 41-42).
 - The same output on every platform: the float maths is the standard library's (the sibling converters pin `libm`).
 
 ## Checks

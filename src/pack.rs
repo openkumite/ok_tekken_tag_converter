@@ -26,12 +26,15 @@
 //!                             003_NNN_angry.png the angry health-bar strips
 //!   audio/sfx/NNN/KKK.wav     the sound banks' samples (NNN: the bank's file in TEKKEN.BIN); audio/music/NN.flac the
 //!                             music streams (NN: their file); audio/index.json
+//!   endings/ending_EE_*       ending EE's scene (gamedata/endings.json names the files): its camera path
+//!                             (`_camera.bin`), its actor slots' body tracks as clips `ending_EE_K` (`_K.glb`), its face
+//!                             and hand tracks (`_face.bin`, `_hands.bin`) as on the disc
 //! ```
 //!
 //! The layout outside `assets/` is the research tool's, to look at in any glTF viewer.
 
 use crate::archive::{self, Archive};
-use crate::{anim, assets, audio, fight, front, model, moves, sound, stage, tex, u32le};
+use crate::{anim, assets, audio, ending, fight, front, model, moves, sound, stage, tex, u32le};
 use anyhow::{Context, Result, bail};
 use ok_converter_common::io::{Ctx, DiscFile, Sub, Vfs};
 use ok_converter_common::psx;
@@ -41,8 +44,8 @@ use std::collections::{BTreeSet, HashMap, HashSet};
 /// The pack's layout and contents; another one is converted again (3: `assets/`; 4: every section of a fighter; 5:
 /// the air reactions, the default life, the damage constants; 6: `assets/audio/`, sound, music and rounds; 7: the
 /// camera, the camera id from bit 23; 8: ai.json; 9: the front end, `assets/pictures/` and roster.json `front_end`, the
-/// 2D files' palettes as drawn).
-pub const FORMAT: i64 = 9;
+/// 2D files' palettes as drawn; 10: the endings, `assets/endings/` and gamedata/endings.json).
+pub const FORMAT: i64 = 10;
 /// What a pack's manifest names it.
 pub const KIND: &str = "ttt";
 
@@ -389,7 +392,7 @@ pub fn convert(ctx: &Ctx, src: &dyn DiscFile, research: bool) -> Result<Value> {
     }
     for &c in &used {
         if let Some(Some(f)) = decoded.get(c) {
-            assets.write(&format!("motions/motion_{c:04}.glb"), &anim::clip_glb(c, f))?;
+            assets.write(&format!("motions/motion_{c:04}.glb"), &anim::clip_glb(&format!("motion_{c:04}"), f))?;
         }
     }
     let clips: Vec<Option<String>> = (0..offsets.len()).map(|v| motion(v).map(|c| format!("motion_{c:04}"))).collect();
@@ -402,6 +405,21 @@ pub fn convert(ctx: &Ctx, src: &dyn DiscFile, research: bool) -> Result<Value> {
         assets.write(&format!("gamedata/{name}.json"), serde_json::to_string(&v)?.as_bytes())?;
     }
     assets.write("audio/index.json", serde_json::to_string(&json!({"sfx": sfx, "music": tracks}))?.as_bytes())?;
+    // the endings: their tables, and each scene's files
+    assets.write("gamedata/endings.json", serde_json::to_string(&ending::endings(&a.elf)?)?.as_bytes())?;
+    for e in 0..ending::COUNT {
+        let (camera, pack) = ending::files(e);
+        let (camera, pack) = (a.read(camera)?, a.read(pack)?);
+        assets.write(&format!("endings/ending_{e:02}_camera.bin"), &camera)?;
+        for (k, glb) in ending::body_clips(e, &pack).iter().enumerate() {
+            assets.write(&format!("endings/ending_{e:02}_{k}.glb"), glb)?;
+        }
+        for (k, name) in [(1, "face"), (2, "hands")] {
+            if let Some(p) = ending::part(&pack, k) {
+                assets.write(&format!("endings/ending_{e:02}_{name}.bin"), p)?;
+            }
+        }
+    }
     let mut roster = assets::roster(&roster, &characters);
     if let Some(r) = roster.as_object_mut() {
         r.insert("front_end".into(), front::front_end(&a.elf, &atlas)?);
