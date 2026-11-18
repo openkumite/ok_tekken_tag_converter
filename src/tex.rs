@@ -241,13 +241,19 @@ fn rgba16(v: u16) -> [u8; 4] {
     [c(0), c(5), c(10), if v & 0x8000 != 0 || v & 0x7fff != 0 { 255 } else { 0 }]
 }
 
-/// Every upload as a picture: (width, height, RGBA). An indexed image takes the
-/// nearest palette-sized upload after it (else before it); without one it comes out in greys.
-// shortcut: the pairing is a guess where one stream holds several palettes for one image; read the
-// TEX0 registers of whatever draws the image (as models do) to get the exact pairs.
-pub fn pictures(ups: &[Upload]) -> Vec<(usize, usize, Vec<u8>)> {
+/// A palette-sized upload (16 or 256 colours, at most 16 rows): not a picture where a stream has indexed images.
+pub fn is_palette(u: &Upload) -> bool {
+    (u.psm == 0 || u.psm == 2) && matches!(u.w * u.h, 16 | 256) && u.h <= 16
+}
+
+/// Every upload as a picture: (width, height, RGBA). An indexed image takes the palette upload `palette` names for
+/// its upload number, else the nearest palette-sized upload after it (else before it); without one it comes out in
+/// greys.
+// shortcut: the pairing is a guess where one stream holds several palettes for one image and `palette` does not
+// name it; read the TEX0 registers of whatever draws the image (as models do) to get the exact pairs.
+pub fn pictures(ups: &[Upload], palette: &dyn Fn(usize) -> Option<usize>) -> Vec<(usize, usize, Vec<u8>)> {
     let entries = |u: &Upload| if u.psm == 0 || u.psm == 2 { u.w * u.h } else { 0 };
-    let is_clut = |u: &Upload| matches!(entries(u), 16 | 256) && u.h <= 16;
+    let is_clut = is_palette;
     let has_indexed = ups.iter().any(|u| u.psm == 0x13 || u.psm == 0x14);
     let mut out = Vec::new();
     for (k, u) in ups.iter().enumerate() {
@@ -265,7 +271,8 @@ pub fn pictures(ups: &[Upload]) -> Vec<(usize, usize, Vec<u8>)> {
                 let want = if u.psm == 0x13 { 256 } else { 16 };
                 let (before, after) = ups.split_at(k);
                 let fits = |c: &&Upload| is_clut(c) && entries(c) >= want;
-                let clut = after.iter().find(fits).or_else(|| before.iter().rev().find(fits));
+                let named = palette(k).and_then(|p| ups.get(p)).filter(|c| fits(c));
+                let clut = named.or_else(|| after.iter().find(fits)).or_else(|| before.iter().rev().find(fits));
                 let byte = |i: usize| u.data.get(i).copied().unwrap_or(0);
                 (0..n)
                     .flat_map(|i| {
@@ -325,7 +332,7 @@ mod tests {
             (ups[0].dbp, ups[0].psm, ups[0].w, ups[0].h, ups[0].dbw, ups[0].data.len()),
             (0x100, 0x14, 16, 16, 128, 128)
         );
-        let pics = pictures(&ups);
+        let pics = pictures(&ups, &|_| None);
         assert_eq!(pics.len(), 1); // the palette is not a picture
         assert_eq!((pics[0].0, pics[0].1, &pics[0].2[..4]), (16, 16, &[255, 0, 0, 255][..]));
         // TEX0: the image at 0x100, 16 x 16 (2^4), PSMT4, palette at 0x200
@@ -339,13 +346,30 @@ mod tests {
         // cut anywhere, or noise: what is whole comes out, and nothing panics
         for n in 0..d.len() {
             let ups = uploads(&d[..n]);
-            let _ = (pictures(&ups), image(&ups, &t, true));
+            let _ = (pictures(&ups, &|_| None), image(&ups, &t, true));
         }
         let noise: Vec<u8> = (0..4096u32).map(|i| (i.wrapping_mul(2654435761) >> 13) as u8).collect();
         for o in 0..64 {
             let ups = uploads(&noise[o..]);
-            let _ = (pictures(&ups), image(&ups, &t, true));
+            let _ = (pictures(&ups, &|_| None), image(&ups, &t, true));
         }
+    }
+
+    #[test]
+    fn a_named_palette_wins() {
+        // an image of colour 1, then two palettes (red, then green): the nearest after it, or the one named
+        let mut d = gif(0x100, 0x14, 16, 16, &[0x11; 128]);
+        for c in [[255, 0, 0, 0x80], [0, 255, 0, 0x80]] {
+            let mut clut = vec![0u8; 64];
+            clut[4..8].copy_from_slice(&c);
+            d.extend(gif(0x200, 0, 8, 2, &clut));
+        }
+        let ups = uploads(&d);
+        assert_eq!(&pictures(&ups, &|_| None)[0].2[..4], &[255, 0, 0, 255]);
+        assert_eq!(&pictures(&ups, &|_| Some(2))[0].2[..4], &[0, 255, 0, 255]);
+        // a name past the uploads, or of an image: the nearest
+        assert_eq!(&pictures(&ups, &|_| Some(9))[0].2[..4], &[255, 0, 0, 255]);
+        assert_eq!(&pictures(&ups, &|_| Some(0))[0].2[..4], &[255, 0, 0, 255]);
     }
 
     #[test]

@@ -46,9 +46,17 @@ impl Vfs for Hashed {
         let kept = |p: &str| path.strip_prefix("assets/").is_some_and(|a| a.starts_with(p));
         if path == "manifest.json"
             || path.starts_with("gamedata/")
-            || ["manifest.json", "gamedata/", "motions/", "stages/index.json", "characters/", "audio/index.json"]
-                .iter()
-                .any(|p| kept(p))
+            || [
+                "manifest.json",
+                "gamedata/",
+                "motions/",
+                "stages/index.json",
+                "characters/",
+                "audio/index.json",
+                "pictures/141_000",
+            ]
+            .iter()
+            .any(|p| kept(p))
         {
             self.1.lock().unwrap().insert(path.into(), data.to_vec());
         }
@@ -155,6 +163,7 @@ fn the_disc_converts_twice_the_same() {
     assert!(written.values().all(|f| f.0 > 0));
     fight_data(&a);
     openkumite(&a);
+    front_end(&a);
     // the same disc again: the same bytes
     assert_eq!(m, m2);
     assert_eq!(written, *b.0.lock().unwrap());
@@ -419,6 +428,69 @@ fn openkumite(pack: &Hashed) {
             }
         }
     }
+}
+
+/// The front end (docs/FRONTEND.md): roster.json `front_end`'s tables, every picture it names written, file 141's
+/// pictures in colour.
+fn front_end(pack: &Hashed) {
+    let roster: serde_json::Value = serde_json::from_slice(&pack.read("assets/gamedata/roster.json").unwrap()).unwrap();
+    let fe = &roster["front_end"];
+    let labels: Vec<&str> =
+        fe["menu"]["items"].as_array().unwrap().iter().map(|i| i["label"].as_str().unwrap()).collect();
+    assert_eq!(
+        labels,
+        [
+            "ARCADE",
+            "VS BATTLE",
+            "TEAM BATTLE",
+            "TIME ATTACK",
+            "SURVIVAL",
+            "1 ON 1",
+            "1 ON 1 VS",
+            "PRACTICE",
+            "TEKKEN BOWL",
+            "THEATER",
+            "GALLERY",
+            "OPTIONS"
+        ]
+    );
+    let select = &fe["select"];
+    assert_eq!(
+        select["selectable"],
+        serde_json::json!([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 12, 13, 16, 18, 23, 26, 27, 30, 32])
+    );
+    assert_eq!(
+        select["slots"][24],
+        serde_json::json!({"slot": 24, "up": 14, "down": 32, "left": 23, "right": 25, "x": 374, "y": 112, "character": 0})
+    );
+    assert_eq!(
+        (&select["slots"][0]["character"], &select["faces"][0], &select["faces"][34]),
+        (&serde_json::Value::Null, &"003_097.png".into(), &"003_109.png".into())
+    );
+    let schedule = fe["unlocks"]["schedule"].as_array().unwrap();
+    assert_eq!((schedule.len(), &schedule[29]), (32, &serde_json::json!({"stage": 14, "kind": 1, "character": 33})));
+    assert_eq!(fe["arcade"]["rivals"][0], serde_json::json!([19, 11, 1]));
+    assert_eq!((&fe["options"][2]["label"], &fe["options"][2]["default"]), (&"ROUND TIME".into(), &2.into()));
+    fn pictures<'a>(v: &'a serde_json::Value, out: &mut Vec<&'a str>) {
+        match v {
+            serde_json::Value::String(s) if s.ends_with(".png") => out.push(s),
+            serde_json::Value::Array(a) => a.iter().for_each(|v| pictures(v, out)),
+            serde_json::Value::Object(o) => o.values().for_each(|v| pictures(v, out)),
+            _ => {}
+        }
+    }
+    let mut named = vec![];
+    pictures(fe, &mut named);
+    assert_eq!(named.len(), 149);
+    for p in named {
+        assert!(pack.exists(&format!("assets/pictures/{p}")), "{p}");
+    }
+    // file 141's pictures take its first palette: in colour, not transparent
+    let png = pack.read("assets/pictures/141_000.png").unwrap();
+    let mut reader = png::Decoder::new(std::io::Cursor::new(png)).read_info().unwrap();
+    let mut px = vec![0; reader.output_buffer_size().unwrap()];
+    reader.next_frame(&mut px).unwrap();
+    assert!(px.chunks(4).filter(|p| p[3] == 255 && p[2] > 100).count() > 10_000);
 }
 
 /// OpenKumite's sound, music and round flow: the samples per bank and voice group, a voice row, Paul's jab, every

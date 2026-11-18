@@ -19,8 +19,11 @@
 //!   characters/model_NNN.glb  the roster's fighters (NNN: the file's number in TEKKEN.BIN, as models/)
 //!   motions/motion_NNNN.glb   the motions the characters' movesets play, a clip `motion_NNNN` each (NNNN: as anims/)
 //!   stages/stage_NN.glb       the arenas (NN: the arena's number), stages/index.json
-//!   gamedata/                 the fight data again (moves' `anim`: their clip), roster.json; sound.json, music.json,
-//!                             rounds.json (the sound, music and round-flow tables)
+//!   gamedata/                 the fight data again (moves' `anim`: their clip), roster.json (with the front end's
+//!                             tables, `front_end`); sound.json, music.json, rounds.json (the sound, music and
+//!                             round-flow tables)
+//!   pictures/FFF_NNN.png      the front end's 2D pictures (as textures/, the files front_end names), and
+//!                             003_NNN_angry.png the angry health-bar strips
 //!   audio/sfx/NNN/KKK.wav     the sound banks' samples (NNN: the bank's file in TEKKEN.BIN); audio/music/NN.flac the
 //!                             music streams (NN: their file); audio/index.json
 //! ```
@@ -28,7 +31,7 @@
 //! The layout outside `assets/` is the research tool's, to look at in any glTF viewer.
 
 use crate::archive::{self, Archive};
-use crate::{anim, assets, audio, fight, model, moves, sound, stage, tex, u32le};
+use crate::{anim, assets, audio, fight, front, model, moves, sound, stage, tex, u32le};
 use anyhow::{Context, Result, bail};
 use ok_converter_common::io::{Ctx, DiscFile, Sub, Vfs};
 use ok_converter_common::psx;
@@ -37,8 +40,9 @@ use std::collections::{BTreeSet, HashMap, HashSet};
 
 /// The pack's layout and contents; another one is converted again (3: `assets/`; 4: every section of a fighter; 5:
 /// the air reactions, the default life, the damage constants; 6: `assets/audio/`, sound, music and rounds; 7: the
-/// camera, the camera id from bit 23; 8: ai.json).
-pub const FORMAT: i64 = 8;
+/// camera, the camera id from bit 23; 8: ai.json; 9: the front end, `assets/pictures/` and roster.json `front_end`, the
+/// 2D files' palettes as drawn).
+pub const FORMAT: i64 = 9;
 /// What a pack's manifest names it.
 pub const KIND: &str = "ttt";
 
@@ -105,6 +109,8 @@ pub fn convert(ctx: &Ctx, src: &dyn DiscFile) -> Result<Value> {
     // OpenKumite's audio/index.json, and each bank's (file, bytes, samples) and each music stream's file
     let (mut sfx, mut tracks, mut banks, mut streams) = (vec![], vec![], vec![], vec![]);
     let roster = moves::roster(&a.elf)?;
+    // file 3's uploads: the HUD and select atlas, whose pictures the front end's tables name
+    let mut atlas = vec![];
     ctx.log(&format!("[ttt] {}: the {} files of TEKKEN.BIN", src.name(), archive::FILES));
     // (the first and the last file are random filler)
     for i in 1..archive::FILES - 1 {
@@ -244,15 +250,30 @@ pub fn convert(ctx: &Ctx, src: &dyn DiscFile) -> Result<Value> {
             }
             let triangles = b.iter().map(|x| x.pos.len().saturating_sub(2)).sum::<usize>();
             stages.push(json!({"id": i, "name": name, "file": file, "people": people, "motions": motions, "cast": cast, "triangles": triangles}));
-        } else if let Some(pics) =
-            Some(leaves(&d).iter().flat_map(|c| tex::pictures(&tex::uploads(c))).collect::<Vec<_>>())
-                .filter(|p| !p.is_empty())
+        } else if let Some(pics) = Some(
+            leaves(&d)
+                .iter()
+                .flat_map(|c| tex::pictures(&tex::uploads(c), &|k| front::palette(i, k)))
+                .collect::<Vec<_>>(),
+        )
+        .filter(|p| !p.is_empty())
         {
             let mut images = vec![];
             for (k, (w, h, px)) in pics.iter().enumerate() {
                 let file = format!("textures/{i:03}_{k:03}.png");
-                out.write(&file, &tex::png(*w, *h, px))?;
+                let png = tex::png(*w, *h, px);
+                out.write(&file, &png)?;
+                // OpenKumite's: the front end's pictures (front_end names them)
+                if front::is_2d(i) {
+                    assets.write(&format!("pictures/{i:03}_{k:03}.png"), &png)?;
+                }
                 images.push(file);
+            }
+            if i == 3 {
+                atlas = tex::uploads(&d);
+                for (name, png) in front::angry_strips(&atlas) {
+                    assets.write(&format!("pictures/{name}"), &png)?;
+                }
             }
             textures.push(json!({"id": i, "images": images}));
         } else {
@@ -366,7 +387,11 @@ pub fn convert(ctx: &Ctx, src: &dyn DiscFile) -> Result<Value> {
         assets.write(&format!("gamedata/{name}.json"), serde_json::to_string(&v)?.as_bytes())?;
     }
     assets.write("audio/index.json", serde_json::to_string(&json!({"sfx": sfx, "music": tracks}))?.as_bytes())?;
-    assets.write("gamedata/roster.json", serde_json::to_string(&assets::roster(&roster, &characters))?.as_bytes())?;
+    let mut roster = assets::roster(&roster, &characters);
+    if let Some(r) = roster.as_object_mut() {
+        r.insert("front_end".into(), front::front_end(&a.elf, &atlas)?);
+    }
+    assets.write("gamedata/roster.json", serde_json::to_string(&roster)?.as_bytes())?;
     assets.write("stages/index.json", serde_json::to_string(&arenas)?.as_bytes())?;
     let fingerprint = assets::fingerprint(&assets)?;
     let engine = json!({"game": assets::GAME, "format": assets::FORMAT, "fingerprint": fingerprint});

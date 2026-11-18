@@ -29,8 +29,8 @@ Every 2D draw takes a **sprite id**: the n-th GS upload (image or palette, in fi
   w, h])`; the palette is another sprite id, almost always image id + 1. Screen is 640 x 448.
 - The pack's `textures/FFF_NNN.png` numbers only the images (palettes skipped), so a sprite id maps to an exported
   file through `sprites.py` (below), e.g. id 45 = file 3 upload 45 = `003_006.png`.
-- Converter issue: `141_000`-`141_044` (ids 197-241, 320 x 150, 4-bit) export fully transparent; their palette is
-  upload 0 of the file (id 196), not the one the exporter picks. [M]
+- `141_000`-`141_044` (ids 197-241, 320 x 150, 4-bit) take upload 0 of the file (id 196) as their palette; file 3's
+  faces take upload 132 (0x84) and its name plates upload 76 (0x4C). The converter exports them so (`front.rs`). [M]
 
 What the files hold (from the art and the draw calls):
 
@@ -42,11 +42,11 @@ What the files hold (from the art and the draw calls):
 | 131 | five 64 x 64 sparks |
 | 132 | records banners: TIME ATTACK, CHARACTER USAGE, GREATEST SURVIVORS (`132_001`-`003`) |
 | 134 | title screen: logo `134_003`, namco logos, PAIR PLAY MODE `134_001`, `134_004` |
-| 136 | VS screen: background `136_000`, "VS" pieces |
-| 141 | 45 select-screen pictures (320 x 150), `141_045` a frame [L: the arcade-version select's big portraits] |
+| 136 | `136_000` a controller, "VS" pieces [L: the VS screen's] |
+| 141 | 45 blue lightning pictures (320 x 150), `141_045` the select grid's frame [L: the arcade-version select's] |
 | 142 | the boot logo `142_000`, controller `142_001` |
 | 143-181 | one 188 x 256 portrait per body, in name order (ArmorKing, Alex, Angel, Anna, Baek, Bruce, Bryan, Devil, Eddy, Ganryu, Heihachi, Hwoarang, Jack-2, Gun Jack, Jin, Julia, Jun, Kazuya, King, Kuma, Kunimitsu, Law, Lee, Lei, Xiaoyu, Michelle, Mokujin, Nina, True Ogre, Ogre, Panda, Paul, P.Jack, Roger, Tetsujin, Tiger, Unknown, Wang, Yoshimitsu) |
-| 182 | two 292 x 391 pictures: a blue flame (ids 401-404; 403 is drawn full-height and mirrored, 0x3C3A74) |
+| 182 | two 292 x 391 pictures (ids 401-404): `182_000` Kuma, `182_001` a blue flame (403: drawn full-height and mirrored, 0x3C3A74) |
 
 ## 2. Modes and the main menu
 
@@ -264,7 +264,7 @@ Ranked by how much a player would notice:
    texts).
 4. Tekken Bowl's ball and pin physics.
 5. The ending scenes' scripts (descriptor `script*`), the staff roll, which cutscene files (41-128) they use.
-6. The arcade-version select's big pictures (file 141: which picture per body) and the converter's blank export.
+6. The arcade-version select's layout (file 141's lightning pictures and its grid frame).
 7. The attract loop's order (movie, demo, ranking; 0x3BCC88) and PAIR PLAY MODE (art only, no menu entry found).
 8. What settings +8 means beyond the two grid slots; config +0x08 and +0x37.
 

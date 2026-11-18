@@ -35,9 +35,9 @@ A pack (about 2.2 GB, 15 234 files):
 | `video/` | the 3 movies' pictures, **not converted yet**: as on the disc (`NNN.pss`, an MPEG-2 program stream) | PSS |
 | `raw/` | files and packs not (fully) decoded | as on the disc, unscrambled |
 | `gamedata/` | the fight data: 7 351 moves, cancel lists, hit records, reactions, hurt and push volumes, health, the fight camera, the 33 movesets' aliases | JSON ([docs/GAMEDATA.md](docs/GAMEDATA.md)) |
-| `assets/` | what OpenKumite reads (513 MB, 6 834 files): below | GLB, JSON, WAV, FLAC |
+| `assets/` | what OpenKumite reads (518 MB, 7 087 files): below | GLB, JSON, WAV, FLAC |
 
-`manifest.json`: `{"pack": "ttt", "format": 8, "source": {"image", "disc": "SLUS-20001", "version": "2.00"}}` and
+`manifest.json`: `{"pack": "ttt", "format": 9, "source": {"image", "disc": "SLUS-20001", "version": "2.00"}}` and
 the index of the files above: `models` (each fighter's `name`, `body`, `moveset`, `file`), `movesets` (the motions
 of each moveset, a fighter's own first) and `own` (how many of them are its own), `anims`, `stages` (each arena's
 `name`, `file`, `people`, `motions`, and `cast`: who stands where), `textures`, `sounds`, `music`, `video` (each
@@ -49,7 +49,8 @@ in every fighter. The disc has no move names, only numbers. Converting the same 
 ### `assets/`: OpenKumite's
 
 The files OpenKumite's loaders read, in the Tekken 3 converter's layout (its `characters/`, `stages/`, `gamedata/`,
-`audio/`, `manifest.json`), for a fight of two Tekken Tag fighters on a Tekken Tag arena, with its sound and music:
+`audio/`, `pictures/`, `manifest.json`), for a fight of two Tekken Tag fighters on a Tekken Tag arena, with its sound and
+music, and the front end around it:
 
 | Path | Content | Size |
 |---|---|---|
@@ -57,7 +58,8 @@ The files OpenKumite's loaders read, in the Tekken 3 converter's layout (its `ch
 | `characters/model_NNN.glb` | the 127 fighters of the roster (body and costume), NNN as `models/`: the main mesh skinned on the 98 nodes every fighter shares, the 18 animated joints named as Tekken 3's, one RGBA picture, no animation | 95 MB |
 | `motions/motion_NNNN.glb` | the 4 231 motions the characters' movesets play, each once: one clip `motion_NNNN`, no mesh | 80 MB |
 | `stages/stage_NN.glb` | the 23 arenas by their number (`stages/index.json`: names): the scenery as a model around the fighters, the floor repeated | 44 MB |
-| `gamedata/` | the fight data again (a move's `anim` is its clip), `movesets/motions_NN.json` (the clips of each moveset), `roster.json`; `sound.json` (sound ids -> banks, voices, hit sounds, footsteps, scripts, announcer), `music.json` (the BGM table, each arena's), `rounds.json` (the round flow's frames, start motions, win poses) | 17 MB |
+| `gamedata/` | the fight data again (a move's `anim` is its clip), `movesets/motions_NN.json` (the clips of each moveset), `roster.json` (with the front end's tables, `front_end`: the main menu, the select grid, the HUD's pictures and places, the arcade ladder's rules, the unlock schedule, the options); `sound.json` (sound ids -> banks, voices, hit sounds, footsteps, scripts, announcer), `music.json` (the BGM table, each arena's), `rounds.json` (the round flow's frames, start motions, win poses) | 17 MB |
+| `pictures/` | the front end's 252 pictures (title, fonts, faces, name plates, health-bar strips, portraits), named as `textures/`, in the palettes the code draws them with | 5 MB |
 | `audio/` | `sfx/NNN/KKK.wav`: the 2 350 samples of the 156 sound banks (NNN: the bank's file); `music/NN.flac`: the 25 music streams (NN: their file); `index.json` | 45 MB WAV, 197 MB FLAC |
 
 The details: [docs/GAMEDATA.md](docs/GAMEDATA.md) ("assets/").

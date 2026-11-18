@@ -294,7 +294,27 @@ converter's layout and shapes. Written by `src/pack.rs` (`assets.rs`, `model::fi
 | `motions/motion_NNNN.glb` | a motion (4 231: those the characters' movesets play). NNNN is its number in file 133's table, the number of its first move (as `anims/`) |
 | `stages/stage_NN.glb` | an arena (23). NN is its number (geometry file 189 + 7 x NN; 20 is Tekken Bowl, 21 and 22 are not in the stage list); `stages/index.json`: `[{"id", "name", "file"}]` |
 | `gamedata/*.json` | the files above, but each move's `anim` is its clip's name (`motion_NNNN`), not a file |
-| `gamedata/roster.json` | Tekken 3's shape: `characters` (a body each: `id`, `name`, `moveset_id`, `selections`), `selections.entries` (each character file: `selection` = body x 8 + costume, `character` = body, `costume`, `name`, `model_record`, `glb`, `moveset_file`, `moveset_id`), `select_grid.entries` (every character, in body order: the select screen's layout is not decoded) |
+| `gamedata/roster.json` | Tekken 3's shape: `characters` (a body each: `id`, `name`, `moveset_id`, `selections`), `selections.entries` (each character file: `selection` = body x 8 + costume, `character` = body, `costume`, `name`, `model_record`, `glb`, `moveset_file`, `moveset_id`), `select_grid.entries` (every character, in body order), and **new** `front_end` (below) |
+| `pictures/FFF_NNN.png` | the front end's 2D pictures (files 3, 130-132, 134, 136, 141-182, as `textures/` names them: images counted without palettes), each in the palette its code draws it with (FRONTEND.md 1); `003_006_angry.png`-`003_011_angry.png`: the health-bar strips in the angry palettes 0x3D-0x42 |
+
+### `gamedata/roster.json` `front_end` (**new**)
+
+The front end's tables from the executable (docs/FRONTEND.md, by section), written by `src/front.rs`. Pictures are
+named by their file in `pictures/`; positions are on the 640 x 448 screen; characters are character ids (0-33),
+bodies 0-38 (34-38 Tiger, Panda, Tetsujin, Alex, Angel).
+
+| Key | Content |
+|---|---|
+| `title` | the title's logo (`134_003`), `press_start` (0x51EED0), `copyright` (0x51EF40, 0x51EF70; the font's `@` written `©`) |
+| `fonts.big` | the chrome font `003_001`: `glyph` size [52, 42], its `rows` of glyphs (read off the picture, not the code) |
+| `menu.items` | the main menu 0x51EFE0: `mode` (the menu id = the game mode, FRONTEND.md 2), `label`, `locked` (shown only once unlocked: Tekken Bowl, Theater, Gallery) |
+| `select` | `titles` by mode (0x51EC18); `slots` (0x440A68, 36: `slot`, neighbours `up`/`down`/`left`/`right` or null, `x`, `y`, `character` from 0x520460, null for RANDOM; a face is drawn at (x, y + `face_dy`)); `hidden_slots` (Mokujin's, Unknown's); `faces` by body (0x520508), `random_face`, `locked_face`, `cursor` (at `cursor_dxy`), `tags` (1P, 2P, 1A-1D, CPU); `selectable` from the start (0x51E850), `copy_pool` (Mokujin's, 0x51E8A0); `portraits` by body (files 143-181) |
+| `hud` | `bars` (x of each side, y, w, h), the six `strips` and `angry_strips` (anger from `angry_at`, blinking every `angry_blink` frames), `trail_per_frame` (max / 800, max / 400); `plates` by body (0x5206B8: `picture`, `x` offset, `streak` 0x51F678), `plate_y`, `streaks`; `lamps` (`lit`, `unlit`, x of each side, `dx`, `y`, `blink` [frames, period]); `team_icon`, `chicken`; `timer` (`digits`, `digit_w`, `infinity`); `stage` (STAGE / FINAL texts, alternating every 32 frames) |
+| `arcade` | `fights` 8; `rivals` per character (0x51F3C8: three, null = any), `fallback` (0x51F560), `pairs` (0x5207F0: [a, b]); `rival_arena` 6, `boss` 33 alone in `boss_arena` 14 for `boss_rounds` 1; `early_fights` 3 without `early_excluded`; `continue` (`frames` 898, `digit_frames` 100); `time_format` |
+| `team_battle` | `members` [1, 8], `refill_percent` 15 (FIGHT_DATA.md 11) |
+| `unlocks` | `schedule` (0x440818: `stage`, `kind`, `character`), the `kinds`' meaning, `points_per_stage` 50 |
+| `options` | the game options' descriptors (0x439CE0): `label`, `config` (offset in the 0x68-byte config), `default`, `values` |
+
 | `gamedata/movesets/index.json` | as above: its `models` are the characters (`model_record`, `glb` = `model_NNN.glb`), the shape of Tekken 3's |
 | `gamedata/movesets/motions_NN.json` | `{"moveset_id", "motions": ["motion_NNNN.glb", ...]}`: the motions moveset NN's moves play |
 | `gamedata/sound.json`, `music.json`, `rounds.json` | the sound, music and round-flow tables (below; written by `src/sound.rs` and `fight::rounds`) |
