@@ -151,7 +151,7 @@ pub fn glb(frames: &[Frame]) -> Vec<u8> {
         .flat_map(|f| {
             let (h, d) = (ang(f[0]), f[2] as f64 * SCALE);
             // the same mirror as the angles: z runs the other way (a punch must carry its fighter forward)
-            [(h.sin() * d) as f32, (f[1] as f64 * SCALE) as f32, (-h.cos() * d) as f32]
+            [(libm::sin(h) * d) as f32, (f[1] as f64 * SCALE) as f32, (-libm::cos(h) * d) as f32]
         })
         .collect();
     let output = g.accessor(&glb::floats(&t), glb::F32, "VEC3", frames.len());

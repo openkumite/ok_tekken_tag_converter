@@ -122,7 +122,7 @@ pub fn arena(parts: &[(usize, &[u8])]) -> (Vec<Batch>, Vec<Batch>) {
                 let near = |a: [f32; 3], c: [f32; 3]| {
                     let (dx, dz) = (c[0] - a[0], c[2] - a[2]);
                     let k = (-(a[0] * dx + a[2] * dz) / (dx * dx + dz * dz).max(1e-6)).clamp(0.0, 1.0);
-                    (a[0] + k * dx).hypot(a[2] + k * dz) < 3000.0
+                    libm::hypotf(a[0] + k * dx, a[2] + k * dz) < 3000.0
                 };
                 near(t0, t1) || near(t1, t2) || near(t2, t0) || (side(t0, t1) == side(t1, t2) && side(t1, t2) == side(t2, t0))
             })
@@ -141,8 +141,8 @@ pub fn arena(parts: &[(usize, &[u8])]) -> (Vec<Batch>, Vec<Batch>) {
     }
     // the far ground: batches near floor height that reach far out; their inner edge is the hole
     let low = |p: &&[f32; 3]| p[1] < 300.0;
-    let far = scenery.iter().filter(|b| b.pos.iter().any(|p| p[0].hypot(p[2]) > 10000.0));
-    let hole = far.flat_map(|b| b.pos.iter().filter(low).map(|p| p[0].hypot(p[2]))).fold(f32::MAX, f32::min);
+    let far = scenery.iter().filter(|b| b.pos.iter().any(|p| libm::hypotf(p[0], p[2]) > 10000.0));
+    let hole = far.flat_map(|b| b.pos.iter().filter(low).map(|p| libm::hypotf(p[0], p[2]))).fold(f32::MAX, f32::min);
     for (tiles, px, pz) in floors {
         let radius = if hole < 60000.0 { (hole * 1.5).clamp(16000.0, 40000.0) } else { 16000.0 };
         let reach = (radius / px.min(pz)).ceil() as i32;
@@ -153,7 +153,9 @@ pub fn arena(parts: &[(usize, &[u8])]) -> (Vec<Batch>, Vec<Batch>) {
         }
         for (ix, iz) in (-reach..=reach).flat_map(|x| (-reach..=reach).map(move |z| (x, z))) {
             let (ox, oz) = (ix as f32 * px, iz as f32 * pz);
-            if (ix, iz) != (0, 0) && (ox.abs() - px / 2.0).max(0.0).hypot((oz.abs() - pz / 2.0).max(0.0)) >= radius {
+            if (ix, iz) != (0, 0)
+                && libm::hypotf((ox.abs() - px / 2.0).max(0.0), (oz.abs() - pz / 2.0).max(0.0)) >= radius
+            {
                 continue;
             }
             scenery.extend(tiles.iter().cloned().map(|mut b| {
