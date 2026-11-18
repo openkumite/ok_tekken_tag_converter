@@ -292,7 +292,8 @@ converter's layout and shapes. Written by `src/pack.rs` (`assets.rs`, `model::fi
 | `manifest.json` | `{"game": "ttt", "format": 8, "fingerprint"}`. `format` is the layout's (the Tekken 3 converter's FORMAT, which the engine asks for at least); `fingerprint` is the Tekken 3 converter's `convert_all::fingerprint` (SHA-256 over each `.glb` and `.json`, by path in sorted folders, of a JSON file with its keys sorted and a glb without its buffers, views and images then its accessors' data; the first 16 bytes in hex), over `characters/`, `motions/` and `gamedata/` |
 | `characters/model_NNN.glb` | a fighter: body and costume of the roster's (127). NNN is its pack's file number in TEKKEN.BIN (345 + 3 x costume slot), as `models/NNN.glb` |
 | `motions/motion_NNNN.glb` | a motion (4 231: those the characters' movesets play). NNNN is its number in file 133's table, the number of its first move (as `anims/`) |
-| `stages/stage_NN.glb` | an arena (23). NN is its number (geometry file 189 + 7 x NN; 20 is Tekken Bowl, 21 and 22 are not in the stage list); `stages/index.json`: `[{"id", "name", "file"}]` |
+| `motions/bowl_NNN.glb` | Tekken Bowl's bowler motions (114, file 128 part 0, BOWL_ENDINGS.md 4): clip `bowl_NNN`, NNN its track |
+| `stages/stage_NN.glb` | an arena (23). NN is its number (geometry file 189 + 7 x NN; 20 is Tekken Bowl, 21 and 22 are not in the stage list); `stages/index.json`: `[{"id", "name", "file"}]`. Tekken Bowl's hall without its objects, which stand at the origin until the game moves them; `bowl_ball.glb`, `bowl_pin.glb` (its base at the origin) and `bowl_deck.glb` (the pin deck where the object table puts it) are the objects the bowl draws (BOWL_ENDINGS.md 6) |
 | `gamedata/*.json` | the files above, but each move's `anim` is its clip's name (`motion_NNNN`), not a file |
 | `gamedata/roster.json` | Tekken 3's shape: `characters` (a body each: `id`, `name`, `moveset_id`, `selections`), `selections.entries` (each character file: `selection` = body x 8 + costume, `character` = body, `costume`, `name`, `model_record`, `glb`, `moveset_file`, `moveset_id`), `select_grid.entries` (every character, in body order), and **new** `front_end` (below) |
 | `pictures/FFF_NNN.png` | the front end's 2D pictures (files 3, 130-132, 134, 136, 141-182, as `textures/` names them: images counted without palettes), each in the palette its code draws it with (FRONTEND.md 1); `003_006_angry.png`-`003_011_angry.png`: the health-bar strips in the angry palettes 0x3D-0x42 |
@@ -413,3 +414,21 @@ in order once their frame has come), `camera`, `body`, `face`, `hands` (the file
 `labels` (0x455E50: per character 8 costume labels or null), `music` (0x455D80: the music player's `{bgm, name}` to
 EXIT, 254), `extras` (the movies and the EMBU entries after the rows). The constants are the code's, read in
 BOWL_ENDINGS.md 7.5, not tables.
+
+### `gamedata/bowl.json` (**new**)
+
+Tekken Bowl (BOWL_ENDINGS.md sections 1-6; `src/bowl.rs`), in the game's units and axes (y down, z down the lane):
+`characters` (34, by FE id, from 0x523618, 0x523590, 0x5236A0: `s` the stat S, `left`, `female` the charge's style,
+`reactions` four strike reactions as bowl motions, `voices` two throw voices and the charge's, as sound entries),
+`copied` (Mokujin and Unknown bowl with another's stats), `strike_poses` (by moveset, 0x5237D8), `motions` (`frames`
+of each `bowl_NNN`; by hand: stand, step right, step left, throw, + 4 for a left-hander; the charges 0x6A / 0x6E, + 2
+for the female style, + 1 left-handed), `throw` (the phases' steps, limits, the meters' bounds and speeds, the release
+at frame 106), `charge`, `ball` (start, radius, the lane's height, the fall, the bounce, the hook's start and length,
+where a roll ends), `pins` (`y` the centre's height, `rack` the ten spots (x, z), the side, gravity, contact heights,
+the down test's radius^2, the deck walls), `spectators` (the test's radius^2, the K.O.'s frames and voice, `people`:
+the 25 beside the lane, of the arena's cast), `speed` (the MPH display), `sounds` (sound entries: the first touch,
+the pin clatter by level, the strike announcer by run), `callouts` (the texts: STRIKE! .. !!GREAT!!, PUNCH OUT, PERFECT,
+MISS, FOUL, SPARE, NICE COVER from the executable; SPLIT, K.O., OVER CHARGED), `split_gap`, `camera` (the decoded
+bases of modes 0-2), `models` (the ball's, pin's and deck's glbs, the pin's centre above its base). The code-read
+rules are written as read (strings where they are formulas); the tables are read from the executable.
+

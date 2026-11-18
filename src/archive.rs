@@ -101,8 +101,13 @@ impl Archive {
 
 /// A pack: u32 count, u32 first offset, then (size, next offset) pairs. None when `d` is not one.
 pub fn pack(d: &[u8]) -> Option<Vec<&[u8]>> {
+    parts(d, 64)
+}
+
+/// A pack of up to `max` parts ([`pack`] looks for 64 at most; scene 42's motions are 114).
+pub fn parts(d: &[u8], max: usize) -> Option<Vec<&[u8]>> {
     let (n, mut o) = (u32le(d, 0)? as usize, u32le(d, 4)? as usize);
-    if d.len() < 16 || n == 0 || n > 64 || o != (8 + 8 * n).next_multiple_of(16) {
+    if d.len() < 16 || n == 0 || n > max || o != (8 + 8 * n).next_multiple_of(16) {
         return None;
     }
     let mut out = Vec::new();
