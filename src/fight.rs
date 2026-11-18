@@ -27,6 +27,12 @@ const RECOVERABLE: usize = 0x5f5168 - VADDR; // f32 0.6, f32 1.4: the part of a 
 const ANGER: (usize, usize) = (0x5207f0 - VADDR, 76); // 5 x s8: partner body, its variant mask, active body, its mask, effect
 // air reactions of 28 bytes (0x374010): entries 0-7 in the first table, entry k >= 8 at the second + 28 * k
 const AIR: (usize, usize) = (0x500678 - VADDR, 0x5f2ba8 - VADDR);
+// the camera (FIGHT_DATA.md section 18)
+const ARENA_PROJECTION: (usize, usize) = (0x507fe0 - VADDR, 25); // {H, H min, H max, dolly flag, variant}, s16
+const SITUATIONS: (usize, usize) = (0x508908 - VADDR, 30); // {in frames, hold, pitch[4], yaw offset[4]}, s16
+const CAMERA_LISTS: (usize, usize) = (0x434c78 - VADDR, 0x134); // {u32 list, s16 count, total, split, first mirrored}
+const CAMERA_MOTIONS: usize = 0x508130 - VADDR; // u32 offsets of the camera motions in disc file 12, rising
+const INTRO_OFFSET: usize = 0x509c20 - VADDR; // s16 eye x, y, z
 /// The life option every match uses (0x3B1488, the only writer of the option, sets 3).
 const LIFE_OPTION: usize = 3;
 
@@ -126,7 +132,7 @@ pub fn moves(elf: &[u8], anims: &[Option<String>], frames: &[u8]) -> Result<Valu
             "air_drift": h(r, 0x16) as i16,
             "bytes_18": {"frame_count_ram": b(r, 0x18), "jump_start": b(r, 0x19), "jump_end": b(r, 0x1a), "hold_frame": b(r, 0x1b)},
             "active": active, "hitstop": b(r, 0x2e) as i8, "air_reaction": b(r, 0x2f),
-            "flags24": {"raw": flags, "camera_script": flags >> 24},
+            "flags24": {"raw": flags, "camera_script": flags >> 23},
             "push_control": {"raw": push, "mode": push & 15, "disable_mask": push >> 4 & 0xff, "mask_only_near_active": push & 0x1000 != 0},
             "word_32": h(r, 0x32),
             "sound_list": sound_list, "sounds": sounds,
@@ -476,6 +482,89 @@ pub fn rounds() -> Value {
     })
 }
 
+/// A camera list's value: (1, situation type) below 30, (2, camera motion) for 30-561, else (0, -1) (0x393A90).
+fn camera_value(v: i16) -> (u8, i16) {
+    match v {
+        0..30 => (1, v + 1),
+        30..562 => (2, v - 29),
+        _ => (0, -1),
+    }
+}
+
+/// `N` s16 at `o`.
+fn s16s<const N: usize>(elf: &[u8], o: usize, what: &str) -> Result<[i16; N]> {
+    let r = bytes(elf, o, 2 * N, what)?;
+    Ok(std::array::from_fn(|k| h(r, 2 * k) as i16))
+}
+
+/// camera.json: the fight camera in the Tekken 3 converter's shape (OpenKumite's `kumite_sim::camera`): Tekken 3's
+/// camera module with Tekken Tag's constants (FIGHT_DATA.md section 18); the code's constants as read there.
+pub fn camera(elf: &[u8]) -> Result<Value> {
+    let mut arenas = Vec::new();
+    for i in 0..ARENA_PROJECTION.1 {
+        let [h, h_min, h_max, dolly, variant] = s16s(elf, ARENA_PROJECTION.0 + 10 * i, "the arena projections")?;
+        arenas.push(json!({"arena": i, "h": h, "h_min": h_min, "h_max": h_max, "dolly": dolly, "variant": variant}));
+    }
+    let mut situations = Vec::new();
+    for i in 0..SITUATIONS.1 {
+        let [frames, hold, p0, p1, p2, p3, y0, y1, y2, y3] = s16s(elf, SITUATIONS.0 + 20 * i, "the situation types")?;
+        situations.push(json!({"type": i + 1, "in_frames": frames, "field_1": hold, "pitch": [p0, p1, p2, p3],
+            "yaw_offset": [y0, y1, y2, y3]}));
+    }
+    let mut lists = Vec::new();
+    for id in 0..CAMERA_LISTS.1 {
+        let r = bytes(elf, CAMERA_LISTS.0 + 12 * id, 12, "the camera lists")?;
+        let (list, count) = (w(r, 0) as usize, h(r, 4) as i16);
+        if list == 0 || count <= 0 {
+            continue;
+        }
+        ensure!(count as usize <= MAX_LIST, "camera list {id:#x}: {count} entries");
+        let at = list.checked_sub(VADDR).with_context(|| format!("camera list {id:#x}: pointer {list:#x}"))?;
+        let entries = bytes(elf, at, 8 * count as usize, "a camera list")?.as_chunks::<8>().0.iter().map(|e| {
+            let ((kind, value), (mirrored_kind, mirrored)) =
+                (camera_value(h(e, 4) as i16), camera_value(h(e, 6) as i16));
+            json!({"flags": h(e, 0), "weight": h(e, 2) as i16, "type": kind, "value": value,
+                   "mirrored_type": mirrored_kind, "mirrored_value": mirrored})
+        });
+        lists.push(json!({"id": id, "split": h(r, 8) as i16, "first_mirrored": h(r, 10) as i16, "entries": entries.collect::<Vec<_>>()}));
+    }
+    let (mut motions, mut last) = (0, 0);
+    while let Some(o) = crate::u32le(elf, CAMERA_MOTIONS + 4 * motions).filter(|&o| motions == 0 || o > last) {
+        (last, motions) = (o, motions + 1);
+    }
+    let intro: [i16; 3] = s16s(elf, INTRO_OFFSET, "the round-start offset")?;
+    let h0 = arenas.first().map_or(json!(0), |a| a["h"].clone());
+    Ok(json!({
+        "angle_units": "4096 per turn (camera module keeps pitch/yaw << 6)",
+        // arena 0's: each arena's below (0x38DBC0 at the round reset)
+        "projection_h": h0,
+        // the pixels H is measured in: the fight's 512-wide frame (off screen is x >= 533 or < -20, 0x34FE7C; the
+        // framing's pixel constants are Tekken 3's x 512 / 368); Tekken 3's is 368
+        "screen_width": 512,
+        "arena_projection": {"address": "0x507FE0", "note": "by arena (gp-0x743A); variant 1 halves situation pitches, the dolly flag makes a camera motion's zoom a dolly", "rows": arenas},
+        "fight": {
+            // the depth is H * 1900 / 256 (Tekken 3: 5517 at any H)
+            "distance": 615 * 1900 / 256, "distance_per_h": [1900, 256],
+            "sample_y_offset": -290, "margin": 150, "fit_px": 392, "dead_zone_px": 68, "lateral_easing": [1, 8],
+            "pullback_out": [1, 8], "pullback_in": [1, 32], "vertical_keep_px": 156, "centre_point_world_y": -450,
+            "centre_drop": 140, "centre_drop_px": "140 - 450*H/dist",
+            "vertical_out": {"rate": [1, 8], "max_step": 800}, "vertical_in": {"rate": [1, 16], "max_step": 1200},
+            "yaw": {"start_threshold": 3640, "brake_zone": 14564, "freeze_above": 109226, "acc": 1536, "acc_brake": 768,
+                    "damping": [14, 128], "max_velocity": 56784, "settle_frames": 32, "freeze_first_frames": 200,
+                    "move_caps": {"0x13": 512, "0x14": 384, "0x15": 128, "0x16": 64}},
+            "pitch_lag": {"threshold": 14563, "max_step": 256, "easing": [1, 16]},
+            "initial_eye": [0, -1200, -8000],
+            "routines": {"sample": "0x38EC08", "yaw": "0x38F7F8", "framing": "0x38FD90", "reset": "0x390E08", "director": "0x38C1E8"},
+        },
+        "intro": {"address": "0x509C20", "routine": "0x3954E8", "frames_first_round": 120, "frames_other": 90,
+                  "ease_frames": 90, "blend_frames": 13, "offsets": [intro],
+                  "formula": "eye = base.eye + off*(1 + sin(0xC00 + min(t, 90)*1024/90)), t counts T..0; hand-off weight min(t*4096/13, 4096)"},
+        "situation_presets": {"address": "0x508908", "entries": situations},
+        "move_camera_lists": {"address": "0x434C78", "note": "by camera id (move flags >> 23); weights out of the list's sum; type 1 = situation type, 2 = camera motion (not decoded), 0 = none; the mirrored value when the orientation is set", "lists": lists},
+        "camera_motions": {"address": "0x508130", "file": 12, "count": motions, "decoded": false},
+    }))
+}
+
 /// Writes `gamedata/` into `out`; returns its files. `anims`, `frames`: each motion's file in the pack and its
 /// length; `models`: the manifest's fighters.
 pub fn export(
@@ -491,6 +580,7 @@ pub fn export(
         ("gamedata/hits.json".into(), hits(elf)?),
         ("gamedata/reactions.json".into(), reactions(elf)?),
         ("gamedata/rules.json".into(), rules(elf)?),
+        ("gamedata/camera.json".into(), camera(elf)?),
     ];
     movesets(elf, models, &mut files)?;
     for (name, v) in &files {
@@ -508,6 +598,12 @@ mod tests {
         for (k, v) in v.iter().enumerate() {
             elf[o + 2 * k..][..2].copy_from_slice(&v.to_le_bytes());
         }
+    }
+
+    #[test]
+    fn camera_list_values_are_situations_or_motions() {
+        let v = [0, 29, 30, 561, 562, -1].map(camera_value);
+        assert_eq!(v, [(1, 1), (1, 30), (2, 1), (2, 532), (0, -1), (0, -1)]);
     }
 
     #[test]
@@ -563,7 +659,7 @@ mod tests {
             (m["air_drift"].as_i64(), m["hitstop"].as_i64(), &m["active"]),
             (Some(-2), Some(-3), &json!([8, 9]))
         );
-        assert_eq!(m["flags24"], json!({"raw": 0x2a00_0100, "camera_script": 0x2a}));
+        assert_eq!(m["flags24"], json!({"raw": 0x2a00_0100, "camera_script": 0x54}));
         assert_eq!(
             m["push_control"],
             json!({"raw": 0x1012, "mode": 2, "disable_mask": 1, "mask_only_near_active": true})

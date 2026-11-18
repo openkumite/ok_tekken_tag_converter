@@ -276,6 +276,22 @@ fn fight_data(pack: &Hashed) {
         ),
         (Some(100), Some(108), Some(109), Some(120), Some(115), Some(111))
     );
+    // the camera (FIGHT_DATA.md section 18): H 615 but arena 24's 850, [500, 900] on arenas 5, 11, 12; 485 camera
+    // motions; list 0x69: 30 % type 18 (26 mirrored), 30 % type 28, 40 % motion 1 (2 mirrored)
+    let camera = load("camera.json");
+    let rows = camera["arena_projection"]["rows"].as_array().unwrap();
+    let h: Vec<[i64; 2]> = rows.iter().map(|r| [r["h"].as_i64().unwrap(), r["h_min"].as_i64().unwrap()]).collect();
+    assert_eq!((h.len(), h[0], h[5], h[11], h[24]), (25, [615, 600], [615, 500], [615, 500], [850, 600]));
+    assert_eq!(camera["camera_motions"]["count"], 485);
+    assert_eq!(camera["intro"]["offsets"], serde_json::json!([[0, 0, -3700]]));
+    let list = camera["move_camera_lists"]["lists"].as_array().unwrap().iter().find(|l| l["id"] == 0x69).unwrap();
+    let picks: Vec<[i64; 4]> = list["entries"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|e| ["type", "value", "mirrored_type", "mirrored_value"].map(|k| e[k].as_i64().unwrap()))
+        .collect();
+    assert_eq!(picks, [[1, 18, 1, 26], [1, 28, 1, 28], [2, 1, 2, 2]]);
 }
 
 /// OpenKumite's `assets/`: its manifest, the counts, the roster and indexes, and a character and the motions read as

@@ -36,8 +36,9 @@ use serde_json::{Value, json};
 use std::collections::{BTreeSet, HashMap, HashSet};
 
 /// The pack's layout and contents; another one is converted again (3: `assets/`; 4: every section of a fighter; 5:
-/// the air reactions, the default life, the damage constants; 6: `assets/audio/`, sound, music and rounds).
-pub const FORMAT: i64 = 6;
+/// the air reactions, the default life, the damage constants; 6: `assets/audio/`, sound, music and rounds; 7: the
+/// camera, the camera id from bit 23).
+pub const FORMAT: i64 = 7;
 /// What a pack's manifest names it.
 pub const KIND: &str = "ttt";
 

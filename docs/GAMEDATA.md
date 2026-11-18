@@ -22,6 +22,7 @@ a fixed order: the same disc gives the same bytes on every platform.
 | `hits.json` | 0.4 MB | the 4 174 hit records (**new**) |
 | `reactions.json` | 0.2 MB | the 1 431 reactions, the 74 pushback curves, the 44 air reactions |
 | `rules.json` | 8 KB | health, hurt and push spheres, damage constants |
+| `camera.json` | 78 KB | the fight camera: projection per arena, framing constants, round-start fly-in, per-move camera lists |
 | `movesets/index.json` | 20 KB | which fighter and which model uses which moveset |
 | `movesets/moveset_NN.json` | 28 KB each | the 5 532 aliases of moveset NN (0-32) |
 
@@ -52,7 +53,7 @@ bank: a moveset reaches its moves through its aliases, and shared moves are the 
 | `active` | +2C, +2D | first and last active frame |
 | `hitstop` | +2E | signed |
 | `air_reaction` | +2F | the move's own air reaction (an index of `reactions.json` `air_reactions`, 8-43; 0: none), taken when the move juggles; non-zero in 36 moves. Tekken 3 has none |
-| `flags24` | +24 | `raw` (the whole word) and `camera_script`: **the top byte** (Tekken 3: the low byte). No bit names: see "Numbering" |
+| `flags24` | +24 | `raw` (the whole word) and `camera_script`: **bits 23-31**, the camera id (Tekken 3: the low byte). No bit names: see "Numbering" |
 | `push_control` | +30 | `raw`, `mode` (bits 0-3), `disable_mask` (bits 4-11), `mask_only_near_active` (bit 12): Tekken 3's modes |
 | `word_32` | +32 | always 0 |
 | `sound_list`, `sounds` | +1C | the list's index (null: none) and its entries `{raw, type, index}`: `raw` = `type << 12 \| index`. The indices are Tekken Tag's; which sample each is, is not decoded |
@@ -166,6 +167,33 @@ Tekken 3's throw victims and close-range tables are not here: not found as table
 These four are constants of the code (0x3720C8, 0x3C1350), written as data. There are no damage zones (the hurt
 sphere does not scale damage). Throws and round time are not here.
 
+## `camera.json`
+
+The Tekken 3 converter's `camera.json` (OpenKumite's `kumite_sim::camera`), from FIGHT_DATA.md section 18: Tekken
+3's camera module with Tekken Tag's constants. Angles 4096 a turn here (Tekken 3's units). Tekken 3's keys with
+Tekken Tag's values, unless **new**; Tekken 3's `tables` (sine, atan), `gsqrt`, `shake`, `ko`, `win`, `replay`, `end`
+and `attract` are not written (not decoded).
+
+- `projection_h`: arena 0's H (615; Tekken 3 500 everywhere). **New** `arena_projection.rows` (0x507FE0, by arena):
+  `arena`, `h`, `h_min`, `h_max` (the clamp: 600-900, 500-900 on arenas 5, 11, 12), `dolly` (a camera motion's zoom
+  is a dolly; 0 on arenas 3, 7), `variant` (1 on entry 24, H 850, which no stage of the list uses). **New**
+  `screen_width` 512: the pixels H and the framing's constants are measured in (the fight's 512-wide frame: off
+  screen is x >= 533 or < -20, 0x34FE7C; the constants are Tekken 3's x 512 / 368). Tekken 3's is 368.
+- `fight`: the framing's constants (code 0x38F7F8, 0x38FD90), Tekken 3's keys: `distance` 4564 at H 615 and **new**
+  `distance_per_h` [1900, 256] (the depth is H x 1900 / 256), `fit_px` 392, `dead_zone_px` 68, `vertical_keep_px`
+  156, **new** `centre_drop` 140 (the drop is 140 - 450 x H / distance; Tekken 3 100), `initial_eye` [0, -1200,
+  -8000], `yaw.move_caps` by camera id 0x13-0x16 (Tekken 3 0x27-0x2A); the rest as Tekken 3's.
+- `intro`: the round-start fly-in (0x3954E8): one offset (0x509C20, eye z -3700), `frames_first_round` 120,
+  `frames_other` 90, **new** `ease_frames` 90 (the offset eases over the last 90 frames; round 1 holds it for the
+  first 30), `blend_frames` 13 (the hand-off to the fight camera).
+- `situation_presets` (0x508908): the 30 situation types, Tekken 3's shape (`field_1` is the hold).
+- **New** `move_camera_lists` (0x434C78; Tekken 3's `script_selectors`): `lists` by camera id (move flags >> 23)
+  with an entry: `id`, `split`, `first_mirrored`, `entries` (`flags`, `weight` out of the list's sum, `type` 1 a
+  situation type / 2 a camera motion / 0 none, `value`, and `mirrored_type`, `mirrored_value` for the mirrored
+  orientation).
+- **New** `camera_motions`: `count` 485 in disc file 12 (offsets at 0x508130), `decoded` false: the motions' format is
+  not decoded, so the lists' type-2 entries name nothing a player can play.
+
 ## `movesets/`
 
 `index.json`: `models` (each fighter model of the pack: `model` and `model_record` its file number, `glb`, `body`,
@@ -205,7 +233,7 @@ The engine needs a table per game for these; nothing below is translated in the 
 - **Flag bits** (`flags24.raw`), Tekken 3 bit -> Tekken Tag bit: 8, 11, 12, 13 -> 0, 3, 4, 5; 18 -> 11; 28, 29,
   30 -> 19, 20, 22. By code: 0x04 unthrowable, 0x08 not parryable, 0x40 guard by input, 0x200 ki charge, 0x400
   drops push spheres, bit 19 commits the root. New: 0x100 the posture follows the stick. Unknown: 0x4000, 0x8000,
-  bits 17 and 21. The camera script is bits 24-31.
+  bits 17 and 21. The camera id is bits 23-31 (FIGHT_DATA.md section 18.2).
 - **Property ops**: 1-10 as Tekken 3; damage to the opponent is 0x0C (was 0x0B), damage to self 0x0D; hand poses
   moved up (0x0E -> 0x0F, 0x15 -> 0x18). Ops up to 0x58 occur; most are not decoded.
 - **Sound entries**: the type nibbles are Tekken 3's (6, 7, 2, 8, 9; rarely 0, 1, 3); the indices are renumbered.
@@ -215,7 +243,7 @@ The engine needs a table per game for these; nothing below is translated in the 
 
 Posture and attack-mask bits beyond those named; flag bits 0x4000, 0x8000, 17, 21; the camera values cond
 0x48-0x5B test; transition bit 0x4000's effect; req 0xEB; property ops past the ones listed; sound index -> sample;
-camera scripts; the `prefilter`'s classes (table 0x4FF8D0); how a reversal condition picks its motion list; the
+the camera motions; the `prefilter`'s classes (table 0x4FF8D0); how a reversal condition picks its motion list; the
 step bits of a sequence other than direction, buttons and tag; the air reactions' three `words`.
 
 ## `assets/`: what OpenKumite reads
