@@ -345,7 +345,7 @@ fn movesets(elf: &[u8], models: &[Value], out: &mut Vec<(String, Value)>) -> Res
     let models: Vec<Value> = (models.iter())
         .filter_map(|m| {
             let set = m.get("moveset")?.as_u64()? as usize;
-            Some(json!({"model": m.get("id")?, "glb": m.get("file")?, "body": m.get("body")?, "moveset_id": set, "moveset_file": moveset_file(set)}))
+            Some(json!({"model": m.get("id")?, "model_record": m.get("id")?, "glb": m.get("file")?, "body": m.get("body")?, "moveset_id": set, "moveset_file": moveset_file(set)}))
         })
         .collect();
     let index = json!({
@@ -364,7 +364,11 @@ fn spheres((base, n): (usize, usize), elf: &[u8], lift: &[(usize, i32)], names: 
     let mut layout = Vec::with_capacity(n);
     for i in 0..n {
         let y = lift.iter().find(|l| l.0 == i).map_or(0, |l| l.1);
-        layout.push(json!({"index": i, "bone_slot": u32_at(elf, base + 4 * i, what)?, "offset_game": [0, y, 0]}));
+        let slot = u32_at(elf, base + 4 * i, what)?;
+        // (OpenKumite finds the joint by its name, the offset in metres with y up)
+        let joint = crate::model::RIG.get(slot as usize).map(|r| r.0);
+        layout.push(json!({"index": i, "bone_slot": slot, "offset_game": [0, y, 0], "gltf_joint": joint,
+                           "offset_gltf_m": [0.0, -y as f64 * 0.001, 0.0]}));
     }
     let mut bodies = Vec::with_capacity(BODIES);
     for (body, name) in names.iter().enumerate() {
@@ -390,6 +394,8 @@ pub fn rules(elf: &[u8]) -> Result<Value> {
         Ok(json!({"bits": bits, "value": f32::from_bits(bits)}))
     };
     Ok(json!({
+        // which game's numbers the fight data holds (docs/GAMEDATA.md "Numbering")
+        "dialect": "ttt",
         "health": {
             "representation": "20.12 fixed point at player +0x3F4; a body's health = life option x its percent / 100",
             "life_table": "0x51F5A0", "life_options": life.iter().map(|v| v >> 12).collect::<Vec<_>>(), "life_options_raw": life,
@@ -651,7 +657,10 @@ mod tests {
         elf[RECOVERABLE..RECOVERABLE + 4].copy_from_slice(&0.6f32.to_le_bytes());
         let v = rules(&elf).unwrap();
         let hurt = &v["hurt_spheres"];
-        assert_eq!(hurt["layout"][8], json!({"index": 8, "bone_slot": 2, "offset_game": [0, -120, 0]}));
+        assert_eq!(
+            hurt["layout"][8],
+            json!({"index": 8, "bone_slot": 2, "offset_game": [0, -120, 0], "gltf_joint": "head", "offset_gltf_m": [0.0, 120.0 * 0.001, 0.0]})
+        );
         assert_eq!(hurt["layout"][11]["offset_game"], json!([0, -60, 0]));
         assert_eq!(hurt["per_character"].as_array().unwrap().len(), 34);
         assert_eq!(hurt["per_character"][0]["radii"].as_array().unwrap()[..3], [json!(200), json!(200), json!(120)]);
@@ -701,7 +710,7 @@ mod tests {
         let index = &out[33].1;
         assert_eq!(
             index["models"],
-            json!([{"model": 348, "glb": "models/348.glb", "body": 1, "moveset_id": 1, "moveset_file": "moveset_01.json"}])
+            json!([{"model": 348, "model_record": 348, "glb": "models/348.glb", "body": 1, "moveset_id": 1, "moveset_file": "moveset_01.json"}])
         );
         assert_eq!((index["files"].as_array().unwrap().len(), index["fighters"].as_array().unwrap().len()), (33, 1));
         // an alias naming a move past the last

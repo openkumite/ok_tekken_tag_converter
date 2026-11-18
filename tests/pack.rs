@@ -1,7 +1,7 @@
 //! The pack end to end. Without the disc: an image of zeros, and a disc of another game, give an error and leave
 //! the output as it was. With it (`TTT_DISC`: the image, in any format the converter reads): 133 fighters, 23
 //! arenas, 4291 motions, 2350 sounds, every file the manifest names, the fight data's known facts (docs/FIGHT_DATA.md);
-//! converted twice, the same bytes.
+//! OpenKumite's `assets/`, a character and motions read as its loader reads them; converted twice, the same bytes.
 
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing, clippy::panic)]
 
@@ -24,8 +24,8 @@ impl DiscFile for MemDisc {
     }
 }
 
-/// A pack in memory that keeps each file's size and hash (the pack is 1.7 GB), and the manifest and the fight data
-/// whole.
+/// A pack in memory that keeps each file's size and hash (the pack is 3 GB), and the manifests, the fight data, the
+/// motions and one character whole.
 #[derive(Default)]
 struct Hashed(Mutex<BTreeMap<String, (usize, u64)>>, Mutex<BTreeMap<String, Vec<u8>>>);
 
@@ -43,7 +43,13 @@ impl Vfs for Hashed {
         let mut h = DefaultHasher::new();
         h.write(data);
         self.0.lock().unwrap().insert(path.into(), (data.len(), h.finish()));
-        if path == "manifest.json" || path.starts_with("gamedata/") {
+        let kept = |p: &str| path.strip_prefix("assets/").is_some_and(|a| a.starts_with(p));
+        if path == "manifest.json"
+            || path.starts_with("gamedata/")
+            || ["manifest.json", "gamedata/", "motions/", "stages/index.json", "characters/model_351.glb"]
+                .iter()
+                .any(|p| kept(p))
+        {
             self.1.lock().unwrap().insert(path.into(), data.to_vec());
         }
         Ok(())
@@ -144,9 +150,11 @@ fn the_disc_converts_twice_the_same() {
     files(&m, &mut named);
     named.sort();
     let written = a.0.lock().unwrap().clone();
-    assert_eq!(named, written.keys().cloned().collect::<Vec<_>>());
+    let research: Vec<String> = written.keys().filter(|k| !k.starts_with("assets/")).cloned().collect();
+    assert_eq!(named, research);
     assert!(written.values().all(|f| f.0 > 0));
     fight_data(&a);
+    openkumite(&a);
     // the same disc again: the same bytes
     assert_eq!(m, m2);
     assert_eq!(written, *b.0.lock().unwrap());
@@ -256,4 +264,107 @@ fn fight_data(pack: &Hashed) {
         ),
         (Some(100), Some(108), Some(109), Some(120), Some(115), Some(111))
     );
+}
+
+/// OpenKumite's `assets/`: its manifest, the counts, the roster and indexes, and a character and the motions read as
+/// `kumite_assets::Character` reads them (the first mesh, the first skin, the first image; clips by joint name).
+fn openkumite(pack: &Hashed) {
+    let load = |name: &str| -> serde_json::Value {
+        serde_json::from_slice(&pack.read(&format!("assets/{name}")).unwrap()).unwrap()
+    };
+    let m = load("manifest.json");
+    assert_eq!((&m["game"], &m["format"], m["fingerprint"].as_str().unwrap().len()), (&"ttt".into(), &8.into(), 32));
+    let written = pack.0.lock().unwrap().clone();
+    let count = |dir: &str| written.keys().filter(|k| k.starts_with(&format!("assets/{dir}/"))).count();
+    assert_eq!((count("characters"), count("motions"), count("stages")), (127, 4231, 23 + 1));
+    let roster = load("gamedata/roster.json");
+    let entries = roster["selections"]["entries"].as_array().unwrap();
+    assert_eq!((entries.len(), roster["characters"].as_array().unwrap().len()), (127, 34));
+    assert_eq!(
+        entries[0],
+        serde_json::json!({"selection": 0, "character": 0, "costume": 0, "name": "Paul",
+        "model_record": 351, "glb": "model_351.glb", "moveset_file": "movesets/moveset_00.json", "moveset_id": 0})
+    );
+    let index = load("gamedata/movesets/index.json");
+    assert!(
+        index["models"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|e| written.contains_key(&format!("assets/characters/{}", e["glb"].as_str().unwrap()))
+                && e["model_record"].is_u64())
+    );
+    assert_eq!(load("stages/index.json")[20]["name"], "Tekken Bowl");
+    let rules = load("gamedata/rules.json");
+    assert_eq!((&rules["dialect"], &rules["hurt_spheres"]["layout"][8]["gltf_joint"]), (&"ttt".into(), &"head".into()));
+    // Paul: his character, skinned on the 98 nodes, the 18 joints named, one picture
+    let (doc, buffers, images) = gltf::import_slice(pack.read("assets/characters/model_351.glb").unwrap()).unwrap();
+    let skin = doc.skins().next().unwrap();
+    let joints: Vec<String> = skin.joints().map(|j| j.name().unwrap().to_string()).collect();
+    assert_eq!(joints.len(), 98);
+    for name in [
+        "root",
+        "chest",
+        "head",
+        "clavicle_A",
+        "upperarm_A",
+        "forearm_A",
+        "hand_A",
+        "clavicle_B",
+        "upperarm_B",
+        "forearm_B",
+        "hand_B",
+        "pelvis",
+        "thigh_A",
+        "shin_A",
+        "foot_A",
+        "thigh_B",
+        "shin_B",
+        "foot_B",
+    ] {
+        assert!(joints.iter().any(|j| j == name), "no joint {name}");
+    }
+    assert_eq!((doc.meshes().count(), images.len(), doc.animations().count()), (1, 1, 0));
+    let get = |b: gltf::Buffer| Some(&buffers[b.index()].0[..]);
+    let mut vertices = 0;
+    for p in doc.meshes().next().unwrap().primitives() {
+        let r = p.reader(get);
+        let n = r.read_positions().unwrap().count();
+        let (jn, uv) = (r.read_joints(0).unwrap().into_u16(), r.read_tex_coords(0).unwrap().into_f32());
+        assert!(jn.flatten().all(|j| (j as usize) < joints.len()));
+        assert!(uv.flatten().all(|c| (0.0..=1.0).contains(&c)));
+        assert_eq!(r.read_weights(0).unwrap().into_f32().count(), n);
+        vertices += n;
+    }
+    assert!(vertices > 1000, "{vertices}");
+    // his motions: every move of his moveset that has one names a clip whose file is in his list, and the clip's
+    // channels are on the character's joints
+    let moves = load("gamedata/moves.json");
+    let set = load("gamedata/movesets/moveset_00.json");
+    let list = load("gamedata/movesets/motions_00.json");
+    let files: Vec<&str> = list["motions"].as_array().unwrap().iter().map(|f| f.as_str().unwrap()).collect();
+    let mut clips = 0;
+    for alias in set["aliases"].as_array().unwrap().iter().filter_map(|a| a.as_u64()) {
+        let Some(clip) = moves["moves"][alias as usize]["anim"].as_str() else { continue };
+        assert!(files.contains(&format!("{clip}.glb").as_str()), "{clip}");
+        clips += 1;
+    }
+    assert!(clips > 2000 && files.len() > 1000, "{clips} {}", files.len());
+    for file in [files[0], files[files.len() - 1]] {
+        let (doc, buffers, _) = gltf::import_slice(pack.read(&format!("assets/motions/{file}")).unwrap()).unwrap();
+        assert_eq!(doc.meshes().count(), 0);
+        let a = doc.animations().next().unwrap();
+        assert_eq!(Some(file.trim_end_matches(".glb")), a.name());
+        for ch in a.channels() {
+            assert!(joints.iter().any(|j| Some(j.as_str()) == ch.target().node().name()));
+            let frames = ch.sampler().input().count();
+            match ch.reader(|b| Some(&buffers[b.index()].0[..])).read_outputs().unwrap() {
+                gltf::animation::util::ReadOutputs::Rotations(q) => assert_eq!(q.into_f32().count(), frames),
+                gltf::animation::util::ReadOutputs::Translations(t) => {
+                    assert_eq!((ch.target().node().name(), t.count()), (Some("root"), frames))
+                }
+                _ => panic!("a channel of neither rotations nor translations"),
+            }
+        }
+    }
 }

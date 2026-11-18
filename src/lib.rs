@@ -1,7 +1,7 @@
 //! Tekken Tag Tournament (PlayStation 2, USA v2.00, SLUS-20001) converted into a pack: the disc's one big file read
 //! through its table (`archive`), its fighters (`model`), arenas (`stage`), textures (`tex`), motions (`anim`),
 //! sounds and streams (`audio`), the executable's tables that name and join them (`moves`) and its fight data (`fight`), written as glb (`glb`),
-//! PNG and WAV into a pack (`pack`). Files go through `ok_converter_common::io::Vfs`; `main` is the command line.
+//! PNG and WAV into a pack (`pack`), with the part OpenKumite reads under `assets/` (`assets`). Files go through `ok_converter_common::io::Vfs`; `main` is the command line.
 //! The formats: docs/FORMATS.md.
 //!
 //! Everything on the disc is little-endian and untrusted: a read outside the data is an error or "not this format",
@@ -9,6 +9,7 @@
 
 pub mod anim;
 pub mod archive;
+pub mod assets;
 pub mod audio;
 pub mod fight;
 pub mod glb;

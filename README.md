@@ -2,9 +2,8 @@
 
 Converts your own Tekken Tag Tournament disc (PlayStation 2, USA v2.00, SLUS-20001) into a pack of its fighters,
 arenas, motions, pictures and sounds in modern formats, for OpenKumite (an open-source 3D fighting game engine, a
-separate project). OpenKumite does not read this pack yet: this is the foundation, a library and a command-line
-tool ported from the research tool that worked the formats out, and the pack keeps that tool's layout until the
-engine's side of it is written.
+separate project). The pack's `assets/` folder is laid out as OpenKumite reads Tekken 3's converted data (below);
+the rest keeps the layout of the research tool that worked the formats out, to look at in any glTF viewer.
 
 > **Unofficial.** ok_tekken_tag_converter is not affiliated with, endorsed or sponsored by Bandai Namco
 > Entertainment. Tekken is a trademark of Bandai Namco Entertainment Inc. This repository contains no game data:
@@ -24,7 +23,7 @@ resource), one file of its table at a time. Another disc, or another version of 
   `Vfs`, emptied first); returns its manifest. It runs no other program and reads no file but the disc's.
 - `pack::manifest(pack)`: a pack's manifest, checked.
 
-A pack (about 1.7 GB, 8 361 files):
+A pack (about 2.1 GB, 12 855 files):
 
 | Folder | Content | Format |
 |---|---|---|
@@ -36,8 +35,9 @@ A pack (about 1.7 GB, 8 361 files):
 | `video/` | the 3 movies' pictures, **not converted yet**: as on the disc (`NNN.pss`, an MPEG-2 program stream) | PSS |
 | `raw/` | files and packs not (fully) decoded | as on the disc, unscrambled |
 | `gamedata/` | the fight data: 7 351 moves, cancel lists, hit records, reactions, hurt and push volumes, health, the 33 movesets' aliases | JSON ([docs/GAMEDATA.md](docs/GAMEDATA.md)) |
+| `assets/` | what OpenKumite reads (236 MB, 4 455 files): below | GLB, JSON |
 
-`manifest.json`: `{"pack": "ttt", "format": 2, "source": {"image", "disc": "SLUS-20001", "version": "2.00"}}` and
+`manifest.json`: `{"pack": "ttt", "format": 3, "source": {"image", "disc": "SLUS-20001", "version": "2.00"}}` and
 the index of the files above: `models` (each fighter's `name`, `body`, `moveset`, `file`), `movesets` (the motions
 of each moveset, a fighter's own first) and `own` (how many of them are its own), `anims`, `stages` (each arena's
 `name`, `file`, `people`, `motions`, and `cast`: who stands where), `textures`, `sounds`, `music`, `video` (each
@@ -45,6 +45,21 @@ with `"converted": false` and its `sound`), `raw`, `gamedata`. `NNN` is a file's
 
 A motion file holds no mesh. Its channels target joints by name (`root`, `chest`, `thigh_A`...), which are the same
 in every fighter. The disc has no move names, only numbers. Converting the same disc again gives the same bytes.
+
+### `assets/`: OpenKumite's
+
+The files OpenKumite's loaders read, in the Tekken 3 converter's layout (its `characters/`, `stages/`, `gamedata/`,
+`manifest.json`), for a fight of two Tekken Tag fighters on a Tekken Tag arena:
+
+| Path | Content | Size |
+|---|---|---|
+| `manifest.json` | `{"game": "ttt", "format": 8, "fingerprint"}`: the Tekken 3 converter's fingerprint (the same hash of the same canonical forms) over `characters/`, `motions/`, `gamedata/` | |
+| `characters/model_NNN.glb` | the 127 fighters of the roster (body and costume), NNN as `models/`: the main mesh skinned on the 98 nodes every fighter shares, the 18 animated joints named as Tekken 3's, one RGBA picture, no animation | 95 MB |
+| `motions/motion_NNNN.glb` | the 4 231 motions the characters' movesets play, each once: one clip `motion_NNNN`, no mesh | 80 MB |
+| `stages/stage_NN.glb` | the 23 arenas by their number (`stages/index.json`: names): the scenery as a model around the fighters, the floor repeated | 44 MB |
+| `gamedata/` | the fight data again (a move's `anim` is its clip), `movesets/motions_NN.json` (the clips of each moveset), `roster.json` | 17 MB |
+
+The details: [docs/GAMEDATA.md](docs/GAMEDATA.md) ("assets/").
 
 The formats are described in [docs/FORMATS.md](docs/FORMATS.md), the fight data in the executable in
 [docs/FIGHT_DATA.md](docs/FIGHT_DATA.md), and the JSON written from it in [docs/GAMEDATA.md](docs/GAMEDATA.md).
@@ -59,7 +74,9 @@ ttt_convert list DISC           # the 748 files of TEKKEN.BIN: sector, size, str
 
 ## Not done yet
 
-- The pack's layout for OpenKumite (the engine reads none of it yet).
+- In `assets/`: the arenas' additive and darkening strips (lights, gloss, decals), their background characters and
+  moving objects; the fighters' other meshes (sections 1-12); the select screen's layout (`roster.json` lists the
+  fighters in body order).
 - The movies: their pictures are written as on the disc.
 - Move data (damage, frames, cancels), hit and hurt volumes.
 - Names of the two unlisted arenas after Tekken Bowl (the stage-select menu does not list them); how the game
