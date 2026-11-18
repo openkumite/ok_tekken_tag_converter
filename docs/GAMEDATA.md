@@ -297,8 +297,8 @@ converter's layout and shapes. Written by `src/pack.rs` (`assets.rs`, `model::fi
 | `gamedata/*.json` | the files above, but each move's `anim` is its clip's name (`motion_NNNN`), not a file |
 | `gamedata/roster.json` | Tekken 3's shape: `characters` (a body each: `id`, `name`, `moveset_id`, `selections`), `selections.entries` (each character file: `selection` = body x 8 + costume, `character` = body, `costume`, `name`, `model_record`, `glb`, `moveset_file`, `moveset_id`), `select_grid.entries` (every character, in body order), and **new** `front_end` (below) |
 | `gamedata/shadows.json` | **new** (format 12) the fighters' shadow meshes in the Tekken 3 converter's shape: `{"meshes": [{"models": [record], "joints": the 18 joint names, "vertices": [[joint, x, y, z]] (metres, in the joint's axes), "triangles", "quads": []}]}`, one per character file, from its pack's part 8 (the low-detail model the game draws its shadow with; a vertex on its heavier joint, a hair or cloth joint's carried by its parent: EFFECTS.md 2) |
-| `gamedata/stages.json` | **new** (format 12) `{"stages": [{"id": arena, "shadow": {"toward", "colour": [0, 0, 0], "alpha"}}]}`: the arena's light 0 (0x416288, turned up: the shadow falls along the line either way) and the alpha the floor is darkened by under a shadow (0x46B280 / 0x80); the Tekken 3 converter's stage without a light table, plus `alpha` |
-| `pictures/effects/` | **new** (format 12) `atlas.png` (128-texel cells: the four effect sets' pictures, files 4-7, and file 8's 20 fireballs) and `effects.json` in the Tekken 3 converter's shape: strips `spark` (set 0, 35 frames), `zero` (set 3, 30), `block` (set 1, 40), `dust` (set 2, 150, half blend), `heavy_a` / `heavy_b` (the orange and the blue fireballs), no `characters`, one `ground_offsets`; **`bursts`** `{spark, zero, block, dust}`: `{"cell", "size" (metres at size 1: 128 / 400), "level" (brightness, the guard's 0.25), "random" (the guard: paths at random), "paths": [[[x, y, z, size, fade]]] (metres from where the effect starts, a frame each)}` (EFFECTS.md 3-4) |
+| `gamedata/stages.json` | **new** (format 12) `{"stages": [{"id": arena, "shadow": {"toward", "colour": [0, 0, 0], "alpha"}}]}`: the arena's light 0 (0x416288, turned up: the shadow falls along the line either way) and the alpha the floor is darkened by under a shadow (0x46B280 / 0x80); the Tekken 3 converter's stage without a light table, plus `alpha`; **new** (format 13) `lights`: `{"toward": [[x, y, z] x 3], "colour": [[r, g, b] x 3], "ambient": [r, g, b]}`, the arena's three lights for the fighters as the table holds them (towards each, the arena's axes, y up; 128 = 1: EFFECTS.md 2); `dust`: `{"count", "scale", "colour": [r, g, b]}`, the arena's dust (0x437AC0: so many particles on paths at random, their size times `scale`, colour 128 = 1; EFFECTS.md 4) |
+| `pictures/effects/` | **new** (format 12) `atlas.png` (128-texel cells: the four effect sets' pictures, files 4-7, and file 8's 20 fireballs) and `effects.json` in the Tekken 3 converter's shape: strips `spark` (set 0, 35 frames), `zero` (set 3, 30), `block` (set 1, 40), `dust` (set 2, 150, half blend), `heavy_a` / `heavy_b` (the orange and the blue fireballs), no `characters`, one `ground_offsets`; **`bursts`** `{spark, zero, block, dust}`: `{"cell", "size" (metres at size 1: 128 / 400), "level" (brightness, the guard's 0.25), "random" (since format 13 the dust's, not the guard's: paths at random), "paths": [[[x, y, z, size, fade]]] (metres from where the effect starts, a frame each)}` (EFFECTS.md 3-4) |
 | `pictures/FFF_NNN.png` | the front end's 2D pictures (files 3, 130-132, 134, 136, 141-182, as `textures/` names them: images counted without palettes), each in the palette its code draws it with (FRONTEND.md 1); `003_006_angry.png`-`003_011_angry.png`: the health-bar strips in the angry palettes 0x3D-0x42 |
 
 ### `gamedata/roster.json` `front_end` (**new**)
@@ -348,12 +348,15 @@ its file. Motions are stored once (80 MB): a file per moveset with every motion 
 
 **A stage** is laid out as the arcade converter's `write_game`: node `sky` is the scenery, which the game keeps
 centred on the fighters (scene extras `drum: "model"`, `drum_cull: false`: the strips' winding is not stored, both
-sides are drawn; `background_rgb` black); node `floor` holds copies `floor_K` of the floor mesh, a period apart, to a
+sides are drawn; **new** (format 13) `drum_depth: "floor"`: the PS2 draws the arena with one z-buffer, so the floor
+hides the ground below it, unlike the arcade stages' model; `background_rgb` black); node `floor` holds copies `floor_K` of the floor mesh, a period apart, to a
 little past the hole in the far ground, and the scene extras' `floor_period` (metres) is that period. An arena's
 floors are one: the one of the longest period, each shorter one (2 or 4 m in 8 or 4 m) laid inside it. Only the
 opaque, cut-out and ordinarily blended strips are there: the additive ones (lights, floor gloss) and the darkening
 ones (shadows, dirt; on Lei's arena the wet street's, so its reflections show bare) are left out, and so are the
-background characters and the objects the game moves. Each primitive (a picture and a blend mode) has its own
+background characters and the objects the game moves: since format 13 all of part 3, the object models (the object
+table 0x520FC0 places them, the arena's tasks move them: King's helicopters and their rotors, which stood at the
+centre). Each primitive (a picture and a blend mode) has its own
 positions, texture coordinates and vertex colours; the first image is a white texel, which strips without a texture
 draw; each picture is cut to the texels its strips reach (all of it along an axis they repeat it on).
 

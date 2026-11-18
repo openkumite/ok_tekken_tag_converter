@@ -356,7 +356,8 @@ pub fn glb(scenery: &[Batch], objects: &[Batch], banks: &[Vec<tex::Upload>]) -> 
 /// The arena as OpenKumite's stages are laid out (the arcade converter's `write_game`), `name` its scene's name:
 ///
 /// - node `sky`: the scenery, which the game keeps centred on the fighters; scene extras `drum: "model"`, and
-///   `drum_cull: false` (the strips' winding is not stored: both sides are drawn).
+///   `drum_cull: false` (the strips' winding is not stored: both sides are drawn), `drum_depth: "floor"` (the PS2
+///   draws the arena with one z-buffer: the floor hides the ground below it, unlike the arcade stages' model).
 /// - node `floor`: the floor's copies `floor_K`, and the scene extras' `floor_period` (m): the engine moves them by
 ///   whole periods. An arena's floors are one: the one of the longest period, with each shorter one laid inside
 ///   it (they divide it: 2, 4 or 8 m in 8 m).
@@ -475,7 +476,7 @@ pub fn game_glb(name: &str, scenery: &[Batch], floors: &[Floor], banks: &[Vec<te
     if let (Some(sky), Some(node)) = (mesh("sky"), nodes.first_mut()) {
         glb::set(node, "mesh", json!(sky));
     }
-    let mut extras = json!({"drum": "model", "drum_cull": false, "background_rgb": [0, 0, 0]});
+    let mut extras = json!({"drum": "model", "drum_cull": false, "drum_depth": "floor", "background_rgb": [0, 0, 0]});
     if let (Some(f), Some(tile)) = (floor, mesh("floor")) {
         let copies: Vec<usize> = (0..f.at.len()).map(|k| k + 2).collect();
         nodes.push(json!({"name": "floor", "children": copies}));
@@ -561,7 +562,8 @@ mod tests {
             serde_json::from_str(doc.scenes().next().unwrap().extras().as_ref().unwrap().get()).unwrap();
         assert_eq!(
             extras,
-            json!({"drum": "model", "drum_cull": false, "background_rgb": [0, 0, 0], "floor_period": [4.0, 4.0]})
+            json!({"drum": "model", "drum_cull": false, "drum_depth": "floor", "background_rgb": [0, 0, 0],
+                "floor_period": [4.0, 4.0]})
         );
         let nodes: Vec<_> = doc.nodes().collect();
         assert_eq!(

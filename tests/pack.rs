@@ -349,6 +349,11 @@ fn openkumite(pack: &Hashed) {
         (stages["stages"].as_array().unwrap().len(), &stages["stages"][0]["shadow"]["alpha"]),
         (23, &0.375.into())
     );
+    // and its lights: Law's key at 255, Paul's ambient 38.4
+    assert_eq!(
+        (&stages["stages"][1]["lights"]["colour"][0], &stages["stages"][0]["lights"]["ambient"][0]),
+        (&serde_json::json!([255.0, 255.0, 255.0]), &serde_json::json!(38.400001525878906))
+    );
     let effects = load("pictures/effects/effects.json");
     assert_eq!((&effects["atlas"]["rows"], &effects["strips"]["spark"]["life"]), (&3.into(), &35.into()));
     sound(&load, count("audio/sfx"), count("audio/music"));
