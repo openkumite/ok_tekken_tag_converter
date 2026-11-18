@@ -341,12 +341,178 @@ and deal theirs through timed property 0x0C):
   a per-frame call per player (0x37D668 from 0x36DC9C); this is the likely AI, probably Tekken 3's candidate-list
   design. Low confidence.
 
+## 13. Round flow (third pass, read in code)
+
+The round machine is 0x36E198(p0, p1), one call a frame; its state is gp-0x7268 (jump table 0x500420):
+
+| State | Code | Does |
+|---|---|---|
+| 0 call | 0x36E1FC | counter gp-0x7208 + 1; inputs off; ends at frame 151 (round 1) or 91 (later rounds): 0x36C490 sets +0x410 / +0x414 (input on) for both, state 1 |
+| 1 fight | 0x36E250 | 0x36F3C8 ends the round when either side's +0x40C is 0 or the timer gp-0x74C0 reaches 0; the timer counts down unless the time option is 5 |
+| 2 K.O. / time up | 0x36E3CC | gp-0x71C8 counts frames; see below |
+| 3 result | 0x36E59C | win poses or the team-lose shot, camera mode gp-0x7200 |
+| 4 pose | 0x36E888 | waits, then state 5 (next round or match end, outside this machine) |
+
+**Round start motions** (0x368398, on the first call frame; the pad is gp-0x74B0 / gp-0x74AC for side 0 / 1):
+- Round 1: alias 4 if buttons 0x90 are held, alias 6 if 0x60, else rand() & 1 picks 4 or 6. A move of 151 frames or
+  more starts at frame `frames - 149` (so it ends with the call), else at frame 1. All intros on the disc are 150
+  frames (alias 4 and 6 are the same move for most of the newer characters).
+- Later rounds: alias 5 (30-240 frames, per character), from frame 1. The fight starts at frame 91 whether it ended
+  or not (inputs come on; the move's own END link returns it to the stance).
+- Body 33 (Unknown) in the mode tested by 0x3B6220: alias 9 (move 6591, shared, 150 frames).
+- The button bits are the game's pad word (not yet tied to LP/RP/LK/RK); Tekken 3 maps □/△ to alias 0, × to 2.
+
+**Announcer** (0x36EC50, by gp-0x7208; voice ids go through 0x374CD8, section 14):
+
+| Call | Round 1 frame | Later frame | Id |
+|---|---|---|---|
+| "Round" | 61 | 1 | 0x5A; 0x5C ("final round") when the round number >= the round limit and neither side is solo |
+| number | 100 | 40 | table 0x500458 by round: 0x48-0x4F for rounds 1-8, none for 9 (modes 5 / 6: 0x50); skipped on the final-round call |
+| "Fight" | 150 | 90 | 0x5B |
+
+These are Tekken 3's frames exactly (61 / 100 / 150 and 1 / 40 / 90). Text (0x36EDE0): the round banner shows on
+frames 66-104 (round 1) or 6-44, "READY!" from 106 / 46 until the fight starts.
+
+**Round result** (0x36F570, flags gp-0x7444, scores +0x408 from 0x36F408 in 1/4096 of full health):
+bit 0x01 time up (both scores > 0 when the timer ran out); 0x02 K.O.; 0x04 double K.O. (with 0x02 and 0x20); 0x08
+perfect (the winning team's two members still at their caps, +0x2C == +0x10, and gp-0x6A80[side] == 0); 0x10 great
+(winner's score <= 0xCC, 5 %); 0x20 draw (equal scores).
+0x36F6B8: the higher score gets +0xB4 = 1 and a win (+0x5A); the other +0xB4 = -1. A draw gives both sides a win and
+both +0xB4 = -1, and lowers the round limit gp-0x747E by 1; when that ends the match on a tie the settings byte +5,
+the wins, then 0x36F678 (which side is human, gp-0x7436) pick the winner.
+
+Call at frame 1 of state 2 (0x36EEE0): time up 0x54, perfect 0x58, double K.O. none (id 0), great 0x57, else K.O.
+0x59. Text: "TIME UP", perfect, "DOUBLE K.O.", "K.O.".
+
+**State 2 timings** (counter gp-0x71C8, from the end of the fight):
+- Every frame each fighter's input goes off (0x36C480), except a fighter with +0x40C set and +0x418 clear on a K.O.
+  (keeps control, as in Tekken 3); on a time up the winner (+0xB4 > 0, +0xCC bit 2) is set to +0x420 = 4,
+  +0x430 = 0x1000 instead.
+- K.O. (0x36F920): frame 16 sets settings +0x39 = 1, camera mode 3 (replay camera) and prepares the replay
+  (0x364698); frame 17 holds while the replay runs (gp-0x72A8 != 5) and restarts it while +0x39 < 3, so the K.O.
+  replay plays twice; frame 50: if the match is over, 0x3D2B88; frame 110: 0x3660A8 / 0x3D4718 (the replay ends);
+  frame 135: done. In one mode (gp-0x7434 set, 0x3ABCC0 false) there is no replay: done at frame 120.
+- Time up: frame 50 as above, done at frame 160.
+- Otherwise done at frame 600.
+- No slow motion was found in the K.O. path itself; the replay's speed is in 0x364B50 (not read).
+
+**Win poses** (state 3, 0x36E77C): both players get +0x127 = 1; 0x3B5DB0(p0, p1, 0) replaces the loser's player with
+the winner's partner (team entry +2 of the winner's side; body, aliases and volumes reloaded), placed at
+x 0x400, z -0xC00 from the winner; in a solo match the loser is hidden (+0x127 = 0). 0x368528(winner, other,
+frame-counter parity) picks the pose from the winner's pad: 0x80 -> 0, 0x10 -> 1, 0x40 -> 2, 0x20 -> 3, nothing ->
+gp-0x74D8 & 1. Both play `alias 0x12A2 + pose` (4770-4773) of their own moveset (0x3685B8), so a tag team poses as
+a pair. Body 33 never uses pose 0: it takes 0x12A3 + gp-0x74D8 % 3. Camera mode 0xE (side 0 won) or 0xF.
+State 4 then lasts 300 frames, or until START (pad bit 0x800, from frame 2).
+
+**Team lose** (0x36E6C8; the arcade flag settings +0x1F set, the match over and the human side lost): 0x3B5DB0(...,
+1) puts the loser's partner in the winner's player, both play alias 0x12AC (4780, 130-255 frames), camera 0x11 / 0x12,
+state 4 ends after 60 frames. Alias 0x12AD (4781) is not used by this code.
+Other modes (1, 2 with the draw flag, 6, 9) skip the poses and wait 300 frames.
+
+| Character | intro (4 / 6) | later rounds (5) | win poses 4770-4773 (frames) | team lose 4780 |
+|---|---|---|---|---|
+| Paul | 6518 / 6519 | 6521, 54 | 240, 118, 159, 255 | 181 |
+| Law | 6522 / 6523 | 6524, 98 | 255, 148, 230, 150 | 130 |
+| Lei | 6549 / 6550 | 6551, 240 | 218, 200, 255, 255 | 181 |
+| Jin | 6515 / 6516 | 6517, 128 | 230, 200, 209, 179 | 130 |
+
+The full table (all 39 roster entries; Mokujin, Tetsujin and Unknown have none, they copy) comes from
+`dump_round_sound.py`. Characters added after Tekken 3 repeat their poses (4772 = 4770, 4773 = 4771).
+
+Confidence: high on the state machine, call frames, aliases and pose choice; medium on the meaning of +0x127 and on
+which pad bits are which buttons; the round-time and rounds options' defaults are still not written by any code
+found (the settings block 0x43B7F8 is filled by copies).
+
+## 14. Sound (third pass)
+
+Play: 0x374C60 / 0x374CD8(id, side) mask the id with 0xFFF; id 0 plays nothing. 0x3755C8 maps ids >= 0x320 (below);
+0x374B48 finds the id's group in the **group table 0x42EBD8** (62 x 16 bytes: `u32 entries, u32 bank bytes, u16 kind,
+u16 first id, u16 count`); the sample is `id - first`, the n-th `VAGp` of the group's bank file. Sample entry (8
+bytes): `u32 SPU offset, u16 pitch (0x1000 = 48 kHz), u8 volume, u8 channel class`; class 6 and 8 add the side (one
+voice per player). Kind 0 is resident, kind 1 loads with the arena, kind 2 is a voice bank (four slots at
+0x8A7900: group, SPU address).
+
+| Ids | Group | File | Content |
+|---|---|---|---|
+| 0x000-0x05F | 0 | 1 (96) | common effects; 0x48-0x5C the announcer (8 kHz) |
+| 0x060-0x0A7 | 1-20 | 187 + 7k for arena k (3-7 each) | arena sounds: floor steps and landings, ambience |
+| 0x0A8-0x0B5 | 21 | 327 or 334 (14, identical) | not placed |
+| 0x0B6-0x0D1 | 22 | 45 (28) | floor sets and effects of another mode |
+| 0x0D2-0x31F | 23 + body | 344 + 3 * costume slot (FORMATS.md) | the body's voice; sample counts match bank files (Paul 22, Law 20, Lei 19...) |
+
+Ids 0x321-0x326 (0x3755C8, jump table 0x500900) depend on the arena gp-0x743A: 0x321 = floor table 0x5007F8[arena]
+word 1 or 2, alternating (footsteps), 0x322 = word 0 (landing / fall); 0x323 arena 0 -> 0x63; 0x324 arenas 9, 11,
+18 -> 0x85, 0x8C, 0xA4; 0x325 arenas 1, 15 -> 0x67; 0x326 arenas 1, 15 -> 0x9A; otherwise none.
+
+**Move sound lists** (0x375B60(self, opponent), every frame): up to 3 entries `type << 12 | index` (jump table
+0x500CC0):
+- 2, 3: a voice on frame 1 (type 2 only when no voice cooldown runs; it then sets the cooldown to the body's
+  table +0xC, 10 frames, 6 for bodies 21 and 35); 5: a voice at once. Voice (0x375AA8): body table 0x501808 + 16 *
+  body points at four s16 counts (types 2-5) then the ids; id = ids[sum of the earlier counts + index]. Paul: 8, 5, 3, 5
+  voices, ids 0xD3-0xE7 (group 23, samples 1-21). Only types 2-5 are voices; a fighter with +0xB6 set is silent.
+- 4: an effect `index` on the fighter's side, each frame the entry is reached.
+- 1, 7: hit sound, only on the frame the move connects (+0x132), on the victim's side. Guarded (victim +0x130):
+  always 0x7010 (id 0x10). Not guarded: the generic ids 0x7000, 0x7006, 0x7007, 0x7009 go through 0x3769D0 by the
+  attacker's damage +0xCA (bands < 13, < 23, < 33, more): move end bone (+0x28) >= 0x0C -> 0x09, 0x0C, 0x0B,
+  0x0D; end bone < 0x0C -> 0x06 or 0x23 (random), 0x07, 0x08, 0x0A (tables 0x500D10 for attacker +0x2A = 5, 7, 10,
+  18, i.e. Nina, Xiaoyu, Julia, Anna, and 0x500D30 for the rest; their first two columns are equal, the other
+  columns are not read). Other ids play as written. Victims whose +0x2C is 16 / 17
+  (Gun Jack, Roger; with gp-0x71D8[side]) or 18, 30, 34 take special handlers (0x376818, 0x376790, 0x376728).
+- 8: a timed script, index into 0x505C10 -> 4-byte steps at 0x501A78 `{u8 frame, u8 kind, u16 sound}` (kind 0
+  effect, 1 own voice or effect, 2 the opponent's, 3 0x376578); sound 0x13 starts a footstep pair.
+- 9: 0x376578(self, opponent, index).
+Also: the hit that K.O.s plays 0x700A (end bone < 0x0B) or 0x700D; frame `jump start` (move +0x19) plays 0x1012; fighter flag +0x136
+starts a footstep pair (0x1321 now and 4 frames later); +0x137 plays 0x1322.
+
+**Music**: the fight's BGM is table 0x4FB9C0[arena] (u16), sent to the IOP as command 0x40 (0x39A0C0). Names
+(0x455D80): 0 SELECT, 1 EMBU, 2 RESULT, 4 ENDING REPLAY, 5 NAME ENTRY, 6 STAFF ROLL, 8 CONTINUE?, 9-22 the arena
+themes. Arena numbers (stage select 0x440770):
+
+| Arena | 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| Name | Paul | Law A | Yoshimitsu A | Xiaoyu | Hwoarang | Lei | Ogre | School A | Jin A | Nina A | Eddy A | King | Heihachi | Eddy B | Unknown | Law B | School B | Jin B | Nina B | Yoshimitsu B |
+| BGM | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 | 20 | 21 | 19 | 22 | 10 | 16 | 17 | 18 | 11 |
+
+The A / B arenas share a theme. One mode (settings mode 8) picks 9 + rand() % 14, or 12 (0x3BFEC0). The BGM id ->
+stream file map lives in the IOP driver's protocol and was not found; the 14 long stream files 22-35 (57-110 s) are
+the likely themes 9-22 in order (file = id + 13), unconfirmed.
+
+Confidence: high on groups, ids, voice and hit selection, arena music ids; low on the BGM -> file guess.
+
+## 15. Tag (third pass)
+
+- No tag invulnerability exists in code. The only hit immunity is +0x14E: set to 4 frames on a hit that dealt
+  damage or hit an airborne victim (0x37202C), counted down each frame (0x3707F4); while it runs the hurt-sphere loop
+  (0x377198) skips the victim. Posture bit 24 (the tag state) is tested only at 0x36AA70 (section 7). So the leaving
+  fighter can be hit until the swap, and the entering one from its first frame.
+- The benched partner is not simulated: it exists only as its team entry (health regeneration, anger; section 10).
+- Tag throws and tag combos: nothing beyond the partner gates and the juggle counter reset (section 10) was found.
+- Camera during a tag: not decoded (section 16).
+
+## 16. Fight camera (entry points only)
+
+0x38D518(p0, p1, &mode) runs the camera every frame on mode gp-0x7200 (jump table 0x507F70, 20 modes; state at
+0x433330). Mode 0 is the round-start fly-in (0x395400), then mode 1, the fight camera (0x390E08 resets it with an
+offset of y -1200, z -8000 and the field of view from state +0xA4; framing 0x38EC08 per fighter, 0x38F768, 0x396CF8,
+0x391048); mode 1 switches to 0xD when 0x38CFC0 says so. 3 = replay, 0xD-0x12 the end shots of section 13.
+0x35B7A8 / 0x35B858 copy a 36-byte eye / target block into 0x415808 and build the view (0x35B4B0); 0x35B8B8 turns a
+segment into yaw and pitch. The per-move camera script byte (flags top byte) is not traced yet.
+
+## 17. Hit effects
+
+Not located. The damage function's only effect calls are on chip damage: 0x35BFF8(2, attacker) when the victim
+survives, 0x35C0D8 when chip K.O.s (both lead to 0x35BF10 / 0x3A2FF8, likely vibration and an effect).
+
 ## Not decoded
 
-- Sound index -> sample, and voice rows.
-- Camera script data and the fight camera's constants.
+- The fight camera's framing constants and per-move camera scripts; the camera during a tag (section 16).
+- Hit sparks and their table (section 17).
+- The BGM id -> stream file map; ids 0xA8-0xB5 (group 21) and kind-1 group 22's use; the type-8 script semantics in
+  full; what 0x376578 (type 9) does.
+- The K.O. replay's speed and window (0x364B50); the default round-time and rounds options.
+- Which pad bits pick the intro and win pose (as buttons).
 - How costume bodies 34-38 index the per-body tables (the dump script assumes they use their host body's).
-- Tag-in invulnerability, wall / ring-out rules, K.O. sequence timings, default time and round options.
+- Wall / ring-out rules; the ground game was not compared with Tekken 3 in this pass.
 - The CPU AI's structure.
 - Player +0x12E (counter-hit cause), +0x3E8 / +0x3F0 (conditions 0x36 / 0x37), transition bit 0x4000's effect.
 
@@ -361,4 +527,4 @@ takes it from your disc image) and the pack's `raw/` folder (`TTT_RAW`). Plain `
 PAUL`), `dump_tables.py` (reactions, curves, shared cancels, health tables), `t3match.py` (pairing with Tekken 3's
 converted game data), `xref.py`, `fn.py`, `dump_rules.py` (the tables of sections 7-12 as JSON, and the usage
 counts of conditions and transition types), `condmap.py` (conditions and transitions of paired Tekken 3 / Tag
-cancel lists), `gpx.sh` (gp-relative references in `out/code.asm`, the `fulldis.py` output).
+cancel lists), `dump_round_sound.py` (the tables of sections 13-14 as JSON), `gpx.sh` (gp-relative references in `out/code.asm`, the `fulldis.py` output).
