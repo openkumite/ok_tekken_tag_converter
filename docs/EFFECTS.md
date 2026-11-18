@@ -107,3 +107,24 @@ dirt) out of the stages (GAMEDATA.md): not exported.
 
 Fog / depth cue, screen flashes and the K.O. look, the tag-in / tag-out effects, ki-charge glow, motion blur:
 not located. The ending scripts' effect ops (BOWL_ENDINGS.md 7.4) use the same tasks.
+
+## 7. Arena objects (0x3D0E18, table 0x520FC0) [H unless marked]
+
+The row of arena n (16 bytes): `{*table, u32, *update, *init}`; the table `{u32 links, *links, u32 objects, *objects}`;
+a link `{s16 parent, s16 child}`; an object (64 bytes): `s16 model` (a block of geometry part 3), +2 the view
+(projection 0x433480 or 0x433440: near and far planes only), +6 the draw bucket, +8 the most children, +0xA / +0xC
+its int / float parameters, +0x10 the turn (radians), +0x20 the place (mm), +0x30 the routine run as it is drawn,
++0x34 the one run once made. 0x3D1920 sets a runtime object's defaults (drawn, turn order z-y-x); 0x3D1468 draws
+`parent x T x Rx x Ry x Rz` (0x34AD60), `Rz x Ry x Rx` when its +8 is set. Only what the row's update draws
+(0x3D10D0, 0x3D1160) is seen:
+
+| Arena | Update | Drawn and how it moves | Exported |
+|---|---|---|---|
+| 0 Paul | 0x3D5798 | the train (0-3, four 18 m cars): from (0, 14000, 200000) turned 5-10 degrees, z negated (0x3D56F0), each frame headed along its circle and moved 278 mm; back to a new start after 1800-2400 frames | the middle start, 2100 frames [M: not seen on screen yet] |
+| 1 Law-A | 0x3D6FD8 | lights 4-13 in frames of their own x/z scale (0.77-0.96, y 1.1), 14-18 swayed on a curve (0x3D7C38); a flock of 40 copies of 0-3 on splines with their shadows (19) | 4-18 standing; not the sway nor the flock |
+| 3 Xiaoyu | 0x3D52B0 | the carousel 0 turning 0.25 degree a frame (0x3D54F8), its horses 1-8 rising and falling 300 mm (phase 0.03 a frame, the second four half a turn behind), lamps 9-12 turned to face the camera (0x3D5640), 13, 14 | all; the lamps not turned to the camera |
+| 9, 18 Nina | 0x3D5E80 | the helicopter 1 on its pad, 100 mm up and down (0.0316 a frame), its rotors (2: y, 3: x, 1.03 a frame); after 600 frames out of sight it takes off and comes back (states 2, 3); 40 copies of 0, 8, 9 in 10 lanes moving 15-30 mm a frame, wrapped about the camera | the helicopter waiting and its rotors; not the take-off nor the lanes |
+| 11 King | 0x3D4B18 | three helicopters (12, 15, 18 under frame 11) round an ellipse of 100 x 80 m, 0.1 degree a frame, the wingmen turned to their own bearing (0x3D5190), rotors 1.03 a frame; ten groups of four of objects 1-10 drifting with a fade (not read) | the helicopters from angle 0; not the groups |
+| 14 Unknown | 0x3D2168 | 0 and 1 standing | both |
+| 5, 7, 8 | 0x3D2160 (nothing) | none drawn | none |
+| 20 Tekken Bowl | 0x3D21B8 | object 10 (the bowl draws the rest) | the bowl's own files |

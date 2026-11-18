@@ -19,6 +19,7 @@ pub mod front;
 pub mod glb;
 pub mod model;
 pub mod moves;
+pub mod objects;
 pub mod pack;
 pub mod sound;
 pub mod stage;
