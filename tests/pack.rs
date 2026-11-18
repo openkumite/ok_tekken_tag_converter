@@ -229,6 +229,16 @@ fn fight_data(pack: &Hashed) {
     assert_eq!(reactions["entries"].as_array().unwrap().len(), 1431);
     assert_eq!(reactions["pushback_curves"]["entries"].as_array().unwrap().len(), 74);
     assert_eq!(reactions["entries"][1]["params"], serde_json::json!([0, 0, 0, 0, 0, 32, 9]));
+    // the air reactions (FIGHT_DATA.md section 9): 0-7 shared, 8-43 one move's each
+    let air = reactions["air_reactions"]["entries"].as_array().unwrap();
+    let aliases: Vec<u64> = air[..8].iter().map(|a| a["alias"].as_u64().unwrap()).collect();
+    assert_eq!((air.len(), aliases), (44, vec![4727, 4762, 4766, 4767, 4729, 4764, 4765, 4763]));
+    assert_eq!(
+        (air[4]["target_height"].as_i64(), air[1]["rise"].as_i64(), &air[0]["pushback"]),
+        (Some(1357), Some(400), &serde_json::json!([100, 50, 10, 0, 0, 0, 0, 0]))
+    );
+    let own: Vec<u64> = moves.iter().filter_map(|m| m["air_reaction"].as_u64().filter(|&k| k != 0)).collect();
+    assert_eq!((own.len(), own.iter().min(), own.iter().max()), (36, Some(&8), Some(&43)));
     // the hurt and push radii: the normal set, and the large bodies' (Kuma, Gun Jack, True Ogre, Jack-2, P.Jack)
     let rules = load("rules.json");
     let radii = |table: &str, body: usize| rules[table]["per_character"][body]["radii"].clone();
@@ -250,6 +260,8 @@ fn fight_data(pack: &Hashed) {
         rules["health"]["life_options"].as_array().unwrap()[..5],
         [125, 130, 135, 140, 160].map(serde_json::Value::from)
     );
+    assert_eq!((&rules["health"]["default_life_option"], &rules["health"]["default_max"]), (&3.into(), &140.into()));
+    assert_eq!(rules["counter_hit"]["bonus_tenths"], serde_json::json!([3]));
     let percent = &rules["health"]["percent_per_character"];
     assert_eq!(
         (
