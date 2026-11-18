@@ -37,7 +37,7 @@ A pack (about 2.1 GB, 12 855 files):
 | `gamedata/` | the fight data: 7 351 moves, cancel lists, hit records, reactions, hurt and push volumes, health, the 33 movesets' aliases | JSON ([docs/GAMEDATA.md](docs/GAMEDATA.md)) |
 | `assets/` | what OpenKumite reads (236 MB, 4 455 files): below | GLB, JSON |
 
-`manifest.json`: `{"pack": "ttt", "format": 3, "source": {"image", "disc": "SLUS-20001", "version": "2.00"}}` and
+`manifest.json`: `{"pack": "ttt", "format": 4, "source": {"image", "disc": "SLUS-20001", "version": "2.00"}}` and
 the index of the files above: `models` (each fighter's `name`, `body`, `moveset`, `file`), `movesets` (the motions
 of each moveset, a fighter's own first) and `own` (how many of them are its own), `anims`, `stages` (each arena's
 `name`, `file`, `people`, `motions`, and `cast`: who stands where), `textures`, `sounds`, `music`, `video` (each
@@ -75,8 +75,7 @@ ttt_convert list DISC           # the 748 files of TEKKEN.BIN: sector, size, str
 ## Not done yet
 
 - In `assets/`: the arenas' additive and darkening strips (lights, gloss, decals), their background characters and
-  moving objects; the fighters' other meshes (sections 1-12); the select screen's layout (`roster.json` lists the
-  fighters in body order).
+  moving objects; the select screen's layout (`roster.json` lists the fighters in body order).
 - The movies: their pictures are written as on the disc.
 - Move data (damage, frames, cancels), hit and hurt volumes.
 - Names of the two unlisted arenas after Tekken Bowl (the stage-select menu does not list them); how the game

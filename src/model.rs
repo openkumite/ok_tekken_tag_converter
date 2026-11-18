@@ -86,8 +86,9 @@ pub fn parse(c: &[u8]) -> Option<Model> {
         nodes.push(Node { parent: u32le(c, o)? as i32, pos: v3(c, o + 4)?, rot: v3(c, o + 16)? });
     }
     let mut sections = Vec::new();
-    for s in 0..13 {
-        let so = u32le(c, 0x34 + 4 * s)? as usize;
+    // 2 passes x 2 halves (upper body, legs) x 5 section offsets (the loader at 0x3AF624 relocates them all)
+    for s in 0..20 {
+        let so = u32le(c, 0x2c + 4 * s)? as usize;
         if so == 0 || so.saturating_add(16) > c.len() {
             continue;
         }
@@ -243,13 +244,13 @@ impl Model {
         (nodes, roots, ibm)
     }
 
-    /// The fighter as OpenKumite's character: the main mesh (section 0) skinned on the [`SKELETON`] nodes every
-    /// fighter shares, and one RGBA picture (OpenKumite's characters have one) with each strip's texture in its
-    /// palette, cut to the texels its strips reach and repeated as far as they do (`ups`: the uploads its TEX0
-    /// registers refer to). A vertex on a node past the skeleton (cloth, hair) is on its nearest ancestor in it
-    /// instead: no motion moves those nodes, so it stays where it was. The blended strips are a primitive of their
-    /// own after the opaque ones, their texture's alpha kept. None when the model has fewer nodes, a skeleton node
-    /// hangs from one past it, or its textures do not fit one picture.
+    /// The fighter as OpenKumite's character: every section (the fight draws them all, docs/FORMATS.md section 7) in
+    /// one mesh skinned on the [`SKELETON`] nodes every fighter shares, and one RGBA picture (OpenKumite's characters
+    /// have one) with each strip's texture in its palette, cut to the texels its strips reach and repeated as far as
+    /// they do (`ups`: the uploads its TEX0 registers refer to). A vertex on a node past the skeleton (cloth, hair)
+    /// is on its nearest ancestor in it instead: no motion moves those nodes, so it stays where it was. The blended
+    /// strips are a primitive of their own after the opaque ones, their texture's alpha kept. None when the model has
+    /// fewer nodes, a skeleton node hangs from one past it, or its textures do not fit one picture.
     pub fn fighter_glb(&self, ups: &[tex::Upload]) -> Option<Vec<u8>> {
         let n = self.nodes.len();
         if n < SKELETON || (0..SKELETON).any(|i| self.parent(i).is_some_and(|p| p >= SKELETON)) {
@@ -260,14 +261,14 @@ impl Model {
             .map(|i| std::iter::successors(Some(i), |&a| self.parent(a)).take(n).find(|&a| a < SKELETON).unwrap_or(0))
             .map(|a| a as u16)
             .collect();
-        let strips = self.sections.first()?;
+        let strips: Vec<&Strip> = self.sections.iter().flatten().collect();
         // each texture in its palette once: (TEX0's texture, size and palette pointers, blended) -> picture (width,
         // height, pixels, how far its strips reach: low x, y, high x, y), the picture's part of TW x TH
         let (mut pics, mut pic_of) = (vec![], BTreeMap::new());
         // each strip's picture (none: the white one), its coordinates in pictures, moved by whole pictures to
         // start in the first one (the GS repeats a texture)
         let mut placed = vec![];
-        for s in strips {
+        for s in &strips {
             let t = tex::tex0(s.tex0);
             let pic = *pic_of.entry((s.tex0 & 0x000f_ffe3_ffff_ffff, s.blend)).or_insert_with(|| {
                 let (w, h, px) = tex::image(ups, &t, s.blend).filter(|p| p.0 > 0 && p.1 > 0)?;
@@ -561,11 +562,15 @@ mod tests {
         // 99 nodes in a chain, the last hanging from the head (5); a strip on it, on a 16 x 16 PSMT4 texture of
         // colour 1 (red), its u reaching 2.5 pictures: the picture is repeated to 40 texels in the atlas
         let node = |i: i32| Node { parent: if i == 98 { 5 } else { i - 1 }, pos: [0.0, 100.0, 0.0], rot: [0.; 3] };
-        let verts = [[0.0, 0.0], [2.5, 0.0], [0.0, 1.0]]
-            .map(|uv| (uv, vec![Inf { node: 98, n: [0.0, 0.0, 1.0], p: [uv[0] * 100.0, uv[1] * 100.0, 0.0], w: 1.0 }]));
+        let verts = || {
+            [[0.0, 0.0], [2.5, 0.0], [0.0, 1.0]].map(|uv| {
+                (uv, vec![Inf { node: 98, n: [0.0, 0.0, 1.0], p: [uv[0] * 100.0, uv[1] * 100.0, 0.0], w: 1.0 }])
+            })
+        };
         let tex0 = 0x100 | 2 << 14 | 0x14 << 20 | 4 << 26 | 4 << 30 | 0x200 << 37;
-        let strips = vec![Strip { tex0, blend: false, verts: verts.into() }];
-        let m = Model { nodes: (0..99).map(node).collect(), sections: vec![strips] };
+        // the strip again in a second section (as the legs are): in the same primitive
+        let section = || vec![Strip { tex0, blend: false, verts: verts().into() }];
+        let m = Model { nodes: (0..99).map(node).collect(), sections: vec![section(), section()] };
         let mut clut = vec![0u8; 64];
         clut[4..8].copy_from_slice(&[255, 0, 0, 0x80]);
         let up = |dbp, psm, w, h, data| tex::Upload { set: 0, dbp, dbw: 128, psm, w, h, data };
@@ -585,7 +590,7 @@ mod tests {
         // chain of 0.1 m, then 0.1 m more
         let jn: Vec<[u16; 4]> = r.read_joints(0).unwrap().into_u16().collect();
         let pos: Vec<[f32; 3]> = r.read_positions().unwrap().collect();
-        assert_eq!((jn[0], pos[0]), ([5, 0, 0, 0], [0.0, 0.7, 0.0]));
+        assert_eq!((jn[0], pos[0], pos.len()), ([5, 0, 0, 0], [0.0, 0.7, 0.0], 6));
         // the u of 2.5 pictures lands in the third copy, the last texels; they are red, the white texel beside them
         let uv: Vec<[f32; 2]> = r.read_tex_coords(0).unwrap().into_f32().collect();
         assert_eq!(uv[1], [(1.0 + 2.5 * 16.0) / 1024.0, 1.0 / 32.0]);

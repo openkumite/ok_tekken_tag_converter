@@ -116,7 +116,7 @@ Header:
 | 0C | float 100.0 |
 | 14 | end of the node table |
 | 24 | number of strips |
-| 34 | 13 x u32 section offsets (0 = none) |
+| 2C | 2 x 2 x 5 u32 section offsets (0 = none): pass, half, section |
 | 7C | nodes, 0x20 bytes each |
 
 Node: `i32 parent` (−1 = root), `float pos[3]`, `float rot[3]` (radians), `i32 extra`
@@ -142,8 +142,22 @@ n x { float normal[3], 0;  float position[3] * weight, weight }
 Positions and normals are in the node's local space and already multiplied by the weight,
 so the skinned point is `Σ M_node · (p·w, w)`.
 
-Sections: the first is the main mesh (about 3 800 triangles). The others are smaller meshes whose
-role is not determined (alternative or damaged clothing, hands). The GLB keeps each as `part_N`.
+Sections (verified in the executable): the offsets are `[pass][half][k]`, at `0x2C + 0x28·pass + 0x14·half + 4·k`.
+The loader (0x3AF624) relocates all 20. The fighter draw (0x343340, `a1` = pass) draws every section of the pass,
+both halves, k 0 to 4: 0x357A78 calls it for pass 0 and 0x357DE0 for pass 1, for each fighter. Only the
+lower half is skipped, when the game mode (gp−0x74D0) is 5. No section is an alternative: every one is drawn.
+Across the 119 fighter models (files 345 + 3·n):
+
+| Offset | Section | What it holds |
+|---|---|---|
+| 0x34 | pass 0, upper, k 2 | the upper body: head, torso, arms, hands (3 800–9 900 vertices; True Ogre's first costume has its legs here too) |
+| 0x48 | pass 0, lower, k 2 | the legs, on the thighs, shins and feet (1 000–4 300 vertices): every model but True Ogre's first costume |
+| 0x2C, 0x38, 0x3C | pass 0, upper, k 0, 3, 4 | small opaque pieces: Hwoarang's and Heihachi's (4 models), Ogre's head (2) |
+| 0x54–0x64 | pass 1, upper, k 0–4 | blended only (14–1 100 vertices): hair (Paul's crest), fringes, manes, see-through cloth; 101 models have 0x5C |
+| 0x70 | pass 1, lower, k 2 | blended only (8–430 vertices): cloth on the hips and legs, 14 models |
+
+The research GLB keeps each section as `part_N` (N: the order of the non-empty offsets); OpenKumite's character
+merges them all into one mesh.
 
 ### Joints
 

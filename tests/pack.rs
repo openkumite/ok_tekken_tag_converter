@@ -25,7 +25,7 @@ impl DiscFile for MemDisc {
 }
 
 /// A pack in memory that keeps each file's size and hash (the pack is 3 GB), and the manifests, the fight data, the
-/// motions and one character whole.
+/// motions and the characters whole.
 #[derive(Default)]
 struct Hashed(Mutex<BTreeMap<String, (usize, u64)>>, Mutex<BTreeMap<String, Vec<u8>>>);
 
@@ -46,9 +46,7 @@ impl Vfs for Hashed {
         let kept = |p: &str| path.strip_prefix("assets/").is_some_and(|a| a.starts_with(p));
         if path == "manifest.json"
             || path.starts_with("gamedata/")
-            || ["manifest.json", "gamedata/", "motions/", "stages/index.json", "characters/model_351.glb"]
-                .iter()
-                .any(|p| kept(p))
+            || ["manifest.json", "gamedata/", "motions/", "stages/index.json", "characters/"].iter().any(|p| kept(p))
         {
             self.1.lock().unwrap().insert(path.into(), data.to_vec());
         }
@@ -337,6 +335,29 @@ fn openkumite(pack: &Hashed) {
         vertices += n;
     }
     assert!(vertices > 1000, "{vertices}");
+    // every character: its legs too (the sections past the first; a twist copy, "thigh_A.1", is its joint's),
+    // within OpenKumite's loader caps (an image's side and pixels, an accessor's elements)
+    for e in entries {
+        let glb = e["glb"].as_str().unwrap();
+        let (doc, buffers, images) =
+            gltf::import_slice(pack.read(&format!("assets/characters/{glb}")).unwrap()).unwrap();
+        let names: Vec<&str> = doc.skins().next().unwrap().joints().map(|j| j.name().unwrap()).collect();
+        let mut weighted = std::collections::BTreeSet::new();
+        for p in doc.meshes().next().unwrap().primitives() {
+            let r = p.reader(|b| Some(&buffers[b.index()].0[..]));
+            let (jn, wt) = (r.read_joints(0).unwrap().into_u16(), r.read_weights(0).unwrap().into_f32());
+            for (j, w) in jn.zip(wt) {
+                weighted.extend(
+                    j.iter().zip(w).filter(|(_, w)| *w > 0.0).map(|(&j, _)| names[j as usize].split('.').next()),
+                );
+            }
+        }
+        for leg in ["thigh_A", "shin_A", "foot_A", "thigh_B", "shin_B", "foot_B"] {
+            assert!(weighted.contains(&Some(leg)), "{glb}: no vertex on {leg}");
+        }
+        assert!(images.iter().all(|i| i.width.max(i.height) <= 8192 && i.width as u64 * i.height as u64 <= 1 << 24));
+        assert!(doc.accessors().all(|a| a.count() <= 1 << 22));
+    }
     // his motions: every move of his moveset that has one names a clip whose file is in his list, and the clip's
     // channels are on the character's joints
     let moves = load("gamedata/moves.json");
