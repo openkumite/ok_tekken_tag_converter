@@ -1,0 +1,39 @@
+[package]
+name = "ok_tekken_tag_converter"
+version = "0.1.0"
+edition = "2024"
+description = "Converts your own Tekken Tag Tournament disc image (PlayStation 2, USA v2.00, SLUS-20001) into a pack of its fighters, arenas, motions, pictures and sounds for OpenKumite"
+license = "MIT"
+publish = false
+
+[lib]
+path = "src/lib.rs"
+
+[[bin]]
+# the developer tool (README.md)
+name = "ttt_convert"
+path = "src/main.rs"
+
+[dependencies]
+ok_converter_common = { git = "https://github.com/openkumite/ok_converter_common", branch = "main", default-features = false, features = ["disc"] }
+anyhow = "1"
+serde_json = { version = "1", features = ["preserve_order", "float_roundtrip"] }
+png = "0.18"
+
+[dev-dependencies]
+cargo-husky = { version = "1.5.0", default-features = false, features = ["user-hooks"] }
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
+indexing_slicing = "deny"
+
+[profile.release]
+debug = 1
+
+[profile.dev]
+opt-level = 2

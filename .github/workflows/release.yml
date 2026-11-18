@@ -1,0 +1,128 @@
+# A release for a version tag: vX.Y.Z (a release) or vX.Y.Z-suffix (a pre-release), equal to Cargo.toml's version
+# (only organisation admins push v* tags: the repository's ruleset). The library is used from this repository by git
+# (OpenKumite does not read the pack yet); the release publishes ttt_convert, the developer tool: the pack from a disc image, its files listed
+# (README.md), built on each platform's own runner, with SHA256SUMS.
+name: release
+
+on:
+  push:
+    tags: ["v[0-9]+.[0-9]+.[0-9]+", "v[0-9]+.[0-9]+.[0-9]+-*"]
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  TAG: ${{ github.ref_name }}
+  BIN: ttt_convert
+
+jobs:
+  version:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: The tag is Cargo.toml's version
+        run: |
+          [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]] || { echo "::error::$TAG is not vX.Y.Z[-suffix]"; exit 1; }
+          v=$(sed -n 's/^version = "\(.*\)"$/\1/p' Cargo.toml | head -1)
+          [ "v$v" = "$TAG" ] || { echo "::error::tag $TAG, but Cargo.toml's version is $v"; exit 1; }
+
+  unix:
+    needs: version
+    strategy:
+      matrix:
+        include:
+          - { runner: ubuntu-24.04, name: linux-amd64 }
+          - { runner: ubuntu-24.04-arm, name: linux-arm64 }
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo build --release --bin "$BIN"
+      - name: Pack
+        run: |
+          d=$BIN-$TAG-${{ matrix.name }}
+          mkdir "$d" && cp "target/release/$BIN" README.md LICENSE "$d/"
+          tar -czf "$d.tar.gz" "$d"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: ${{ matrix.name }}
+          path: ${{ env.BIN }}-*.tar.gz
+
+  windows:
+    needs: version
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo build --release --bin $env:BIN
+        shell: pwsh
+      - name: Pack
+        shell: pwsh
+        run: |
+          $d = "$env:BIN-$env:TAG-windows-amd64"
+          New-Item -ItemType Directory $d | Out-Null
+          Copy-Item "target\release\$env:BIN.exe", README.md, LICENSE $d
+          Compress-Archive $d "$d.zip"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: windows-amd64
+          path: ${{ env.BIN }}-*.zip
+
+  macos:
+    needs: version
+    # (an Intel runner: it builds the arm64 half too; GitHub's Apple Silicon runners are often out of capacity)
+    runs-on: macos-15-intel
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin, x86_64-apple-darwin
+      - run: |
+          cargo build --release --bin "$BIN" --target aarch64-apple-darwin
+          cargo build --release --bin "$BIN" --target x86_64-apple-darwin
+      - name: Universal, and packed
+        run: |
+          lipo -create -output "$BIN" "target/aarch64-apple-darwin/release/$BIN" "target/x86_64-apple-darwin/release/$BIN"
+          lipo -info "$BIN"
+          d=$BIN-$TAG-macos-universal
+          mkdir "$d" && cp "$BIN" README.md LICENSE "$d/"
+          tar -czf "$d.tar.gz" "$d"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: macos-universal
+          path: ${{ env.BIN }}-*.tar.gz
+
+  release:
+    needs: [unix, windows, macos]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Checksums
+        run: cd dist && sha256sum -- * > SHA256SUMS && cat SHA256SUMS
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cat > notes.md <<EOF
+          ok_tekken_tag_converter $TAG. The library is used from this repository by git (OpenKumite does not read the pack yet);
+          the downloads are \`$BIN\`, the developer tool: the pack from a disc image, its files listed (README.md).
+
+          | Download | For |
+          |---|---|
+          | \`$BIN-$TAG-linux-amd64.tar.gz\`, \`-linux-arm64\` | Linux |
+          | \`$BIN-$TAG-windows-amd64.zip\` | Windows 10 and 11 |
+          | \`$BIN-$TAG-macos-universal.tar.gz\` | macOS, Apple Silicon and Intel |
+          | \`SHA256SUMS\` | the checksums of the files above |
+
+          The binaries are not signed: macOS blocks a downloaded program the first time (\`xattr -d com.apple.quarantine $BIN\`,
+          or allow it in System Settings, Privacy & Security); Windows may warn (More info, Run anyway).
+          EOF
+          pre=""; [[ "$TAG" == *-* ]] && pre="--prerelease"
+          gh release create "$TAG" dist/* --verify-tag --title "ok_tekken_tag_converter $TAG" --notes-file notes.md --generate-notes $pre

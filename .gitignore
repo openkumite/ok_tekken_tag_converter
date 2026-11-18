@@ -1,0 +1,12 @@
+/target
+# disc images and anything converted from them: never in the repository
+*.zip
+*.7z
+*.iso
+*.bin
+*.cue
+*.chd
+/pack
+/out
+.DS_Store
+.claude/worktrees/

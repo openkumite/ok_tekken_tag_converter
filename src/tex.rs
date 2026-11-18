@@ -1,0 +1,288 @@
+//! GS texture uploads (GIF packets with BITBLTBUF/TRXPOS/TRXREG + IMAGE data) and TEX0 lookups.
+use crate::{u16le, u32le};
+
+#[derive(Clone)]
+pub struct Upload {
+    /// which load it came from: later loads reuse addresses, so an image and its palette must share one
+    pub set: u64,
+    pub dbp: u32,
+    /// buffer width in pixels
+    pub dbw: usize,
+    pub psm: u32,
+    pub w: usize,
+    pub h: usize,
+    pub data: Vec<u8>,
+}
+
+fn u64le(d: &[u8], o: usize) -> Option<u64> {
+    Some(u32le(d, o)? as u64 | (u32le(d, o + 4)? as u64) << 32)
+}
+
+/// Every image transfer in a GIF stream; stops at the first thing that is not one.
+pub fn uploads(d: &[u8]) -> Vec<Upload> {
+    let (mut o, mut out, mut reg) = (0, Vec::new(), [0u64; 4]);
+    let (mut set, mut last) = (0, 0); // an indexed image at or below the previous one's address starts a new load
+    while let (Some(lo), Some(hi)) = (u64le(d, o), u64le(d, o + 8)) {
+        o += 16;
+        let (nloop, flg, nreg) = ((lo & 0x7fff) as usize, (lo >> 58) & 3, ((lo >> 60) & 15) as usize);
+        if lo == 0 || nloop == 0 {
+            break;
+        }
+        if flg == 0 {
+            for i in 0..nloop * nreg {
+                let (Some(value), Some(addr)) = (u64le(d, o), u64le(d, o + 8)) else { return out };
+                if (hi >> (4 * (i % nreg))) & 15 == 0xe
+                    && let Some(r) = reg.get_mut(((addr & 0xff) as usize).wrapping_sub(0x50))
+                {
+                    *r = value;
+                }
+                o += 16;
+            }
+        } else if flg == 2 {
+            let data = d.get(o..).unwrap_or_default();
+            let data = data.get(..nloop * 16).unwrap_or(data);
+            let (dbp, psm) = ((reg[0] >> 32) as u32 & 0x3fff, (reg[0] >> 56) as u32 & 63);
+            if psm == 0x13 || psm == 0x14 {
+                if dbp <= last && out.iter().any(|u: &Upload| u.psm == 0x13 || u.psm == 0x14) {
+                    set += 1;
+                }
+                last = dbp;
+            }
+            out.push(Upload {
+                dbw: (reg[0] >> 48 & 63) as usize * 64,
+                set,
+                dbp,
+                psm,
+                w: (reg[2] & 0xfff) as usize,
+                h: (reg[2] >> 32 & 0xfff) as usize,
+                data: data.to_vec(),
+            });
+            o += data.len();
+        } else {
+            break;
+        }
+    }
+    out
+}
+
+pub struct Tex0 {
+    pub tbp: u32,
+    /// buffer width in pixels
+    pub tbw: usize,
+    pub psm: u32,
+    pub tw: usize,
+    pub th: usize,
+    pub cbp: u32,
+    /// TCC: the texture's alpha is used
+    pub alpha: bool,
+}
+pub fn tex0(t: u64) -> Tex0 {
+    Tex0 {
+        tbp: t as u32 & 0x3fff,
+        tbw: (t >> 14 & 63) as usize * 64,
+        psm: (t >> 20) as u32 & 63,
+        tw: 1 << (t >> 26 & 15),
+        th: 1 << (t >> 30 & 15),
+        cbp: (t >> 37) as u32 & 0x3fff,
+        alpha: t >> 34 & 1 != 0,
+    }
+}
+
+/// Colour `i` of a palette (or of a direct-colour image): PSMCT32 (alpha 0x80 = opaque) or PSMCT16.
+fn colour(c: &Upload, i: usize) -> [u8; 4] {
+    if c.psm == 2 {
+        return u16le(&c.data, i * 2).map_or([0; 4], rgba16);
+    }
+    let rgba = c.data.get(i * 4..).and_then(|b| b.first_chunk::<4>());
+    rgba.map_or([0; 4], |&[r, g, b, a]| [r, g, b, (a as u32 * 2).min(255) as u8])
+}
+
+/// The RGBA image a TEX0 selects from the uploads: (width, height, pixels). Indexed formats only
+/// (PSMT8 0x13, PSMT4 0x14), textures starting on a page boundary of an upload.
+pub fn image(ups: &[Upload], t: &Tex0, alpha: bool) -> Option<(usize, usize, Vec<u8>)> {
+    // (the GS draws no texture larger: a register of a broken file cannot ask for more)
+    if t.tw > 1024 || t.th > 1024 {
+        return None;
+    }
+    // The base pointer counts blocks (16x16 pixels in PSMT8, 32x16 in PSMT4), 32 to a page (128x64,
+    // 128x128). Pages follow each other across the buffer width, then down: a texture narrower than
+    // the sheet it was uploaded in has its pages spread over the sheet's rows.
+    let four = t.psm == 0x14;
+    let (pw, ph) = (128, if four { 128 } else { 64 });
+    let pages = |u: &Upload| (u.dbw / pw, u.h.div_ceil(ph)); // across, down
+    let blocks = |u: &Upload| t.tbp.saturating_sub(u.dbp) as usize;
+    let first = |u: &Upload| blocks(u) / 32;
+    let paged = |u: &Upload| pages(u).0 >= 2 && blocks(u).is_multiple_of(32);
+    // shortcut: in a sheet one page wide the blocks are taken as rows, true only from a page boundary
+    let row = |u: &Upload| (blocks(u) / (u.w / if four { 32 } else { 16 }).max(1)) * 16;
+    let holds = |u: &&Upload| {
+        u.psm == t.psm
+            && u.dbp <= t.tbp
+            && u.w >= 16
+            && if paged(u) { first(u) < pages(u).0 * pages(u).1 } else { row(u) < u.h }
+    };
+    let is_clut = |u: &&Upload| u.dbp == t.cbp && (u.psm == 0 || u.psm == 2);
+    let clut = ups
+        .iter()
+        .filter(is_clut)
+        .find(|c| ups.iter().any(|u| u.set == c.set && holds(&u)))
+        .or_else(|| ups.iter().find(is_clut))?;
+    let src = ups.iter().filter(holds).max_by_key(|u| (u.set == clut.set, u.dbp))?;
+    let across = (t.tbw / pw).max(1); // of the texture
+    let (w, h) = if paged(src) {
+        (
+            t.tw.min(across * pw),
+            t.th.min((pages(src).0 * pages(src).1).saturating_sub(first(src)).div_ceil(across) * ph),
+        )
+    } else {
+        (t.tw.min(src.w), t.th.min(src.h.saturating_sub(row(src))))
+    };
+    let mut px = Vec::with_capacity(w * h * 4);
+    for y in 0..h {
+        for x in 0..w {
+            let i = if paged(src) {
+                let p = first(src) + y / ph * across + x / pw;
+                let (sx, sy) = (p % pages(src).0 * pw + x % pw, p / pages(src).0 * ph + y % ph);
+                if sx < src.w { sy * src.w + sx } else { usize::MAX / 2 }
+            } else {
+                (row(src) + y) * src.w + x
+            };
+            let mut idx = if four {
+                (src.data.get(i / 2).copied().unwrap_or(0) >> (4 * (i & 1))) as usize & 15
+            } else {
+                src.data.get(i).copied().unwrap_or(0) as usize
+            };
+            if !four {
+                idx = (idx & 0xe7) | (idx & 8) << 1 | (idx & 16) >> 1; // CSM1 palette order
+            }
+            let [r, g, b, a] = colour(clut, idx);
+            px.extend([r, g, b, if alpha { a } else { 255 }]);
+        }
+    }
+    Some((w, h, px))
+}
+
+pub fn png(w: usize, h: usize, rgba: &[u8]) -> Vec<u8> {
+    let mut out = Vec::new();
+    let mut e = png::Encoder::new(&mut out, w as u32, h as u32);
+    e.set_color(png::ColorType::Rgba);
+    e.set_depth(png::BitDepth::Eight);
+    // writing to a Vec cannot fail
+    if let Ok(mut wr) = e.write_header() {
+        let _ = wr.write_image_data(rgba);
+    }
+    out
+}
+
+fn rgba16(v: u16) -> [u8; 4] {
+    let c = |s: u16| ((v >> s & 31) * 255 / 31) as u8;
+    [c(0), c(5), c(10), if v & 0x8000 != 0 || v & 0x7fff != 0 { 255 } else { 0 }]
+}
+
+/// Every upload as a picture: (width, height, RGBA). An indexed image takes the
+/// nearest palette-sized upload after it (else before it); without one it comes out in greys.
+// shortcut: the pairing is a guess where one stream holds several palettes for one image; read the
+// TEX0 registers of whatever draws the image (as models do) to get the exact pairs.
+pub fn pictures(ups: &[Upload]) -> Vec<(usize, usize, Vec<u8>)> {
+    let entries = |u: &Upload| if u.psm == 0 || u.psm == 2 { u.w * u.h } else { 0 };
+    let is_clut = |u: &Upload| matches!(entries(u), 16 | 256) && u.h <= 16;
+    let has_indexed = ups.iter().any(|u| u.psm == 0x13 || u.psm == 0x14);
+    let mut out = Vec::new();
+    for (k, u) in ups.iter().enumerate() {
+        if u.w == 0 || u.h == 0 || u.w > 2048 || u.h > 2048 || (has_indexed && is_clut(u)) {
+            continue;
+        }
+        let n = u.w * u.h;
+        let px: Vec<u8> = match u.psm {
+            0 if u.data.len() >= n * 4 => (0..n).flat_map(|i| colour(u, i)).collect(),
+            1 if u.data.len() >= n * 3 => {
+                u.data.as_chunks::<3>().0.iter().take(n).flat_map(|&[r, g, b]| [r, g, b, 255]).collect()
+            }
+            2 if u.data.len() >= n * 2 => (0..n).flat_map(|i| colour(u, i)).collect(),
+            0x13 | 0x14 if u.data.len() >= if u.psm == 0x13 { n } else { n / 2 } => {
+                let want = if u.psm == 0x13 { 256 } else { 16 };
+                let (before, after) = ups.split_at(k);
+                let fits = |c: &&Upload| is_clut(c) && entries(c) >= want;
+                let clut = after.iter().find(fits).or_else(|| before.iter().rev().find(fits));
+                let byte = |i: usize| u.data.get(i).copied().unwrap_or(0);
+                (0..n)
+                    .flat_map(|i| {
+                        let mut idx =
+                            if u.psm == 0x13 { byte(i) as usize } else { (byte(i / 2) >> (4 * (i & 1))) as usize & 15 };
+                        match clut {
+                            Some(c) => {
+                                if u.psm == 0x13 {
+                                    idx = (idx & 0xe7) | (idx & 8) << 1 | (idx & 16) >> 1;
+                                }
+                                colour(c, idx)
+                            }
+                            None => {
+                                let g = if u.psm == 0x13 { idx as u8 } else { idx as u8 * 17 };
+                                [g, g, g, 255]
+                            }
+                        }
+                    })
+                    .collect()
+            }
+            _ => continue,
+        };
+        out.push((u.w, u.h, px));
+    }
+    out
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::indexing_slicing)]
+mod tests {
+    use super::*;
+
+    /// A GIF stream that uploads `data` as a `w` x `h` image of format `psm` at block `dbp`.
+    fn gif(dbp: u64, psm: u64, w: u64, h: u64, data: &[u8]) -> Vec<u8> {
+        let q = |lo: u64, hi: u64| [lo.to_le_bytes(), hi.to_le_bytes()].concat();
+        // PACKED, 1 register (A+D), 3 loops: BITBLTBUF, TRXPOS, TRXREG; then IMAGE
+        let mut d = q(3 | 1 << 60, 0xe);
+        d.extend(q(dbp << 32 | 2 << 48 | psm << 56, 0x50));
+        d.extend(q(0, 0x51));
+        d.extend(q(w | h << 32, 0x52));
+        d.extend(q(data.len().div_ceil(16) as u64 | 2 << 58, 0));
+        d.extend(data);
+        d.resize(d.len().next_multiple_of(16), 0);
+        d
+    }
+
+    #[test]
+    fn uploads_image_and_pictures() {
+        // a 16 x 16 PSMT4 image of colour 1, then its 16-colour palette (8 x 2, PSMCT32) whose colour 1 is red
+        let mut d = gif(0x100, 0x14, 16, 16, &[0x11; 128]);
+        let mut clut = vec![0u8; 64];
+        clut[4..8].copy_from_slice(&[255, 0, 0, 0x80]);
+        d.extend(gif(0x200, 0, 8, 2, &clut));
+        let ups = uploads(&d);
+        assert_eq!(ups.len(), 2);
+        assert_eq!(
+            (ups[0].dbp, ups[0].psm, ups[0].w, ups[0].h, ups[0].dbw, ups[0].data.len()),
+            (0x100, 0x14, 16, 16, 128, 128)
+        );
+        let pics = pictures(&ups);
+        assert_eq!(pics.len(), 1); // the palette is not a picture
+        assert_eq!((pics[0].0, pics[0].1, &pics[0].2[..4]), (16, 16, &[255, 0, 0, 255][..]));
+        // TEX0: the image at 0x100, 16 x 16 (2^4), PSMT4, palette at 0x200
+        let t = tex0(0x100 | 2 << 14 | 0x14 << 20 | 4 << 26 | 4 << 30 | 0x200 << 37);
+        let (w, h, px) = image(&ups, &t, false).unwrap();
+        assert_eq!((w, h, &px[..4], px.len()), (16, 16, &[255, 0, 0, 255][..], 1024));
+        assert!(std::str::from_utf8(&png(w, h, &px)[1..4]).is_ok_and(|s| s == "PNG"));
+        // no such texture; a size no texture has
+        assert!(image(&ups, &tex0(0x300 | 0x14 << 20 | 4 << 26 | 4 << 30 | 0x200 << 37), false).is_none());
+        assert!(image(&ups, &tex0(0x100 | 0x14 << 20 | 15 << 26 | 15 << 30 | 0x200 << 37), false).is_none());
+        // cut anywhere, or noise: what is whole comes out, and nothing panics
+        for n in 0..d.len() {
+            let ups = uploads(&d[..n]);
+            let _ = (pictures(&ups), image(&ups, &t, true));
+        }
+        let noise: Vec<u8> = (0..4096u32).map(|i| (i.wrapping_mul(2654435761) >> 13) as u8).collect();
+        for o in 0..64 {
+            let ups = uploads(&noise[o..]);
+            let _ = (pictures(&ups), image(&ups, &t, true));
+        }
+    }
+}
