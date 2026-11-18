@@ -466,4 +466,28 @@ fn sound(load: &dyn Fn(&str) -> serde_json::Value, samples: usize, tracks: usize
     assert_eq!((&bgm[9]["columns"][0]["file"], &bgm[14]["columns"][0]["file"]), (&"22.flac".into(), &"23.flac".into()));
     let rounds = load("gamedata/rounds.json");
     assert_eq!(rounds["win_poses"]["aliases"], serde_json::json!([4770, 4771, 4772, 4773]));
+    // the AI: 5 x 8 profiles, Tekken 3's fields 4 bytes later (EASY / NORMAL level 0's cooldowns), King's reach
+    let ai = load("gamedata/ai.json");
+    let profiles = ai["profiles"]["entries"].as_array().unwrap();
+    assert_eq!(profiles.len(), 40);
+    let cooldowns =
+        |p: &serde_json::Value| (1..4).map(|k| p["fields"][format!("attack_cooldown_{k}")].clone()).collect::<Vec<_>>();
+    assert_eq!(
+        (cooldowns(&profiles[0]), cooldowns(&profiles[8])),
+        (vec![300.into(), 400.into(), 400.into()], vec![150.into(), 200.into(), 200.into()])
+    );
+    assert_eq!(ai["spacing"]["entries"][3]["values"], serde_json::json!([1632, 1792, 2592, 3072, 1792, 0]));
+    assert_eq!(ai["canned_sequences"]["entries"][0]["words"], serde_json::json!([5, 2, 2, 2, 2, 5, 5, 5, 5, 5]));
+    assert_eq!(ai["motion_records"]["entries"][0]["steps"], serde_json::json!([5, 6, 5, 6]));
+    assert_eq!((&ai["rng"]["ai_lcg_seed"], &ai["evade_choices"][3]), (&640.into(), &4.into()));
+    // section 21: NORMAL level 4's tag out, delayed input and list D; King's throws; the sine table
+    let normal4 = &profiles[12]["fields"];
+    assert_eq!(
+        (&normal4["tag_out_prob"], &normal4["delay_input_prob"], &normal4["followup_prob_c"]),
+        (&245.into(), &1228.into(), &2048.into())
+    );
+    let canned = ai["canned_sequences"]["entries"].as_array().unwrap();
+    assert!(canned.iter().any(|c| c["id"] == "throws_stand_0" && c["words"] == serde_json::json!([5, 6, 3, 1283, 3])));
+    let sine = ai["distance_jitter"]["sine"].as_array().unwrap();
+    assert_eq!((sine.len(), &sine[1024], &sine[3072]), (4096, &4096.into(), &(-4096).into()));
 }

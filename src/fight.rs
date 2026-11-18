@@ -450,6 +450,165 @@ pub fn rules(elf: &[u8]) -> Result<Value> {
     }))
 }
 
+/// Tekken 3's profile fields from its +4 (ok_tekken3_converter's names; "" its unnamed ones), in order: Tekken Tag's
+/// profile has them 4 bytes later.
+#[rustfmt::skip]
+const T3_PROFILE: [&str; 53] = [
+    "attack_cooldown_base", "attack_cooldown_0", "attack_cooldown_1", "attack_cooldown_2", "attack_cooldown_3",
+    "max_string_length", "throw_attempt_prob", "throw_escape_prob", "string_continue_prob", "throw_select_prob",
+    "guard_aware_attack_prob", "fast_poke_prob", "guard_prob", "guard_prob_cap", "counter_attack_prob",
+    "counter_attack_cap", "sidestep_prob", "in_string_interrupt_prob", "in_string_interrupt_cap",
+    "in_string_guard_prob", "in_string_guard_cap", "followup_count_a", "followup_prob_a",
+    "consecutive_attack_limit_a", "followup_prob_b", "consecutive_attack_limit_b", "followup_prob_c",
+    "evade_and_handler_prob", "pressure_on_stun_prob", "", "", "", "", "gate_always_zero", "anti_air_prob", "",
+    "keep_walk_back_prob", "", "", "", "", "", "", "parry_prob", "", "counter_throw_startup_prob", "",
+    "stun_recovery_prob", "", "", "", "", "",
+];
+/// Tekken Tag's own readers past Tekken 3's (FIGHT_DATA.md section 21.8), by their offset.
+#[rustfmt::skip]
+const TTT_PROFILE: [(usize, &str); 7] = [
+    (0x68, "stun_attack_prob"), (0x6e, "tag_out_prob"), (0x70, "stun_tag_out_prob"), (0x72, "guard_after_reaction_prob"),
+    (0x74, "delay_input_prob"), (0x76, "repeat_count"), (0x78, "repeat_guard_prob"),
+];
+const PROFILES: usize = 0x431918 - VADDR; // 5 difficulties x 0x400, 8 levels x 0x80
+const RANGES: usize = 0x432e10 - VADDR; // 6 x u16 per body: four reach boundaries, unused, the body offset
+const ZONES: (usize, usize) = (0x4318d8 - VADDR, 0x4318f0 - VADDR); // 6 x u32 zone masks: mine, his
+const HANDLERS: (usize, usize) = (0x507a80 - VADDR, 34); // {moveset, vs-this-moveset handler, own handler}
+const DIFFICULTIES: [&str; 5] = ["EASY", "NORMAL", "HARD", "VERY HARD", "ULTRA HARD"];
+
+/// ai.json: the CPU AI's tables (docs/FIGHT_DATA.md section 19) in Tekken 3's shape (ok_tekken3_converter's ai.json):
+/// the profiles, the reach per body, the zone masks, the per-moveset handlers (their code is not read), the canned
+/// inputs, the dash steps, the evade plans, the wake-up categories and the random generators' differences.
+pub fn ai(elf: &[u8]) -> Result<Value> {
+    let what = "the AI tables";
+    let s16 = |o: usize| -> Result<i64> { Ok(i64::from(u16_at(elf, o, what)? as i16)) };
+    let mut profiles = vec![];
+    for (diff, name) in DIFFICULTIES.iter().enumerate() {
+        for level in 0..8 {
+            let at = PROFILES + 0x400 * diff + 0x80 * level;
+            let mut f = serde_json::Map::new();
+            f.insert("wake_up_intervals".into(), bytes(elf, at, 4, what)?.to_vec().into());
+            // Tekken Tag's own readers by their name (section 21.8), the others without a reader by their offset
+            for k in 0..62usize {
+                let o = 4 + 2 * k;
+                let t3 = k.checked_sub(2).and_then(|i| T3_PROFILE.get(i)).copied().unwrap_or("");
+                let own = TTT_PROFILE.iter().find(|f| f.0 == o).map_or("", |f| f.1);
+                let key = if !own.is_empty() {
+                    own.into()
+                } else if t3.is_empty() {
+                    format!("off_{o:02X}")
+                } else {
+                    t3.into()
+                };
+                f.insert(key, s16(at + o)?.into());
+            }
+            profiles.push(json!({"difficulty": diff, "difficulty_name": name, "level": level,
+                "address": format!("{:#X}", at + VADDR), "fields": f}));
+        }
+    }
+    let names = moves::roster(elf)?;
+    let spacing = (0..BODIES)
+        .map(|b| {
+            let v = (0..6).map(|k| u16_at(elf, RANGES + 12 * b + 2 * k, what)).collect::<Result<Vec<_>>>()?;
+            Ok(json!({"character": b, "name": names.get(b).map_or("", |n| n.0.as_str()), "values": v}))
+        })
+        .collect::<Result<Vec<_>>>()?;
+    let zone = |o: usize| (0..6).map(|k| u32_at(elf, o + 4 * k, what)).collect::<Result<Vec<_>>>();
+    let handler = |a: u32| (a != 0).then(|| format!("{a:#X}"));
+    let handlers = (0..HANDLERS.1)
+        .map(|i| {
+            let e = bytes(elf, HANDLERS.0 + 12 * i, 12, what)?;
+            Ok(json!({"moveset": w(e, 0), "vs_handler": handler(w(e, 4)), "self_handler": handler(w(e, 8))}))
+        })
+        .collect::<Result<Vec<_>>>()?;
+    // (the first word is played whatever it is, 0x3811E8; the rest to a 0)
+    let words = |a: usize| -> Result<Vec<u16>> {
+        let rest = until(elf, a - VADDR + 2, 0, 2, what, |e| h(e, 0) == 0)?;
+        Ok(std::iter::once(u16_at(elf, a - VADDR, what)?).chain(rest.iter().map(|e| h(e, 0))).collect())
+    };
+    // the canned inputs: step words (buttons << 8 | numpad direction); King's throws (14 bytes each: standing
+    // 0x507A52, crouching 0x507A32, down 0x507A12) and Ganryu's poke (section 21.6)
+    let canned = [
+        ("sidestep_0", 0x507452),
+        ("sidestep_1", 0x50746a),
+        ("backdash", 0x5074a2),
+        ("okizeme", 0x507482),
+        ("throws_stand_0", 0x507a52),
+        ("throws_stand_1", 0x507a60),
+        ("throws_stand_2", 0x507a6e),
+        ("throws_crouch_0", 0x507a32),
+        ("throws_crouch_1", 0x507a40),
+        ("throws_down_0", 0x507a12),
+        ("throws_down_1", 0x507a20),
+        ("poke", 0x507618),
+    ]
+    .iter()
+    .map(|&(id, a)| Ok(json!({"id": id, "address": format!("{a:#X}"), "words": words(a)?})))
+    .collect::<Result<Vec<_>>>()?;
+    // commands 0x8001 / 0x8002 (0x36CF30): the dash and the backdash, a window word then the steps
+    let dashes = [(0x8001, 0x4fffd4), (0x8002, 0x4fffe0)]
+        .iter()
+        .map(|&(cmd, a)| Ok(json!({"cmd": cmd, "address": format!("{a:#X}"), "steps": words(a + 2)?})))
+        .collect::<Result<Vec<_>>>()?;
+    let evade = (0..7).map(|k| u32_at(elf, 0x507990 - VADDR + 4 * k, what)).collect::<Result<Vec<_>>>()?;
+    let wake = (0..6).map(|k| u32_at(elf, 0x5078e0 - VADDR + 8 * k, what)).collect::<Result<Vec<_>>>()?;
+    let pads = (0..4).map(|k| u16_at(elf, 0x507a08 - VADDR + 2 * k, what)).collect::<Result<Vec<_>>>()?;
+    let sine = (0..4096).map(|k| s16(0x4fce88 - VADDR + 2 * k)).collect::<Result<Vec<_>>>()?;
+    Ok(json!({
+        "dialect": "ttt",
+        "profiles": {"address": "0x431918", "layout": "difficulty*0x400 + level*0x80", "probability_unit": 4096,
+            "note": "Tekken 3's fields 4 bytes later; off_XX by Tekken Tag's offset", "entries": profiles},
+        "spacing": {"address": "0x432E10", "format": "6 x u16 per body: [0..3] reach boundaries, [4] unused, [5] body offset",
+            "entries": spacing},
+        "zone_masks": {"my_zone": zone(ZONES.0)?, "his_zone": zone(ZONES.1)?},
+        "handlers": {"address": "0x507A80", "entries": handlers, "routines": routines()},
+        // Ogre's (0x507A08; Devil's 0x507A00 is the same), drawn by rand() & 3
+        "boss_punish_pads": {"address": "0x507A08", "pad_words": pads},
+        // Tekken 3's keys, none of their move sets or aliases found in Tekken Tag's code (moveset -1, alias 0xFFFF: none)
+        "rules": {"fire": {"moveset": -1, "descriptor": 0}, "low_fire": {"moveset": -1, "descriptor": 0},
+            "stance": {"moveset": -1, "alias": 0xffff}, "chain_throws": {"entries": []}, "escaped_throws": {"entries": []},
+            "wake_forward": {"movesets": []}, "turn_by_facing": {"movesets": []}, "parries": {"aliases": []},
+            "late_parry": {"moveset": -1, "until": [0, 0], "alias": 0xffff}, "counter_alias": {"alias": 0xffff},
+            "unthrown": {"moveset": -1}, "evade_closer": {"moveset": -1, "distance": 0},
+            "followup_rules": followup_rules()},
+        // bookkeeping 0x381D30: the distance's swing, sine table 0x4FCE88 (4096 x s16, 4096 = 1) x 192 / 4096
+        "distance_jitter": {"amplitude": 192, "sine": sine},
+        "canned_sequences": {"entries": canned},
+        "motion_records": {"routine": "0x36CF30", "entries": dashes},
+        "evade_choices": evade,
+        "wakeup_categories": wake,
+        // the AI generator's start (gp-0x64E8), and libc rand() 0x40FBD0 returning bits 0-14 (Tekken 3's: 16-30)
+        "rng": {"ai_lcg_seed": u32_at(elf, 0x5fd0f0 - 0x64e8 - VADDR, what)?, "rand_shift": 0},
+    }))
+}
+
+/// The live per-moveset handlers (section 21.6) as the kinds of Tekken 3's routines they match, with the aliases
+/// their code compares (Tekken Tag's). Yoshimitsu's (0x38B368) is not read in detail: a stub.
+fn routines() -> Value {
+    json!({
+        "0x38B698": {"kind": "back_off", "aliases": {"attack": [0x39d]}, "note": "Paul: his 0x39D (0x39C returns at once, a branch bug)"},
+        "0x38BC00": {"kind": "canned_throws", "aliases": {"reach": [0x3f]}, "note": "King: canned throws_*, P1A"},
+        "0x38BE78": {"kind": "stance_dash", "aliases": {"stance": [0xa8b]}, "note": "Hwoarang: forward out of his stance"},
+        "0x38B820": {"kind": "fire_dodge", "aliases": {"breath": [0xba9, 0x1a6]}, "note": "Ogre / True Ogre"},
+        "0x38AFC0": {"kind": "fire_dodge", "aliases": {"breath": [0x1459, 0x1458]}, "note": "Devil / Angel: Ogre's"},
+        "0x38B718": {"kind": "poke_or_crouch", "aliases": {"attack": [0x1407]},
+            "note": "Ganryu: the canned poke at his frames 24-25 within 3000, else a crouch guard within 4000"},
+    })
+}
+
+/// The per-alias rule of the follow-up inputs and the chain throws (0x3876A4, 0x38A98C, section 21.2): for my move
+/// sets named (all when absent) never, only with rand() & 0x70, only without it, or not on EASY.
+fn followup_rules() -> Value {
+    json!([
+        {"aliases": [0x4ca], "allow": "never"},
+        {"aliases": [0x197, 0x181], "allow": "not_easy"},
+        {"aliases": [0x3bc], "movesets": [0], "allow": "no_coin"},
+        {"aliases": [0x1245, 0x1253], "movesets": [0, 13], "allow": "no_coin"},
+        {"aliases": [0x1246, 0x1255], "movesets": [0, 13], "allow": "never"},
+        {"aliases": [0x1262], "movesets": [4], "allow": "coin"},
+    ])
+}
+
 /// rounds.json: the round machine (0x36E198, docs/FIGHT_DATA.md sections 11 and 13), constants of the code written as
 /// data. Frames count from 1; aliases are Tekken Tag's.
 pub fn rounds() -> Value {
@@ -581,6 +740,7 @@ pub fn export(
         ("gamedata/reactions.json".into(), reactions(elf)?),
         ("gamedata/rules.json".into(), rules(elf)?),
         ("gamedata/camera.json".into(), camera(elf)?),
+        ("gamedata/ai.json".into(), ai(elf)?),
     ];
     movesets(elf, models, &mut files)?;
     for (name, v) in &files {

@@ -23,6 +23,7 @@ a fixed order: the same disc gives the same bytes on every platform.
 | `reactions.json` | 0.2 MB | the 1 431 reactions, the 74 pushback curves, the 44 air reactions |
 | `rules.json` | 8 KB | health, hurt and push spheres, damage constants |
 | `camera.json` | 78 KB | the fight camera: projection per arena, framing constants, round-start fly-in, per-move camera lists |
+| `ai.json` | 60 KB | the CPU AI's tables (**new** file here; Tekken 3's shape) |
 | `movesets/index.json` | 20 KB | which fighter and which model uses which moveset |
 | `movesets/moveset_NN.json` | 28 KB each | the 5 532 aliases of moveset NN (0-32) |
 
@@ -193,6 +194,40 @@ and `attract` are not written (not decoded).
   orientation).
 - **New** `camera_motions`: `count` 485 in disc file 12 (offsets at 0x508130), `decoded` false: the motions' format is
   not decoded, so the lists' type-2 entries name nothing a player can play.
+
+## `ai.json` (new)
+
+The CPU AI's tables (FIGHT_DATA.md sections 19 and 21), in the shape of the Tekken 3 converter's `ai.json`, with
+`dialect` `"ttt"`:
+
+- `profiles.entries` (0x431918, 128 bytes, 5 difficulties EASY .. ULTRA HARD x 8 levels): `difficulty`,
+  `difficulty_name`, `level`, `fields`: `wake_up_intervals` (4 bytes), then Tekken 3's named fields (the Tekken 3
+  converter's names), each 4 bytes later than in Tekken 3's profile; **new** Tekken Tag's own readers (section
+  21.8): `stun_attack_prob` (P68), `tag_out_prob` (P6E), `stun_tag_out_prob` (P70), `guard_after_reaction_prob`
+  (P72), `delay_input_prob` (P74), `repeat_count` (P76), `repeat_guard_prob` (P78); the others as `off_XX`, XX the
+  offset in Tekken Tag's profile. Tekken 3's `followup_count_a` / `followup_prob_a`, `consecutive_attack_limit_a` /
+  `followup_prob_b`, `consecutive_attack_limit_b` / `followup_prob_c` are Tekken Tag's lists C, B and D (P32-P3C).
+- `spacing.entries` (0x432E10): per body (`character`), the 6 reach thresholds.
+- `zone_masks` (0x4318D8, 0x4318F0): Tekken 3's values.
+- `handlers.entries` (0x507A80, 34): `moveset`, `vs_handler`, `self_handler` (code addresses); `routines`: the
+  seven live ones (section 21.6) as the Tekken 3 converter's kinds (`back_off` Paul, `canned_throws` King,
+  `stance_dash` Hwoarang, `fire_dodge` Ogre and Devil / Angel) with their aliases, and **new** `poke_or_crouch`
+  (Ganryu); Yoshimitsu's is not described (a stub).
+- `canned_sequences.entries`: `sidestep_0` / `sidestep_1` (0x507452 + 0x18 x side), `backdash` (0x5074A2),
+  `okizeme` (0x507482), King's `throws_stand_0..2` (0x507A52), `throws_crouch_0..1` (0x507A32), `throws_down_0..1`
+  (0x507A12), Ganryu's `poke` (0x507618): step words (buttons << 8 | numpad direction), the first one as it is.
+- `boss_punish_pads` (0x507A08): Ogre's four pad words (Devil's at 0x507A00 are the same).
+- `motion_records.entries`: commands 0x8001 / 0x8002 (the dash and the backdash, 0x36CF30), `cmd` Tekken Tag's.
+- `evade_choices` (0x507990, u32), `wakeup_categories` (0x5078E0, u64): Tekken 3's values.
+- `rules`: Tekken 3's keys with none of their move sets (-1) or aliases (0xFFFF), and **new** `followup_rules`: the
+  per-alias rule of the follow-ups and chain throws (0x3876A4): `aliases`, `movesets` (mine; all when absent),
+  `allow` (`never`, `not_easy`, `coin` / `no_coin`: `rand() & 0x70` set / clear).
+- `rng`: `ai_lcg_seed` (640, the AI generator's start, gp-0x64E8) and `rand_shift` 0 (libc `rand()` returns bits
+  0-14 of its state; Tekken 3's 16-30).
+- **new** `distance_jitter`: `amplitude` 192 and `sine` (0x4FCE88, 4096 x s16, 4096 = 1): bookkeeping's swing of
+  the distance before the zone tests.
+
+Not exported: the survival ladder and the attract mode's profile.
 
 ## `movesets/`
 
