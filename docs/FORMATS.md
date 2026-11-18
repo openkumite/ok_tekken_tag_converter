@@ -210,7 +210,7 @@ and `189 + 7n` (geometry); arenas 20-22 are on the disc but not in that list (20
 
 A fighter's animations are the distinct moves of its moveset (about 1 400, shared moves included).
 The other 12 words of a move record (posture, attack level, cancels, hit rows, sounds, flags,
-as in the arcade) are not decoded here.
+as in the arcade) are in [FIGHT_DATA.md](FIGHT_DATA.md); the pack's `gamedata/` holds them ([GAMEDATA.md](GAMEDATA.md)).
 
 ## 10. Arenas (verified: all 2 605 materials of 23 arenas find their texture)
 
@@ -267,7 +267,7 @@ that are not exported. Collision. One sky quad in arena 14 shows a palm-shadow t
 
 ## 11. Not decoded
 
-- **Move record fields, hit data, hurt volumes.**
+- What [FIGHT_DATA.md](FIGHT_DATA.md) lists as not decoded.
 - **Low-detail fighter model** (part 8): header `{0, 100.0, 0, data offset, 1, size in quadwords}`,
   18 joints of `{i32 parent, float offset[3], 16 bytes}` in Tekken 3 slot order, then VIF packets.
   Each strip: a 4-quadword material packet and `1 + 5n` quadwords of

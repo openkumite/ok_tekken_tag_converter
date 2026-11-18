@@ -4,15 +4,15 @@ use anyhow::Result;
 use std::collections::HashSet;
 
 const SLOTS: usize = 0x1c0690; // 34 bodies x 8 costumes: i16 slot, fighter file = 345 + 3 * slot
-const MOVES: usize = 0x1f2ea0; // 7351 records of 52 bytes; record i plays motion i
-const MOVE_COUNT: usize = 7351;
-const ALIASES: usize = MOVES + 52 * MOVE_COUNT + 4; // 33 movesets x 5532 u16 move numbers
-const ALIAS_COUNT: usize = 5532;
+pub(crate) const MOVES: usize = 0x1f2ea0; // 7351 records of 52 bytes; record i plays motion i
+pub(crate) const MOVE_COUNT: usize = 7351;
+pub(crate) const ALIASES: usize = MOVES + 52 * MOVE_COUNT + 4; // 33 movesets x 5532 u16 move numbers
+pub(crate) const ALIAS_COUNT: usize = 5532;
 pub const MOVESETS: usize = 33;
 
 const ROSTER: usize = 0x1bcc20; // 50 rows of 16 bytes: name pointer, u8 body, u8, u8, u8 moveset, u8; a long name fills the next row
-const VADDR: usize = 0x33f000; // address in memory - offset in the file
-const BODIES: usize = 34;
+pub(crate) const VADDR: usize = 0x33f000; // address in memory - offset in the file
+pub(crate) const BODIES: usize = 34;
 
 const STAGES: usize = 0x101770; // 20 rows: u32 name pointer, u32 arena number (its geometry is file 189 + 7 * number)
 
@@ -93,15 +93,27 @@ pub fn cast(elf: &[u8], number: usize) -> Result<Vec<Person>> {
     Ok(out)
 }
 
-/// (name, moveset) of each body, from the game's roster. A fighter that is a costume of another's
-/// body (Tiger, Panda) has a body number past the last one: its name joins the body with its moveset.
-pub fn roster(elf: &[u8]) -> Result<Vec<(String, usize)>> {
+/// (name, body, moveset) of each fighter of the game's roster, in its order.
+pub fn fighters(elf: &[u8]) -> Result<Vec<(String, usize, usize)>> {
     let what = "the roster";
-    let mut out = vec![(String::new(), 0); BODIES];
+    let mut out: Vec<(String, usize, usize)> = vec![];
     for r in (0..50).map(|i| ROSTER + 16 * i) {
         let (pointer, body, set) =
             (u32_at(elf, r, what)?, u8_at(elf, r + 4, what)? as usize, u8_at(elf, r + 7, what)? as usize);
         let Some(name) = text(elf, pointer) else { continue }; // text, not a pointer: the previous row's name
+        // (Xiaoyu and Jin have two rows)
+        if !out.iter().any(|o| o.1 == body) {
+            out.push((name, body, set));
+        }
+    }
+    Ok(out)
+}
+
+/// (name, moveset) of each body, from the game's roster. A fighter that is a costume of another's
+/// body (Tiger, Panda) has a body number past the last one: its name joins the body with its moveset.
+pub fn roster(elf: &[u8]) -> Result<Vec<(String, usize)>> {
+    let mut out = vec![(String::new(), 0); BODIES];
+    for (name, body, set) in fighters(elf)? {
         if let Some(o) = out.get_mut(body) {
             *o = (name, set);
         } else if let Some(o) = out.iter_mut().find(|o| !o.0.is_empty() && o.1 == set) {

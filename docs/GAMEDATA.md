@@ -1,0 +1,194 @@
+# The pack's fight data: `gamedata/*.json`
+
+Written by `src/fight.rs` from the executable's tables ([FIGHT_DATA.md](FIGHT_DATA.md) says where they are and how
+they were found). The manifest lists the files under `gamedata`.
+
+The shapes are the ones the Tekken 3 converter writes (`ok_tekken3_converter`, read by OpenKumite's
+`kumite_sim::data`) wherever Tekken Tag kept the concept: the same key names, the same nesting. **The numbers are
+Tekken Tag's own, as stored**: aliases, condition codes, transition types, req codes, flag bits, property ops and
+sound indices are not translated to Tekken 3's (section "Numbering" below). What Tekken Tag has and Tekken 3 lacks
+is in added keys, marked **new**.
+
+Conventions: every number is an integer as the game stores it, but the two float constants of `rules.json`, written
+with their bits beside the value. Game units are about 1 mm, y down; 60 frames a second; angles are 65536 a turn.
+`address` strings are memory addresses (file offset + 0x33F000). The files are one line each, written with keys in
+a fixed order: the same disc gives the same bytes on every platform.
+
+| File | Size | Content |
+|---|---|---|
+| `moves.json` | 6.3 MB | the 7 351 move records, with their sound and timed property lists |
+| `cancels.json` | 8.4 MB | the moves' cancel lists, the shared lists, the input sequences, the reversal motion lists |
+| `hits.json` | 0.4 MB | the 4 174 hit records (**new**) |
+| `reactions.json` | 0.2 MB | the 1 431 reactions and the 74 pushback curves |
+| `rules.json` | 8 KB | health, hurt and push spheres |
+| `movesets/index.json` | 20 KB | which fighter and which model uses which moveset |
+| `movesets/moveset_NN.json` | 28 KB each | the 5 532 aliases of moveset NN (0-32) |
+
+Not separate files: Tekken 3's `shared.json` (its content is in `cancels.json`), and the proposed `properties.json`
+and `sounds.json`: the lists are reached only from moves, so each move carries its own (`sounds`, `properties`), as
+in Tekken 3's data, with the list's index beside it.
+
+## `moves.json`
+
+`{"address", "moves": [...]}`; `moves[i]` is move record `i`. There is one table for the whole game and no common
+bank: a moveset reaches its moves through its aliases, and shared moves are the same record.
+
+| Key | Record | Meaning |
+|---|---|---|
+| `index` | +00 | the move's number = its motion's number |
+| `anim` | | the motion's file in the pack (`anims/NNNN.glb`: several moves share one file), null when the motion did not decode. Tekken 3: an animation's name |
+| `motion` | +00 | the motion's number |
+| `frames` | motion byte 0 | the frame count (record +18 is 0 on the disc: `bytes_18.frame_count_ram`) |
+| `posture` | +04 | `raw`, `base` (bits 0-2), `state_code` (bits 11-15), and **new** `tag_state` (bit 24). The bits are Tekken 3's; no names are written |
+| `attack_mask` | +08 | `raw`, `mask` (low 16 bits), `level` (bits 8-15), `level_name` (Tekken 3's levels: 1 low, 2 mid, 3 special_mid, 4 high, 6 unblockable, 7 throw, 8 throw_link) |
+| `cancel_start` | +0C | index into `cancels.json` `cancels.entries`; the list runs to its `end` entry |
+| `next` | +10, +12 | `alias`: the move played at the animation's end; `hi`: the turn added to the facing at commit (0x7FFF = about half a turn) |
+| `hit` | +14 | **new**: index of the move's first hit record in `hits.json` (a chain, see there). Tekken 3 keeps damage and reaction in the move |
+| `damage`, `damage_type` | | the chain's ungated (last) record: what the move does to an opponent no gate names |
+| `damage_runtime` | | `damage` plus the arguments of the move's timed property op 0x0C, which the game adds at boot |
+| `air_drift` | +16 | signed: the drift along the facing during the jump frames |
+| `bytes_18` | +18..+1B | `frame_count_ram` (0), `jump_start`, `jump_end`, `hold_frame` |
+| `active` | +2C, +2D | first and last active frame |
+| `hitstop` | +2E | signed |
+| `byte_2F` | +2F | unknown, non-zero in 36 moves |
+| `flags24` | +24 | `raw` (the whole word) and `camera_script`: **the top byte** (Tekken 3: the low byte). No bit names: see "Numbering" |
+| `push_control` | +30 | `raw`, `mode` (bits 0-3), `disable_mask` (bits 4-11), `mask_only_near_active` (bit 12): Tekken 3's modes |
+| `word_32` | +32 | always 0 |
+| `sound_list`, `sounds` | +1C | the list's index (null: none) and its entries `{raw, type, index}`: `raw` = `type << 12 \| index`. The indices are Tekken Tag's; which sample each is, is not decoded |
+| `property_list`, `properties` | +20 | the list's index (null: none) and its entries `{frame, op, arg}`; ops are Tekken Tag's |
+| `attack` | +28..+2B | null for a move with no bones and no active frame; else **new shape**: `bones` `{end0, start0, end1, start1}`, `segment_count` (2 when `end1` is not 0), `object_driven` (`end0` >= 0x18: the segment comes from a projectile object) |
+| `raw_hex` | | the record's 52 bytes |
+
+**Attack segments are not baked.** Tekken 3's data has a list of segments for each active frame (`attack.frames`);
+Tekken Tag has only the bone pair. On each active frame a segment ends at bone `end`'s position and starts at bone
+`start`'s, or, when `start` is 0, at the end bone's position of the frame before. Bones are slot numbers
+(`rules.json` uses the same); bone 0x13 is 6 for body 14. The engine has to pose the skeleton to get the segments.
+
+Not written (Tekken 3 has them): `motion_tag` (the reversal lists hold motion numbers here), `reaction` and
+`close_range` (in the hit records), `desc0`, `next.move` and `dest_move` (an alias resolves per moveset).
+
+## `cancels.json`
+
+```
+{"cancels":        {"address", "count": 33487, "entries": [...]},
+ "shared_cancels": {"address", "count": 782, "list_starts": [40 indices], "entries": [...]},
+ "sequences":      {"address", "entries": [{"cmd", "address", "window", "input", "steps": [{"raw", "dir", "buttons", "tag"}]}]},
+ "reversal_families": {"address", "families": [[motion, ...], ...], "offsets": [...]}}
+```
+
+`cancels.entries` is every move's list, one after another; a move's list starts at its `cancel_start` and ends in
+exactly one `end` entry, whose `dest` is the move played at the animation's end and whose `win_start` is the first
+frame another move can start. A `call` entry runs the shared list at `shared_cancels.entries[shared_list_start]`
+up to its `return`; `list_starts` are the 40 lists' first entries.
+
+An entry (14 bytes; Tekken 3's are 12):
+
+| Key | Meaning |
+|---|---|
+| `index` | its place in its table |
+| `cmd` | the command, raw |
+| `kind` | `command` (`cmd` < 0x8000), `end` (0x8000), `dash` (0x8001), `backdash` (0x8002), `special_8003` (**new**, tied to Unknown), `call` (0x8004), `return` (0x8005), `sequence` (>= 0x8006) |
+| `input` | the command as text, in the Tekken 3 data's notation: numpad directions `d/b d d/f b n f u/b u u/f`, buttons `1`-`4`, `tag` (**new**: bit 14), `a\|b` either direction, `(1\|2)` any of the buttons, `*` any direction, `(no button)`; a sequence is its steps joined by commas (motions are not folded into `qcf`) |
+| `req` | the gate, raw (ranges below) |
+| `cond`, `cond_tag` | the condition code (the byte's low 7 bits) and **new** its bit 0x80: a partner/tag test is added |
+| `param` | the condition's parameter |
+| `dest` | the alias of the move to start |
+| `transition` | the 16-bit word (**8 bits in Tekken 3**); `transition_type` = bits 0-13, `turn_180` = bit 15 (Tekken 3: 0x80), `transition_bit14` (Tekken 3's `transition_bit6`) |
+| `prefilter` | **new**: a mask of stick-direction classes, plus 0x20 for any button; a quick reject before the input test |
+| `win_start`, `win_end`, `exec` | the frames the input is accepted on, and the frame the move starts (255: at the animation's end) |
+
+`sequences.entries`: the motion inputs of the commands >= 0x8006 the lists use (100), by `cmd`. `window`: the
+frames the steps must fit in. A step: `raw` = `buttons << 8 | numpad direction`; `dir`, `buttons` (1-4), `tag`
+(bit 14).
+
+`reversal_families.families`: the motion lists the reversal conditions test, in the table's order; `offsets[k]` is
+where list `k` starts in the table, in 16-bit units. How a condition's parameter picks a list is not decoded (the
+engine will need the offset or the order).
+
+## `hits.json` (new)
+
+`{"address", "count", "reaction_none": 1426, "records": [{"index", "gate", "damage", "damage_type", "reaction",
+"close_reaction", "close_distance"}]}`
+
+A move's `hit` starts a chain: the first record whose `gate` passes is used; the record with `gate` null (0xFFFF
+on the disc) always passes and ends the chain. A gate is a req code (0x53: the opponent's moveset is 16, Gun
+Jack's). `reaction` and `close_reaction` index `reactions.json` `entries`; the close reaction replaces the other
+when the fighters are nearer than `close_distance` (0: no close reaction). `damage_type` is the damage word's top
+2 bits, as in Tekken 3.
+
+Tekken 3 has one damage and reaction per move, and a `close_range` table of 58 pairs; a chain by opponent does not
+fit that shape.
+
+## `reactions.json`
+
+`{"reaction_table", "slot_names", "param_names", "none": 1426, "entries": [{"index", "victims", "params"}],
+"pushback_curves": {"address", "count", "entries": [{"index", "constant_frames", "velocity", "impulses"}]}}`
+
+- `victims`: 14 aliases, the victim's move by `slot_names` (Tekken 3's slot order).
+- `params`: 7 values by `param_names`: three angles (65536 a turn) and four curves. A curve is **the index of an
+  entry of `pushback_curves`**, or null (Tekken 3: an offset in 16-bit units, a multiple of 10).
+- A curve has **10 impulses** (Tekken 3: 8).
+
+Tekken 3's air reactions, throw victims and close-range tables are not here: not found as tables in Tekken Tag.
+
+## `rules.json`
+
+- `health`: `life_options` (8 words of the table, `life_options_raw` in 20.12 fixed point: 125, 130, 135, 140, 160
+  and three more 135; which is the default is not decoded), **new** `percent_per_character` (34 bodies: a body's
+  health is the option times its percent), **new** `recoverable`: the part of a hit's damage the recoverable cap
+  loses, `damage_factor` (0.6) and `damage_factor_flag_12a` (1.4), each `{bits, value}`.
+- `hurt_spheres`, `push_spheres`: `layout` (`index`, `bone_slot`, `offset_game`: the head's sphere is lifted 120,
+  the root's 60) and `per_character` (`character`: the body number, `name`, `radii`). Tekken 3's keys; a
+  character here is a body (0-33). Costume bodies 34-38 are not in the tables; they are assumed to use their host
+  body's (8, 11, 15, 17, 29).
+
+Tekken 3's other rules (damage zones, counter-hit and juggle scaling, throws, round time) are not decoded.
+
+## `movesets/`
+
+`index.json`: `models` (each fighter model of the pack: `model` its file number, `glb`, `body`, `moveset_id`,
+`moveset_file`), `fighters` (the roster's 39: `name`, `body`, `moveset_id`, `moveset_file`), `files`, `aliases`
+(5532).
+
+`moveset_NN.json`: `moveset_id`, `fighters`, `move_count` (distinct moves), `aliases`: 5 532 values, the move of
+each alias, **a number of `moves.json`, or null** for a missing alias (7350 on the disc). Tekken 3: `{bank, move}`.
+
+## Numbering: what differs from Tekken 3
+
+The engine needs a table per game for these; nothing below is translated in the files.
+
+- **Aliases**: other numbers (stand is 58, was 3; crouch 80, was 40); 5 532 of them, was 4 023.
+- **Commands**: specials are 0x8000 + n, was 0xC000 + n; 0x8003 is new, call is 0x8004 (was 0xC00C), return
+  0x8005; sequences start at 0x8006 and the command is the sequence's place in a table, not an index. Bit 14 of a
+  plain command is the tag button.
+- **req**:
+
+| req | Passes when |
+|---|---|
+| 0x01-0x21 | own moveset = req - 1 |
+| 0x22-0x42 | own moveset != req - 0x22 |
+| 0x43-0x63 | opponent's moveset = req - 0x43 |
+| 0x64-0x84 | partner's moveset = req - 0x64 |
+| 0x85-0xA6 | own body = req - 0x85 |
+| 0xA7-0xC8 | partner's body = req - 0xA7 (unused) |
+| 0xC9-0xEA | own body != req - 0xC9 |
+| 0xEB-0xED | flags; 0xEC / 0xED = Kazuya-Devil pair or not |
+
+- **cond**: 0-43 as Tekken 3; Tekken 3's 44-68 are + 3; reversal codes start at 0x60 (Tekken 3's 0x45 + k is
+  0x60 + k); 0x48-0x5F are new and not decoded; bit 0x80 is `cond_tag`.
+- **Transition types**: 46; 0-28 as Tekken 3, Tekken 3's 33 is 32, 44 ("use the END entry") is 46.
+- **Flag bits** (`flags24.raw`), Tekken 3 bit -> Tekken Tag bit: 8, 11, 12, 13 -> 0, 3, 4, 5; 18 -> 11; 28, 29,
+  30 -> 19, 20, 22. By code: 0x04 unthrowable, 0x08 not parryable, 0x40 guard by input, 0x200 ki charge, 0x400
+  drops push spheres, bit 19 commits the root. New: 0x100 the posture follows the stick. Unknown: 0x4000, 0x8000,
+  bits 17 and 21. The camera script is bits 24-31.
+- **Property ops**: 1-10 as Tekken 3; damage to the opponent is 0x0C (was 0x0B), damage to self 0x0D; hand poses
+  moved up (0x0E -> 0x0F, 0x15 -> 0x18). Ops up to 0x58 occur; most are not decoded.
+- **Sound entries**: the type nibbles are Tekken 3's (6, 7, 2, 8, 9; rarely 0, 1, 3); the indices are renumbered.
+- **Reaction none**: 0x592.
+
+## Raw or unknown
+
+`byte_2F`; posture and attack-mask bits beyond those named; flag bits 0x4000, 0x8000, 17, 21; cond 0x48-0x5F;
+most transition types; req 0xEB; property ops past the ones listed; sound index -> sample; camera scripts; the
+`prefilter`'s classes (table 0x4FF8D0); how a reversal condition picks its motion list; the step bits of a
+sequence other than direction, buttons and tag; the default life option.
