@@ -60,8 +60,8 @@ pub fn stages(elf: &[u8]) -> Value {
     json!({"stages": stages})
 }
 
-/// The cells of the effects' atlas, 64 texels square.
-const CELL: usize = 64;
+/// The atlas's square cells: the largest picture's size (a sparkle's lone texels would not survive shrinking).
+const CELL: usize = 128;
 const COLS: usize = 8;
 
 /// `pictures/effects/atlas.png` and `effects.json` (the Tekken 3 converter's layout) from the effect files'
@@ -81,7 +81,7 @@ pub fn atlas(pics: &[Vec<(usize, usize, Vec<u8>)>]) -> Option<(Vec<u8>, Value)> 
     let mut rgba = vec![0u8; w * h * 4];
     for (n, (pw, ph, px)) in cells.iter().enumerate() {
         let (cx, cy) = (n % COLS * CELL, n / COLS * CELL);
-        // each picture scaled to the cell (nearest texel)
+        // each picture scaled up to the cell (nearest texel)
         for (y, x) in (0..CELL).flat_map(|y| (0..CELL).map(move |x| (y, x))) {
             let at = (y * ph / CELL * pw + x * pw / CELL) * 4;
             let to = ((cy + y) * w + cx + x) * 4;

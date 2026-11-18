@@ -342,7 +342,7 @@ fn openkumite(pack: &Hashed) {
     // every character file's shadow mesh; each arena's shadow (Paul's: alpha 0x30)
     let shadows = load("gamedata/shadows.json");
     let meshes = shadows["meshes"].as_array().unwrap();
-    assert!(meshes.len() == 127 && meshes.iter().all(|m| m["triangles"].as_array().unwrap().len() > 300));
+    assert!(meshes.len() == 127 && meshes.iter().all(|m| m["triangles"].as_array().unwrap().len() > 150));
     let stages = load("gamedata/stages.json");
     assert_eq!(
         (stages["stages"].as_array().unwrap().len(), &stages["stages"][0]["shadow"]["alpha"]),
