@@ -28,7 +28,7 @@ A boot routine at 0x367FF0 turns the indices into pointers.
 | +28..+2B u8 | attack bones: end0, start0, end1, start1 | descriptor header | 1166/1194 |
 | +2C, +2D u8 | first and last active frame | +2D, +2E | code 0x370808 |
 | +2E s8 | hit-stop | +2C | code 0x371F64 |
-| +2F u8 | unknown, non-zero in 36 moves | +2F | - |
+| +2F u8 | custom air reaction index (8-43) when this move juggles (section 9), non-zero in 36 moves | +2F | code 0x3740B8 |
 | +30 u16 | push-sphere control, same modes | +30 low | 1192/1194 |
 | +32 u16 | always 0 | - | - |
 
@@ -63,8 +63,9 @@ Differences from Tekken 3:
   tag button (270 entries, mostly `cmd 0x4000` with trans 0x22).
 - Prefilter (+A) is new: a mask of stick-direction classes (table 0x4FF8D0) plus 0x20 for any button, used as a
   quick reject.
-- trans is 16 bits: 0x8000 turns 180 degrees (was 0x80), 0x4000 was 0x40. There are 46 types (jump table
-  0x4FFA80). Types 0-28 kept their numbers; Tekken 3's 33 -> 32 and 44 -> 46 ("use END entry").
+- trans is 16 bits: type = bits 0-6, bits 7-12 a parameter, 0x2000 the swap / moveset bit, 0x4000 was 0x40,
+  0x8000 turns 180 degrees (was 0x80) (0x368CB0). There are 46 types (jump table 0x4FFA80). Types 0-28 kept their
+  numbers; Tekken 3's 33 -> 32 and 44 -> 46 ("use END entry"); the others are in section 8.
 - req (0x369008) has more ranges:
 
 | req | Passes when |
@@ -78,9 +79,10 @@ Differences from Tekken 3:
 | 0xC9-0xEA | own body != req - 0xC9 |
 | 0xEB-0xED | flags; 0xEC / 0xED = Kazuya-Devil pair or not |
 
-- cond has 0x60 normal codes (jump table 0x4FF8E0). Codes 0-43 kept their numbers on the paired entries; Tekken
-  3's 44-68 are +3; reversal codes start at 0x60 (Tekken 3 0x45 + k -> 0x60 + k). Bit 0x80 adds a partner/tag
-  test (0x3693E0). Codes 0x48-0x5F are new and not decoded.
+- cond has 0x60 normal codes (jump table 0x4FF8E0); reversal codes start at 0x60 (Tekken 3 0x45 + k -> 0x60 + k).
+  Codes 0-0x24 kept their numbers; three new codes are inserted at 0x25-0x27, so Tekken 3's 0x25-0x44 are +3
+  (read in code, section 7; the earlier "0-43 kept" came from pairs that never used 0x25-0x2B). Bit 0x80 adds a
+  tag-state test (section 7).
 
 Window and exec bytes were equal on 1978 of 2015 paired entries, params on 2010.
 
@@ -151,18 +153,202 @@ lists, 100 input sequences, 54 reversal motion lists.
 - The team table is at 0x440940: 0x60 per side, 0x30 per member; word 0 is the body, +0xC health, +0x10
   recoverable health.
 - Player +0x3F8 is the recoverable cap: each hit lowers it by damage x 0.6 (x 1.4 when +0x12A is 1).
-- Attacker +0x400 multiplies scripted-event damage by 13/10 (probably the partner-anger boost).
+- Attacker +0x400 multiplies damage by 13/10: the partner-anger boost (section 10).
 - Partner gates are confirmed by data: Paul with Law 11 entries, King with Armor King, Nina with Anna, Hwoarang
   with Baek.
 
+## 7. Conditions (second pass, read in code)
+
+The test is 0x3693E0(entry, self, opponent). Player fields used below: +0x3E the body's turn off the opponent's
+direction (16-bit angle), +0x40 its absolute value, +0x42 / opponent +0x42 the quadrant (0 front, 1, 2 back, 3; as
+Tekken 3's +0x32), +0x4C, +0x54 the screen-relative values of section 12, +0x160 the knock-down stun, +0x16A the
+120-frame ki timer, gp-0x74C8 the pair distance, on_right(side) the screen-side byte at gp-0x65D0 (section 12).
+
+Tekken 3 numbering, corrected:
+
+| Tag | Tekken 3 | Test |
+|---|---|---|
+| 0x00-0x24 | same | unchanged (0x24 = back turned, +0x40 > 0x4000) |
+| 0x25 | new | not back turned (+0x40 <= 0x4000); 23 entries |
+| 0x26 / 0x27 | new | +0x3E < 0 / >= 0 (which way the body is turned off the opponent); unused |
+| 0x28-0x2E | 0x25-0x2B | back turned left / right (+0x3E >= 0x4E38, or < 0 and <= 0xB1C6), own quadrant 0, 1, 3, 2, opponent quadrant 0 |
+| 0x2F-0x31 | 0x2C-0x2E | opponent quadrant 1, 3, 2 |
+| 0x32 | 0x2F | always false (the default arm) |
+| 0x33-0x47 | 0x30-0x44 | same tests (auto-duck, stun, lying, escapes 0x3D-0x3F, K.O. 0x40, sides 0x41-0x44, air recovery 0x45, ki 0x46-0x47) |
+
+Confidence: high (each arm read; 0x28/0x29, 0x2A-0x31 match Tekken 3's code shapes and pairs). The engine's
+dialect maps Tag 0x25-0x2E straight to Tekken 3's numbers, which is wrong for 0x25-0x2E (1 376 entries).
+
+Two literal tests kept from Tekken 3's arms whose meaning is not settled: 0x36 = `self+0x3E8 (u64) != 0 or
+self+0x3F0 != 0` (T3 0x33), 0x37 = the same and opponent +0x135 == 0 and not lying (T3 0x34).
+
+New codes 0x48-0x5F:
+
+| Code | Test | Uses |
+|---|---|---|
+| 0x48-0x4B | self +0x4C in [0x200,0x400), [0x400,0x600), [0xA00,0xC00), [0xC00,0xE00): where I stand from the opponent, camera-relative, 12-bit angle | 0 |
+| 0x4C-0x4F | the same and back turned | 0 |
+| 0x50 / 0x51 / 0x52 / 0x53 | self +0x54 == 1 / 2 / 0 / 3: which way I face on screen (quadrant against the camera's axis) | 0 |
+| 0x54-0x57 | +0x54 == 1 / 2 / 0 / 3 and on_right(self) == 0 | 0x54: 18, 0x57: 18 |
+| 0x58-0x5B | the same and on_right(self) == 1 | 0x58: 18, 0x5B: 18 |
+| 0x5C | off screen: the three projected bone x values at +0x628/+0x62A/+0x62C all >= 0x215, or all < -0x14 (0x34FE7C) | 101 (tag-out runs end on it) |
+| 0x5D | pair distance < 0x1D01 (parameter ignored) | 0 |
+| 0x5E | on_right(self) changed since the last frame | 0 |
+| 0x5F | round decided: +0xB4 < 0, the round-result flag (gp-0x7444 bit 0), no pause, and the round count reached or either side has the wins (section 11) | 1 |
+
+Bit 0x80 (0x3693E0 head): a test on the opponent's +0x129, which is set when a move with posture bit 24 (the tag
+state) starts: +0x129 = the previous on_right of its side + 1, else 0 (0x36AA70).
+- param != 0: passes when opponent +0x129 == 0, or on_right(self) + 1 == opponent +0x129;
+- param == 0: fails when opponent +0x129 != 0 and on_right(self) + 1 == opponent +0x129.
+
+Used only inside tag-out moves (56 entries, with codes 0x00, 0x54-0x5B): it picks the run-off direction when the
+opponent is tagging at the same time. Confidence: medium on the meaning, high on the test.
+
+## 8. Transition types 29-45
+
+Types 2-25 are first remapped by 0x36BE08 (table 0x4FFB40), against the destination move: 2 -> 20 when the
+destination is an attack whose next frame is still before its last active frame (0x36BEC0); 12-15 -> 11 when the
+destination has no active frames; 20 / 21 -> 11 unless 0x36BEC0 holds; 25 -> 22 when it holds. Field +0x11E is the
+per-frame facing mode (Tekken 3's +0xB9; jump table 0x500570, 15 modes).
+
+| Tag type | Handler | Does | Tekken 3 | Uses |
+|---|---|---|---|---|
+| 28 | 0x36B4A4 | frame 1, mode 0xA, get-up lock 24 (+0x170) | 0x1C | 1005 |
+| 29 | 0x36B4F4 | continue at the next frame (clamped to the move), root rebased, mode 0xA | 0x1D | 4 |
+| 30 | 0x36B570 | enter a juggle with air reaction 4 (section 9): +0xFA = 1, +0xFC = 4, juggle physics 0x374148, stun from 0x36A2D0, mode 0xB | ~0x1E | 2 |
+| 31, 32 | 0x36B638 | throw link: chain counter +0xE0, the pair's root and facing from the partner, a 16-frame turn | 0x21 (33) | 2253 on 32 |
+| 33 | 0x36BAE0 | frame 1, root committed, yaw = toward the opponent (+0x3A), mode 8 | 0 + mode 8 | 109 |
+| 34 | 0x36BB1C | frame 1, yaw = +0x44, mode 0xC: over 8 frames turn to the screen axis +0x50 (at most 10 degrees a frame) | new | 595 |
+| 35 | 0x36BB48 | the same with mode 0xD and axis +0x52 (perpendicular) | new | 140 |
+| 36 | 0x36B77C | victim side of the throw chain | 0x22 | 0 |
+| 37-45 | 0x36B890.. | reaction entries set by the slot selector (37 blocked, 38 airborne, 39 lying, 40 counter, 41 side 1, 42 side 3, 44 front, 45 back) | 0x23-0x2B (+2) | code only |
+| 46 | - | use the END entry | 0x2C | 103 |
+
+Flag bits (0x368CB0, consumed at 0x36A4F0 when the next move starts):
+- 0x2000 with parameter 0: the tag swap (section 10). With a parameter (bits 7-12): Unknown changes moveset
+  (0x36C318, or 0x36C278 for body 33); only the 54 `0x8003` entries of Unknown use it.
+- 0x4000 sets +0x17E, which 0x373428 treats like move flag bit 1 (a per-frame state machine at +0x35DC; meaning
+  not settled).
+
+Confidence: high for the actions; the Tekken 3 pairing of 29, 30 and 36 is by behaviour, not by data.
+
+## 9. Reactions, juggles and damage
+
+Slot selector 0x36A050(victim, attacker), Tekken 3's order:
+
+| # | Case | Slot (reaction +0x1C + 2*slot) | Type |
+|---|---|---|---|
+| 1 | blocked (victim guard & attacker mask) | 10 standing, 11 crouching | 37 |
+| 2 | airborne (+0x135, or posture 0x400) | air table, below | 38 |
+| 3 | posture 0x200 | 13 | 39 |
+| 4 | posture 0x4 (lying) | 12 | 39 |
+| 5 | counter hit (+0x13A) and hit from the front (quadrant 0) | 2 / 3 | 40 |
+| 6 | quadrant 0 / 1 / 3 / 2 | 0, 4, 6, 8 (+1 crouching) | 44, 41, 42, 45 |
+
+Difference from Tekken 3: a counter hit from the side or back takes the side / back slot (Tekken 3 ignores the
+direction). The close reaction replaces the normal one when the distance is below the hit record's close distance
+and sets +0x13B (0x371F84).
+
+Airborne hits use an air table, as in Tekken 3 (0x374010): entries of 28 bytes, index < 8 at 0x500678, otherwise
+0x5F2BA8 + 28 * index. Entry: u16 victim alias, u16 target height, u16 fixed rise speed, u16 x3, then pushback
+samples. The index (0x374048):
+
+| Index | Alias | Height | When |
+|---|---|---|---|
+| move +0x2F | per move | - | the attacker's move has a custom index (36 moves, 8-43) |
+| 1 | 4762 | 550, rise 400 | spike: victim strike vector Y (+0x3E0) >= 0x6E |
+| 2 / 3 | 4766 / 4767 | 436 | hit from quadrant 3 / 1 |
+| 0 | 4727 | 440 | otherwise |
+| 7 | 4763 | 550, rise 400 | spike, victim face-down or in aliases 0x129B-0x129F (early frames) |
+| 5 / 6 | 4764 / 4765 | - | the same victims, by height (|+0x520| above or below 0x2DF) |
+| 4 | 4729 | 1357 | transition 30 |
+
+Juggle physics 0x374148 equal Tekken 3's: juggle counter n = +0x100; +0x104 = clamp(0..100, damage + 7(n+1) +
+10, +10 more for index 4); rise speed = clamp(-100..100, 4*damage + 40 - 7n - (velocity Y + strike Y)/8).
+
+Damage (0x3720C8, victim s0, attacker s2; D = the hit record's damage, attacker +0xCA; throws (type 1) carry 0
+and deal theirs through timed property 0x0C):
+- No damage zones: the hurt sphere does not scale D (no table read on this path). Confidence high.
+- Close range: D + D/2.
+- Counter hit when the victim's move has damage and its frame is before its first active frame, or either ki
+  timer (+0x16A) runs, or victim +0x12E is set (not juggled, +0xF7 clear): D = 12D/10 + bonus; bonus =
+  3*Vdmg/10 * f / startup (Vdmg the victim's move damage, f its frame), or 3D/10 when a ki timer / +0x12E caused it.
+  Tekken 3's bonus is 0.09*Vdmg*f/startup.
+- Airborne victim: first air hit (n == 0, or n == -1 after a tag-in) x 80/100, later hits x 1/2 (Tekken 3's).
+- Partner anger: attacker +0x400 set and no ki timer: x 13/10.
+- Block (victim facing): chip = D/10 (20.12: D * 0xA000 / 100), only when the match flag byte 0x43B804 is set or
+  the attacker's ki timer runs; otherwise 0. Tekken 3's chip is D/10 + 2.
+- Health -= D << 12. Recoverable cap +0x3F8 -= 0.6 D (gp-0x7F88); on hits that set +0x12A (the first air hit)
+  the cap drops by 1.4 D but not below health, so juggle damage is not recoverable.
+- When gp-0x71FC is set the hit's damage is undone (health restored); game mode 7 (practice) refills health and
+  cap to max after every hit.
+
+## 10. Tag system
+
+- Team table 0x440940, 0x60 per side, 0x30 per member: +0x0 body, +0x4 variant byte, +0x8 present, +0xC health,
+  +0x10 recoverable cap, +0x14 max health, +0x18 / +0x1C display bars, +0x28 anger (100 at round start).
+- Player structs: 0x879640 + side * 0xB8A0 (one per side). +0x0 active member, +0x2 partner, +0x1E side, +0x402 no
+  partner (solo), +0x400 angry.
+- Tag button: command bit 14 (0x4000); the stances send it to alias 5398 with transition 34 (turn to the screen
+  axis), 90 frames, posture bit 24. Its list branches at frame 30 on 0x54-0x5B / bit 0x80 to the run-off variants
+  (5394-5447); each ends on condition 0x5C (off screen) or its END, both to alias 5397 with transition 0x6021
+  (type 33, swap bit, 0x4000).
+- The swap (0x36A70C -> 0x3D3288(side)): +0x0 and +0x2 exchange; health and cap load from the new member's team
+  entry; body, moveset and aliases are rebuilt (0x35C8D0, 0x368168), volumes (0x377F58); the new fighter starts
+  alias 5397 of its own moveset (the entrance, 35 frames for Paul, then stance 58) at the old fighter's root,
+  facing the opponent. If the opponent is airborne, its juggle counter is set to -1, so the next hit counts as a
+  first air hit (tag combos). Invulnerability during the tag was not found in code.
+- Round end: 0x36F408 scores each side as the members' health / max health (x 4096), averaged; any present member
+  at 0 health makes the side's score 0, so one K.O. loses the round. At time over (gp-0x74C0 <= 0) the higher score
+  wins; equal is a draw (0x36F56C).
+- Recoverable health (0x3C1900, every frame while the round runs and nothing is paused): the benched partner's
+  health (+0xC) rises by max / 6000 per frame up to its cap (+0x10), i.e. 1 % of max a second. The active fighter
+  regains nothing, except a solo Unknown (same rate, only while not attacking). The active fighter's health and cap
+  are copied to its team entry each frame.
+- Anger (0x3C1B38, 0x3CF278): each clean hit with damage on the active member adds 4 to the partner's anger (6 for
+  a zero-damage hit), +-1 or 0 by the relation table 0x5207F0 (76 x {partner body, variant mask, active body,
+  variant mask, effect}; body 0x22 = any; effect -1 = 3, 1 = 5, -9 = none; e.g. Paul / Law +1, Paul / Kuma -1,
+  Law / Baek none). An active member with anger >= 120 is angry (+0x400, x1.3 damage) and loses 1 a frame; when the
+  partner's anger is >= 120 the active member's resets to 100.
+- Partner requirements: req 0x64-0x84 (partner's moveset), 0xA7-0xC8 (partner's body), checked against team
+  member +0x2 and false when +0x402 (solo).
+- Not found: the tag-in invulnerability, how tag throws / tag combos start beyond the partner gates.
+
+## 11. Round rules
+
+- Match settings byte block at 0x43B7F8: +0x0 game mode (1 / 6 handicap health, 2 survival, 7 practice, 9 fixed
+  160), +0xB round time option, +0x1E rounds option, +0xC chip flag.
+- Rounds to win (gp-0x7480) = min(5, +0x1E + 1); round limit (gp-0x747E) = 2 * wins - 1; round number gp-0x71EC.
+- Round timer (gp-0x74C0, frames, 0x36D640) by option 0-4: 2160, 2820, 4260, 5640, 6960; option 5 does not count.
+  The display shows (t * 6 / 7 - 1) / 60: 30, 40, 60, 80, 99 seconds, each displayed second 70 frames.
+- Life (0x3C1350): base = life option table 0x51F5A0[gp-0x7494] (or [gp-0x7492] in one sub-mode); the only
+  writer (0x3B1488) sets both to 3, so every normal match uses 140. Modes 1 and 6: per-side value * 140 / 100.
+  Mode 9: 160. Then x the body's percent / 100; a solo Unknown x 1.5.
+- Mode 2 (probably survival) restores 15 % of max to health and cap between rounds (0x3C1620).
+- Arenas: no wall or ring-out test was looked for. The K.O. sequence timings and the default round-time / rounds
+  options (not written by code found here) are not decoded.
+
+## 12. Camera and screen sides; CPU AI
+
+- Camera struct at 0x415808 (+0x4 yaw in 12-bit units); framing code 0x35B760-0x35BC40, per-frame writer 0x35B7B0.
+  Not decoded further.
+- Screen side: on_right[side] (gp-0x65D0) = this side's projected x (+0x624) >= the other's (0x35B9A8); the
+  previous frame's copy is at gp-0x65C8. Player +0x48 = (0x400 - camera yaw) << 4 (+0x8000 for side 1), +0x50 /
+  +0x52 the axis nearest the body's facing and its perpendicular, +0x54 the facing quadrant against the camera's
+  axis, +0x4C the direction from the opponent to me against the camera (0x370F28, 0x371330).
+- CPU AI: not located with certainty. Tekken 3's LCG (x * 5 + 3) does not appear. Cancel-list walkers outside the
+  move code cluster in 0x37E000-0x386FFF (about 40 loops of 14-byte entries), with per-side state at 0x8B7EF0 and
+  a per-frame call per player (0x37D668 from 0x36DC9C); this is the likely AI, probably Tekken 3's candidate-list
+  design. Low confidence.
+
 ## Not decoded
 
-- The damage-zone table (not present as a plain array) and counter-hit/juggle scaling.
 - Sound index -> sample, and voice rows.
-- Camera script data.
-- Which life option is the default.
+- Camera script data and the fight camera's constants.
 - How costume bodies 34-38 index the per-body tables (the dump script assumes they use their host body's).
-- Condition codes 0x48-0x5F, the transition types and the damage-zone lookup were not read in code.
+- Tag-in invulnerability, wall / ring-out rules, K.O. sequence timings, default time and round options.
+- The CPU AI's structure.
+- Player +0x12E (counter-hit cause), +0x3E8 / +0x3F0 (conditions 0x36 / 0x37), transition bit 0x4000's effect.
 
 Risk: the hit segments have no radius and use raw bone origins, so the engine must pose Tag's skeleton exactly to
 reproduce hits.
@@ -173,4 +359,6 @@ Research aids, kept as they were used; they read the executable `disc/SLUS_200.0
 takes it from your disc image) and the pack's `raw/` folder (`TTT_RAW`). Plain `python3`; `mdis.py` and
 `fulldis.py` need `capstone`. `ttt.py` (loaders, table addresses), `dump_fighter.py` (`python3 dump_fighter.py
 PAUL`), `dump_tables.py` (reactions, curves, shared cancels, health tables), `t3match.py` (pairing with Tekken 3's
-converted game data), `xref.py`, `fn.py`.
+converted game data), `xref.py`, `fn.py`, `dump_rules.py` (the tables of sections 7-12 as JSON, and the usage
+counts of conditions and transition types), `condmap.py` (conditions and transitions of paired Tekken 3 / Tag
+cancel lists), `gpx.sh` (gp-relative references in `out/code.asm`, the `fulldis.py` output).
