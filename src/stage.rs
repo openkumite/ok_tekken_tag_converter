@@ -363,8 +363,8 @@ pub fn glb(scenery: &[Batch], objects: &[Batch], banks: &[Vec<tex::Upload>]) -> 
 ///   whole periods. An arena's floors are one: the one of the longest period, with each shorter one laid inside
 ///   it (they divide it: 2, 4 or 8 m in 8 m).
 ///
-/// Only the opaque, cut-out and ordinarily blended strips: the additive (lights, floor gloss) and darkening ones
-/// are left out (OpenKumite's stages draw neither). A batch without a texture draws the first image, a white texel;
+/// Every strip: the additive ones (lights, floor gloss) in materials named `additive`, the darkening ones (painted
+/// shadows, dirt) in materials named `shade` (since format 14; glTF has neither blending). A batch without a texture draws the first image, a white texel;
 /// colours are the strips' vertex colours.
 pub fn game_glb(
     name: &str,
@@ -374,31 +374,28 @@ pub fn game_glb(
     banks: &[Vec<tex::Upload>],
 ) -> Vec<u8> {
     let mut g = Glb::default();
-    let drawn = |b: &Batch| b.mode == 0 || b.mode == 3;
-    let (mut sky, mut tiles): (Vec<Batch>, Vec<Batch>) =
-        (scenery.iter().filter(|b| drawn(b)).cloned().collect(), vec![]);
+    let (mut sky, mut tiles): (Vec<Batch>, Vec<Batch>) = (scenery.to_vec(), vec![]);
     let floor = floors.iter().max_by(|a, b| (a.period[0] * a.period[1]).total_cmp(&(b.period[0] * b.period[1])));
     for (f, big) in floors.iter().zip(std::iter::repeat(floor).flatten()) {
         let n = [big.period[0] / f.period[0], big.period[1] / f.period[1]];
         if !n.iter().all(|n| (1.0..=64.0).contains(n) && (n - n.round()).abs() < 1e-3) {
             // shortcut: a floor whose period does not divide the other's (none seen) is laid once with the
             // scenery, upgrade with a floor node of its own
-            sky.extend(f.laid().filter(drawn));
+            sky.extend(f.laid());
             continue;
         }
         // its copies within one period of the other, each place of it once
         let [nx, nz] = n.map(|n| n.round() as i32);
         let at = (0..nx).flat_map(|x| (0..nz).map(move |z| [(x - nx / 2) as f32, (z - nz / 2) as f32]));
         let at = at.map(|[x, z]| [x * f.period[0], z * f.period[1]]).collect();
-        tiles.extend(Floor { tiles: f.tiles.clone(), period: f.period, at }.laid().filter(drawn));
+        tiles.extend(Floor { tiles: f.tiles.clone(), period: f.period, at }.laid());
     }
     // each picture once: (TEX0's texture, size and palette pointers, bank) -> the picture, its part of TW x TH, and
     // how far the batches' coordinates reach in it (in pictures: low x, y, high x, y)
     let key = |b: &Batch| (b.tex0 & 0x000f_ffe3_ffff_ffff, b.bank);
     let st = |b: &Batch, i: usize| b.uv.get(i).copied().unwrap_or_default();
     let mut pics = BTreeMap::new();
-    let models: Vec<Vec<Batch>> =
-        objects.iter().map(|o| o.model.iter().filter(|b| drawn(b)).cloned().collect()).collect();
+    let models: Vec<Vec<Batch>> = objects.iter().map(|o| o.model.clone()).collect();
     for b in sky.iter().chain(&tiles).chain(models.iter().flatten()) {
         let pic = pics.entry(key(b)).or_insert_with(|| {
             let t = tex::tex0(b.tex0);
@@ -446,8 +443,12 @@ pub fn game_glb(
                 let pbr = json!({"baseColorTexture": {"index": image}, "metallicFactor": 0.0, "roughnessFactor": 1.0});
                 let mut m =
                     json!({"pbrMetallicRoughness": pbr, "doubleSided": true, "alphaMode": "MASK", "alphaCutoff": 0.1});
-                if b.mode == 3 {
+                if b.mode > 0 {
                     m = json!({"pbrMetallicRoughness": pbr, "doubleSided": true, "alphaMode": "BLEND"});
+                }
+                // glTF has neither added nor multiplying blending: the name tells OpenKumite
+                if let Some(name) = [None, Some("additive"), Some("shade")].get(b.mode as usize).copied().flatten() {
+                    glb::set(&mut m, "name", json!(name));
                 }
                 materials.push(m);
                 materials.len() - 1
@@ -606,7 +607,8 @@ mod tests {
         // a cell a hair wide would be repeated without end: kept once
         let (_, _, floors) = arena(&[(0, &grid(1e-20))]);
         assert_eq!(floors[0].laid().count(), 1);
-        // OpenKumite's stage: the two floors in one of 4 m, the 2 m one laid 2 x 2 in it, the additive strip out
+        // OpenKumite's stage: the two floors in one of 4 m, the 2 m one laid 2 x 2 in it; the added and
+        // multiplying strips in materials of those names
         let (_, _, mut floors) = arena(&[(0, &grid(4000.0)), (0, &grid(2000.0))]);
         floors[1].tiles[0].mode = 1;
         let mut sky = batches(&batch(5, 3000.0));
@@ -626,7 +628,9 @@ mod tests {
         );
         let count = |m: gltf::Mesh| m.primitives().map(|p| p.get(&gltf::Semantic::Positions).unwrap().count()).max();
         assert_eq!(count(nodes[0].mesh().unwrap()), Some(5));
-        assert_eq!(count(nodes[2].mesh().unwrap()), Some(4));
+        assert_eq!(count(nodes[2].mesh().unwrap()), Some(4 * 4));
+        let names: Vec<_> = doc.materials().filter_map(|m| m.name()).collect();
+        assert_eq!(names, ["shade", "additive"]);
         assert_eq!(nodes[2].mesh().unwrap().primitives().next().unwrap().indices().unwrap().count(), 2 * 3);
         // the untextured strips draw the white texel, the first image
         assert_eq!(doc.images().count(), 1);

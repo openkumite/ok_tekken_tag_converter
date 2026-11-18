@@ -52,7 +52,7 @@ use std::collections::{BTreeSet, HashMap, HashSet};
 /// camera, the camera id from bit 23; 8: ai.json; 9: the front end, `assets/pictures/` and roster.json `front_end`, the
 /// 2D files' palettes as drawn; 10: the endings, `assets/endings/` and gamedata/endings.json; 11: Tekken Bowl, `bowl.json`,
 /// its motions, ball, pin and deck; 12: the shadows and effects, `shadows.json`, `stages.json`, `pictures/effects/`;
-/// 14: the arenas' objects, placed and moved, in their stages).
+/// 14: the arenas' objects, placed and moved, and their added and multiplying strips, in their stages).
 pub const FORMAT: i64 = 14;
 /// What a pack's manifest names it.
 pub const KIND: &str = "ttt";

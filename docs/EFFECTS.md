@@ -100,8 +100,9 @@ has each arena's `dust`, and the dust's paths (not the guard's) are drawn at ran
 0x3A2640 by arena (jump table 0x519770, arenas 4-20) starts the arena's effect tasks: 0x3A0A90, 0x3A0CE8,
 0x3A1510 (+ 0x3A1378), 0x3A1068 (two variants), 0x3A1B48 (twenty objects 0x3A16C0 and thirty 0x3A18F8; 0x3A1BC8
 draws file 9's discs, slot 5: a lens flare [L]), 0x3A1C78 for all. Not decoded further; not exported.
-The converter leaves the arenas' additive strips (lights, floor gloss) and darkening strips (painted shadows,
-dirt) out of the stages (GAMEDATA.md): not exported.
+The arenas' additive strips (ALPHA 0x48, Cs x As + Cd: lights, neon, floor gloss) and darkening strips (0x89,
+Cd x As: painted shadows, dirt) are in the stages since format 14, in materials named `additive` and `shade`
+(GAMEDATA.md).
 
 ## 6. Not found or not read
 
