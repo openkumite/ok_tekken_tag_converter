@@ -38,7 +38,9 @@
 //! The layout outside `assets/` is the research tool's, to look at in any glTF viewer.
 
 use crate::archive::{self, Archive};
-use crate::{anim, assets, audio, bowl, effects, ending, fight, front, model, moves, sound, stage, tex, u32le};
+use crate::{
+    anim, assets, audio, bowl, effects, ending, fight, front, model, moves, objects, sound, stage, tex, u32le,
+};
 use anyhow::{Context, Result, bail};
 use ok_converter_common::io::{Ctx, DiscFile, Sub, Vfs};
 use ok_converter_common::psx;
@@ -49,8 +51,9 @@ use std::collections::{BTreeSet, HashMap, HashSet};
 /// the air reactions, the default life, the damage constants; 6: `assets/audio/`, sound, music and rounds; 7: the
 /// camera, the camera id from bit 23; 8: ai.json; 9: the front end, `assets/pictures/` and roster.json `front_end`, the
 /// 2D files' palettes as drawn; 10: the endings, `assets/endings/` and gamedata/endings.json; 11: Tekken Bowl, `bowl.json`,
-/// its motions, ball, pin and deck; 12: the shadows and effects, `shadows.json`, `stages.json`, `pictures/effects/`).
-pub const FORMAT: i64 = 13;
+/// its motions, ball, pin and deck; 12: the shadows and effects, `shadows.json`, `stages.json`, `pictures/effects/`;
+/// 14: the arenas' objects, placed and moved, and their added and multiplying strips, in their stages).
+pub const FORMAT: i64 = 14;
 /// What a pack's manifest names it.
 pub const KIND: &str = "ttt";
 
@@ -232,7 +235,7 @@ pub fn convert(ctx: &Ctx, src: &dyn DiscFile, research: bool) -> Result<Value> {
                 let [ball, pin, deck] = bowl::models(&a.elf, &models.unwrap_or_default())?;
                 bare.retain(|x| x.bank != bowl::OBJECT_PART);
                 for (name, m) in [("ball", ball), ("pin", pin), ("deck", deck)] {
-                    assets.write(&format!("stages/bowl_{name}.glb"), &stage::game_glb(name, &m, &[], &banks))?;
+                    assets.write(&format!("stages/bowl_{name}.glb"), &stage::game_glb(name, &m, &[], &[], &banks))?;
                 }
                 b.append(&mut objects);
             }
@@ -286,7 +289,16 @@ pub fn convert(ctx: &Ctx, src: &dyn DiscFile, research: bool) -> Result<Value> {
             // OpenKumite's stage, by the arena's number
             if let Some(n) = listed {
                 let file = format!("stage_{n:02}.glb");
-                assets.write(&format!("stages/{file}"), &stage::game_glb(&name, &bare, &floors, &banks))?;
+                // its objects (part 3's models) as its code places and moves them
+                // (part 3 counted with the empty parts, its textures' bank without them, as `arena` takes them)
+                let raw = archive::pack(&d).unwrap_or_default();
+                let bank = raw.iter().take(3).filter(|c| !c.is_empty()).count();
+                let blocks: Vec<Vec<stage::Batch>> = (raw.get(3).map(|m| stage::blocks(m)).unwrap_or_default())
+                    .into_iter()
+                    .map(|m| m.into_iter().map(|b| stage::Batch { bank, ..b }).collect())
+                    .collect();
+                let things = if i == BOWL { vec![] } else { objects::objects(&a.elf, n, &blocks)? };
+                assets.write(&format!("stages/{file}"), &stage::game_glb(&name, &bare, &floors, &things, &banks))?;
                 arenas.push(json!({"id": n, "name": name, "file": file}));
             }
             let triangles = b.iter().map(|x| x.pos.len().saturating_sub(2)).sum::<usize>();

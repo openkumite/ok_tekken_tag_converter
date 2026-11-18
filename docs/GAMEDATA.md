@@ -293,7 +293,7 @@ converter's layout and shapes. Written by `src/pack.rs` (`assets.rs`, `model::fi
 | `characters/model_NNN.glb` | a fighter: body and costume of the roster's (127). NNN is its pack's file number in TEKKEN.BIN (345 + 3 x costume slot), as `models/NNN.glb` |
 | `motions/motion_NNNN.glb` | a motion (4 231: those the characters' movesets play). NNNN is its number in file 133's table, the number of its first move (as `anims/`) |
 | `motions/bowl_NNN.glb` | Tekken Bowl's bowler motions (114, file 128 part 0, BOWL_ENDINGS.md 4): clip `bowl_NNN`, NNN its track |
-| `stages/stage_NN.glb` | an arena (23). NN is its number (geometry file 189 + 7 x NN; 20 is Tekken Bowl, 21 and 22 are not in the stage list); `stages/index.json`: `[{"id", "name", "file"}]`. Tekken Bowl's hall without its objects, which stand at the origin until the game moves them; `bowl_ball.glb`, `bowl_pin.glb` (its base at the origin) and `bowl_deck.glb` (the pin deck where the object table puts it) are the objects the bowl draws (BOWL_ENDINGS.md 6) |
+| `stages/stage_NN.glb` | an arena (23). NN is its number (geometry file 189 + 7 x NN; 20 is Tekken Bowl, 21 and 22 are not in the stage list); `stages/index.json`: `[{"id", "name", "file"}]`. Tekken Bowl's hall without its objects, which stand at the origin until the game moves them; `bowl_ball.glb`, `bowl_pin.glb` (its base at the origin) and `bowl_deck.glb` (the pin deck where the object table puts it) are the objects the bowl draws (BOWL_ENDINGS.md 6); **new** (format 14) node `objects`: the arena's objects as its code draws them (EFFECTS.md 7), a node each (`object_K`, K its place in the object table; its model's mesh, its place, turn and scale in its parent), and animation `objects`: the moving ones' translation and rotation, a key a frame at 60 a second, each channel going round on its own (its last key is where its first goes on) |
 | `gamedata/*.json` | the files above, but each move's `anim` is its clip's name (`motion_NNNN`), not a file |
 | `gamedata/roster.json` | Tekken 3's shape: `characters` (a body each: `id`, `name`, `moveset_id`, `selections`), `selections.entries` (each character file: `selection` = body x 8 + costume, `character` = body, `costume`, `name`, `model_record`, `glb`, `moveset_file`, `moveset_id`), `select_grid.entries` (every character, in body order), and **new** `front_end` (below) |
 | `gamedata/shadows.json` | **new** (format 12) the fighters' shadow meshes in the Tekken 3 converter's shape: `{"meshes": [{"models": [record], "joints": the 18 joint names, "vertices": [[joint, x, y, z]] (metres, in the joint's axes), "triangles", "quads": []}]}`, one per character file, from its pack's part 8 (the low-detail model the game draws its shadow with; a vertex on its heavier joint, a hair or cloth joint's carried by its parent: EFFECTS.md 2) |
@@ -351,12 +351,10 @@ centred on the fighters (scene extras `drum: "model"`, `drum_cull: false`: the s
 sides are drawn; **new** (format 13) `drum_depth: "floor"`: the PS2 draws the arena with one z-buffer, so the floor
 hides the ground below it, unlike the arcade stages' model; `background_rgb` black); node `floor` holds copies `floor_K` of the floor mesh, a period apart, to a
 little past the hole in the far ground, and the scene extras' `floor_period` (metres) is that period. An arena's
-floors are one: the one of the longest period, each shorter one (2 or 4 m in 8 or 4 m) laid inside it. Only the
-opaque, cut-out and ordinarily blended strips are there: the additive ones (lights, floor gloss) and the darkening
-ones (shadows, dirt; on Lei's arena the wet street's, so its reflections show bare) are left out, and so are the
-background characters and the objects the game moves: since format 13 all of part 3, the object models (the object
-table 0x520FC0 places them, the arena's tasks move them: King's helicopters and their rotors, which stood at the
-centre). Each primitive (a picture and a blend mode) has its own
+floors are one: the one of the longest period, each shorter one (2 or 4 m in 8 or 4 m) laid inside it. Every strip
+is there: since format 14 the additive ones (lights, floor gloss) in materials named `additive`, the darkening ones
+(shadows, dirt) in materials named `shade`. Left out: the background characters; part 3, the object models, are
+not in the scenery but under node `objects` where their arena's code puts them (since format 14). Each primitive (a picture and a blend mode) has its own
 positions, texture coordinates and vertex colours; the first image is a white texel, which strips without a texture
 draw; each picture is cut to the texels its strips reach (all of it along an axis they repeat it on).
 
