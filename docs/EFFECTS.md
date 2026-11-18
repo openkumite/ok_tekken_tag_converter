@@ -31,12 +31,20 @@ model": 18 joints in the arcade slot order, two-matrix vertices; nothing else dr
 
 Alpha (x / 0x80) by arena 0-22: 30 48 30 40 40 40 50 40 40 40 48 40 40 48 20 40 40 40 40 20 40 40 40.
 
-Lights (the shadow's direction): the arena's table **0x416288 + 0x54 x arena**: three directions (towards the
-light, y up, the arenas' axes), three colours (0-255) and the ambient, floats [H]. In a fight 0x353448 moves the
-lights with the fighter's place (table 0x4550B0) [M, not read]; 0x3537xx falls back to the arena table.
+Lights (the shadow's direction, and the fighters' light): the arena's table **0x416288 + 0x54 x arena**: three
+directions (towards the light, y up, the arenas' axes), three colours (0-255, 128 = 1) and the ambient, floats [H];
+0x363630 points gp-0x72E8 / -0x72E4 / -0x72E0 at its directions, colours and ambient (blending in table 0x4161E0
+while gp-0x72EC counts down). 0x353878(side) fills the side's light block 0x1FC4290 + 0x120 x side: +0x10, +0x20,
++0x30 the directions, +0x40, +0x50, +0x60 the colours times gp-0x60C8 (1.0), +0x70 the ambient; 0x353758 lights 0
+and 1 again, x and z negated while flag gp-0x60B8[side] is set [H]. In a fight (gp-0x74D0 not 5) 0x353448 instead
+turns light 2 towards a place (0x415808 +0x14..+0x1C, ints) and blends it and its colour (0x4550C0[player +0x2A], grey)
+with the base copy at +0xB0 / +0xE0 by a distance weight (0x352F50 with 0x4550B0, 0x4550B4) when 0x4550B8 is set
+[M]. The fighter's draw (0x357640) sends the block to VU1; that it lights as ambient + each colour x max(0, n.L),
+the GS modulating the texture by it (128 = 1, saturating at 255), is read in the data, not in the microcode [M].
 
 Exported: `gamedata/shadows.json` (part 8 as the Tekken 3 converter's shadow meshes), `gamedata/stages.json` (each
-arena's shadow: light 0's direction, the alpha). Not: the shadow on objects, the place-dependent lights, the
+arena's shadow: light 0's direction, the alpha; since format 13 its `lights`, the table as it stands). Not: the
+shadow on objects, light 2's turn towards a place, the negated lights, the
 picture's 256-texel softness.
 
 ## 3. Effect files 4-9 (loaded at boot, 0x3B96C0; 0x345410 keeps their parts) [H]

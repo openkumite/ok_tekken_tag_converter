@@ -46,15 +46,20 @@ pub fn shadow(m: &Model, record: usize) -> Value {
 
 /// `gamedata/stages.json`: each arena's shadow as the Tekken 3 converter writes a stage without a light table, plus
 /// its alpha: towards light 0 (the arena's axes, y up; turned up when it points down: the shadow falls along the
-/// line either way), black, at the arena's alpha (0x342360).
+/// line either way), black, at the arena's alpha (0x342360); and the fighters' `lights` (0x353918 copies them into
+/// each side's light block): towards each of the three lights (the arena's axes, y up), their colours and the
+/// ambient (128 = 1, the GS's modulation).
 pub fn stages(elf: &[u8]) -> Value {
     let stages: Vec<Value> = (0..ARENAS)
         .filter_map(|a| {
-            let d = [0, 4, 8].map(|k| f32le(elf, LIGHTS + 0x54 * a + k - VADDR).map(f64::from));
-            let [Some(x), Some(y), Some(z)] = d else { return None };
-            let s = if y < 0.0 { -1.0 } else { 1.0 };
+            let f: Vec<f64> =
+                (0..21).map(|k| f32le(elf, LIGHTS + 0x54 * a + 4 * k - VADDR).map(f64::from)).collect::<Option<_>>()?;
+            let v = |k: usize| f.get(3 * k..3 * k + 3).unwrap_or_default();
+            let (x, y, z) = (f.first()?, f.get(1)?, f.get(2)?);
+            let s = if *y < 0.0 { -1.0 } else { 1.0 };
             let alpha = u16le(elf, ALPHA + 2 * a - VADDR)?;
-            Some(json!({"id": a, "shadow": {"toward": [x * s, y * s, z * s], "colour": [0, 0, 0], "alpha": alpha as f64 / 128.0}}))
+            Some(json!({"id": a, "shadow": {"toward": [x * s, y * s, z * s], "colour": [0, 0, 0], "alpha": alpha as f64 / 128.0},
+                "lights": {"toward": [v(0), v(1), v(2)], "colour": [v(3), v(4), v(5)], "ambient": v(6)}}))
         })
         .collect();
     json!({"stages": stages})
