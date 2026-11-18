@@ -1,0 +1,207 @@
+//! The front end (docs/FRONTEND.md): the 2D files' palettes, and the tables OpenKumite's menus, select screen, HUD,
+//! arcade ladder and unlocks read, as roster.json `front_end` (docs/GAMEDATA.md "front_end"). The pictures are the
+//! 2D files' images as `assets/pictures/FFF_NNN.png`, the names `textures/` has; `front_end` names them.
+
+use crate::moves::VADDR;
+use crate::tex::{self, Upload};
+use crate::{u8_at, u16_at, u32_at};
+use anyhow::Result;
+use serde_json::{Value, json};
+
+/// A TEKKEN.BIN file of 2D pictures the front end draws (FRONTEND.md 1: the sprite groups' files but Tekken Bowl's).
+pub fn is_2d(file: usize) -> bool {
+    matches!(file, 3 | 130..=132 | 134 | 136 | 141..=182)
+}
+/// The portraits' files 143-181, one per body, in name order: their bodies.
+const PORTRAITS: [usize; 39] = [
+    26, 37, 38, 18, 32, 31, 12, 29, 8, 27, 13, 6, 21, 16, 9, 10, 30, 19, 3, 11, 28, 1, 25, 2, 7, 23, 15, 5, 20, 14, 35,
+    0, 22, 17, 36, 34, 33, 24, 4,
+];
+/// Bodies: the 34 characters and the costume bodies Tiger, Panda, Tetsujin, Alex, Angel.
+const BODIES: usize = 39;
+
+/// The palette upload of image upload `k` of 2D file `file`, where the nearest one after it is not the one drawn
+/// with (FRONTEND.md 1, 3, 4): file 3's faces share upload 132 (palette id 0x84), its name plates upload 76 (0x4C);
+/// file 141's pictures take its upload 0.
+pub fn palette(file: usize, k: usize) -> Option<usize> {
+    match (file, k) {
+        (3, 131..=173) => Some(132),
+        (3, 75..=114) => Some(76),
+        (141, 1..) => Some(0),
+        _ => None,
+    }
+}
+
+/// The health-bar strips drawn angry (FRONTEND.md 4): uploads 45-55 of file 3 with palettes 0x3D-0x42, as
+/// `003_NNN_angry.png` (NNN: the strip's picture number): each its file name and PNG.
+pub fn angry_strips(ups: &[Upload]) -> Vec<(String, Vec<u8>)> {
+    (0..6)
+        .filter_map(|i| {
+            let pair = [ups.get(45 + 2 * i)?.clone(), ups.get(61 + i)?.clone()];
+            let (w, h, px) = tex::pictures(&pair, &|_| Some(1)).into_iter().next()?;
+            Some((format!("003_{:03}_angry.png", 6 + i), tex::png(w, h, &px)))
+        })
+        .collect()
+}
+
+/// A picture of file 3 by its upload number among `ups` (its uploads): `003_NNN.png`, NNN its place among the
+/// images, palettes not counted (sprites.py).
+fn sprite(ups: &[Upload], k: usize) -> String {
+    format!("003_{:03}.png", ups.iter().take(k).filter(|u| !tex::is_palette(u)).count())
+}
+
+/// A string of the executable as it is (codes like `%H%V` left out).
+fn string(elf: &[u8], pointer: u32) -> String {
+    let at = (pointer as usize).wrapping_sub(VADDR);
+    let raw: Vec<u8> = elf.get(at..).unwrap_or_default().iter().take(96).take_while(|&&c| c != 0).copied().collect();
+    let s = String::from_utf8_lossy(&raw).to_string();
+    // the codes: % and one letter, %P%F%c... (FRONTEND.md 2)
+    let mut out = String::new();
+    let mut chars = s.chars();
+    while let Some(c) = chars.next() {
+        if c == '%' {
+            chars.next();
+        } else {
+            out.push(c);
+        }
+    }
+    out.trim().to_string()
+}
+
+/// roster.json `front_end` (docs/GAMEDATA.md "front_end"), from the executable's tables (FRONTEND.md 2-8); `ups`:
+/// file 3's uploads (the HUD and select atlas), which name its pictures.
+pub fn front_end(elf: &[u8], ups: &[Upload]) -> Result<Value> {
+    let sprite = |k: usize| sprite(ups, k);
+    let a = |addr: usize| addr - VADDR;
+    let what = "the front end's tables";
+    let u8s = |addr: usize, n: usize| -> Result<Vec<u8>> { (0..n).map(|i| u8_at(elf, a(addr) + i, what)).collect() };
+    let i32_at = |addr: usize| -> Result<i32> { Ok(u32_at(elf, a(addr), what)? as i32) };
+    let s16 = |addr: usize| -> Result<i16> { Ok(u16_at(elf, a(addr), what)? as i16) };
+    // the main menu 0x51EFE0: {label*, id, locked, help, 0}
+    let mut menu = vec![];
+    for i in 0..12 {
+        let r = 0x51EFE0 + 8 * i;
+        menu.push(json!({"mode": u8_at(elf, a(r) + 4, what)?, "label": string(elf, u32_at(elf, a(r), what)?),
+            "locked": u8_at(elf, a(r) + 5, what)? != 0}));
+    }
+    let titles: Vec<String> =
+        (0..9).map(|m| u32_at(elf, a(0x51EC18 + 12 * m), what).map(|p| string(elf, p))).collect::<Result<_>>()?;
+    // the select grid 0x440A68 {slot, up, down, left, right, visible, body, x, y} and slot -> character 0x520460
+    // (55: RANDOM)
+    let mut slots = vec![];
+    for i in 0..36 {
+        let r = 0x440A68 + 12 * i;
+        let b = u8s(r, 5)?;
+        let character = u8_at(elf, a(0x520460) + i, what)? as i8;
+        let n = |k: usize| b.get(k).copied().filter(|&v| v < 36);
+        slots.push(json!({"slot": b.first(), "up": n(1), "down": n(2), "left": n(3), "right": n(4),
+            "x": s16(r + 8)?, "y": s16(r + 10)?, "character": (0..34).contains(&character).then_some(character)}));
+    }
+    let set = |addr: usize| -> Result<Vec<usize>> {
+        Ok(u8s(addr, 34)?.iter().enumerate().filter(|e| *e.1 != 0).map(|e| e.0).collect())
+    };
+    let faces: Vec<String> =
+        (0..BODIES).map(|b| i32_at(0x520508 + 4 * b).map(|id| sprite(id as usize))).collect::<Result<_>>()?;
+    let mut portraits = vec![String::new(); BODIES];
+    for (k, &b) in PORTRAITS.iter().enumerate() {
+        if let Some(p) = portraits.get_mut(b) {
+            *p = format!("{:03}_000.png", 143 + k);
+        }
+    }
+    let streaks = u8s(0x51F678, BODIES)?;
+    let mut plates = vec![];
+    for b in 0..BODIES {
+        let (id, x) = (i32_at(0x5206B8 + 8 * b)?, i32_at(0x5206B8 + 8 * b + 4)?);
+        plates.push(json!({"picture": sprite(id as usize), "x": x, "streak": streaks.get(b)}));
+    }
+    // the arcade: rival teams per character 0x51F3C8 (34: any), the fallback 0x51F560, the CPU pairs 0x5207F0
+    let rivals: Vec<Vec<Option<i32>>> = (0..34)
+        .map(|c| (0..3).map(|k| i32_at(0x51F3C8 + 12 * c + 4 * k).map(|v| (0..34).contains(&v).then_some(v))).collect())
+        .collect::<Result<_>>()?;
+    let fallback: Vec<i32> = (0..4).map(|k| i32_at(0x51F560 + 4 * k)).collect::<Result<_>>()?;
+    let mut pairs = vec![];
+    for i in 0..76 {
+        let p = u8s(0x5207F0 + 5 * i, 5)?;
+        if let (Some(&x), Some(&y)) = (p.first(), p.get(2)) {
+            pairs.push(json!([x, y]));
+        }
+    }
+    // the unlock schedule 0x440818 {u16 stage, u16 kind, u32 character} to stage 0xFFFF
+    let mut schedule = vec![];
+    for i in 0..64 {
+        let r = 0x440818 + 8 * i;
+        let stage = u16_at(elf, a(r), what)?;
+        if stage == 0xFFFF {
+            break;
+        }
+        schedule.push(
+            json!({"stage": stage, "kind": u16_at(elf, a(r) + 2, what)?, "character": u32_at(elf, a(r) + 4, what)?}),
+        );
+    }
+    // the options 0x439CE0 (0x40 bytes: {config byte*, default, label*, 0, value names*[6]}), the game options' first 12
+    let mut options = vec![];
+    for i in 0..12 {
+        let r = 0x439CE0 + 0x40 * i;
+        let values: Vec<String> = (0..6)
+            .map(|k| u32_at(elf, a(r) + 16 + 4 * k, what))
+            .collect::<Result<Vec<u32>>>()?
+            .into_iter()
+            .filter(|&p| p != 0)
+            .map(|p| string(elf, p))
+            .collect();
+        options.push(json!({"label": string(elf, u32_at(elf, a(r) + 8, what)?), "config": u32_at(elf, a(r), what)? as usize - 0x439C60,
+            "default": u32_at(elf, a(r) + 4, what)?, "values": values}));
+    }
+    Ok(json!({
+        "screen": [640, 448],
+        // (the fonts draw @ as ©)
+        "title": {"picture": "134_003.png", "press_start": string(elf, 0x51EED0),
+            "copyright": [string(elf, 0x51EF40).replace('@', "©"), string(elf, 0x51EF70)]},
+        // the chrome font: 12 glyphs of 52 x 42 a row (read off the picture, not the code)
+        "fonts": {"big": {"picture": sprite(2), "glyph": [52, 42], "rows": ["0123456789AB", "CDEFGHIJKLMN", "OPQRSTUVWXYZ", "!?.-':\"%<&()"]}},
+        "menu": {"address": "0x51EFE0", "items": menu},
+        "select": {"titles": titles, "slots": slots, "face_dy": 52, "hidden_slots": [34, 35],
+            "faces": faces, "random_face": sprite(162), "locked_face": sprite(165), "cursor": sprite(174), "cursor_dxy": [-2, -2],
+            "tags": [sprite(119), sprite(121), sprite(123), sprite(124), sprite(125), sprite(126), sprite(127)],
+            "selectable": set(0x51E850)?, "copy_pool": set(0x51E8A0)?, "portraits": portraits},
+        "hud": {"bars": {"x": [29, 370], "y": 30, "w": 240, "h": 28},
+            "strips": (0..6).map(|i| sprite(45 + 2 * i)).collect::<Vec<_>>(),
+            "angry_strips": (6..12).map(|i| format!("003_{i:03}_angry.png")).collect::<Vec<_>>(), "angry_at": 120, "angry_blink": 8,
+            "trail_per_frame": [800, 400],
+            "plates": plates, "plate_y": 58, "streaks": [sprite(57), sprite(59)],
+            "lamps": {"lit": sprite(67), "unlit": sprite(69), "x": [250, 364], "dx": 22, "y": 60, "blink": [180, 11]},
+            "team_icon": {"picture": sprite(73), "x": [272, 348], "dx": 16, "y": 60},
+            "chicken": {"picture": sprite(71), "x": [13, 595], "y": 400},
+            "timer": {"digits": sprite(0), "digit_w": 40, "y": 8, "infinity": sprite(7)},
+            "stage": {"text": string(elf, 0x51ED10), "final": string(elf, 0x51ED28), "alternate": 32}},
+        "arcade": {"fights": 8, "rivals": rivals, "fallback": fallback, "pairs": pairs, "rival_arena": 6,
+            "boss": 33, "boss_arena": 14, "boss_rounds": 1, "early_fights": 3, "early_excluded": [14, 15, 20, 29],
+            "continue": {"frames": 898, "digit_frames": 100}, "time_format": string(elf, 0x51ED40)},
+        "team_battle": {"members": [1, 8], "refill_percent": 15},
+        "unlocks": {"address": "0x440818", "schedule": schedule, "kinds": {"0": "cpu_pool", "1": "selectable", "3": "reset",
+            "4": "gallery", "5": "tekken_bowl", "6": "last"}, "points_per_stage": 50},
+        "options": options,
+    }))
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::indexing_slicing)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn sprites_name_their_pictures() {
+        // an image, its 16-colour palette, an image: the second is picture 1
+        let up = |psm, w, h| Upload { set: 0, dbp: 0, dbw: 64, psm, w, h, data: vec![] };
+        let ups = [up(0x14, 32, 32), up(0, 8, 2), up(0x14, 32, 32)];
+        assert_eq!((sprite(&ups, 0), sprite(&ups, 2)), ("003_000.png".to_string(), "003_001.png".to_string()));
+        assert_eq!(
+            (palette(3, 140), palette(3, 80), palette(141, 5), palette(141, 0), palette(3, 45)),
+            (Some(132), Some(76), Some(0), None, None)
+        );
+        assert_eq!(PORTRAITS.iter().collect::<std::collections::BTreeSet<_>>().len(), BODIES);
+        assert!(is_2d(3) && is_2d(182) && !is_2d(46) && !is_2d(129));
+        // the executable's tables outside the data: an error, not a panic
+        assert!(front_end(&[0; 64], &ups).is_err());
+    }
+}
