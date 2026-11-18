@@ -4,7 +4,7 @@
 
 use crate::model::{Model, RIG, SCALE};
 use crate::moves::VADDR;
-use crate::{f32le, tex, u16le};
+use crate::{archive, f32le, tex, u16le, u32le};
 use serde_json::{Value, json};
 
 /// The arenas' lights (0x54 bytes an arena: light 0's direction first, floats) and the shadow's alpha (u16, of 0x80).
@@ -64,13 +64,33 @@ pub fn stages(elf: &[u8]) -> Value {
 const CELL: usize = 128;
 const COLS: usize = 8;
 
+/// An effect file's particle paths (part 1, a pack: EFFECTS.md 3): each `u32 frames`, the 100 mm quad's corners,
+/// then from +0x38 20 bytes a frame: the position (metres, the arena's axes, from where the effect starts), the
+/// quad's size (x 0x90 / 0x48 of the effect, 0x345C10) and its fade (the brightness x 1 - it, 0x345E2C).
+pub fn paths(file: &[u8]) -> Vec<Vec<[f64; 5]>> {
+    let part = archive::pack(file).and_then(|p| archive::pack(p.get(1)?)).unwrap_or_default();
+    (part.iter())
+        .filter_map(|e| {
+            let frames = (u32le(e, 0)? as usize).min(1000);
+            let at = |o: usize| f32le(e, o).map(f64::from).filter(|v| v.is_finite());
+            (0..frames)
+                .map(|k| 0x38 + 20 * k)
+                .map(|o| Some([at(o)? * SCALE, at(o + 4)? * SCALE, at(o + 8)? * SCALE, at(o + 12)?, at(o + 16)?]))
+                .collect::<Option<Vec<_>>>()
+        })
+        .collect()
+}
+
 /// `pictures/effects/atlas.png` and `effects.json` (the Tekken 3 converter's layout) from the effect files'
 /// pictures `pics[k]` (files 4 + k, k 0-4: the four sets' and file 8's 20 fireball frames): the hit spark (set 0),
 /// the zero-damage spark (set 3), the guard spark (set 1), the dust (set 2), each its set's frame count; the heavy
-/// hits' fireballs, orange and blue (the charged attack's). None when a picture is missing.
-// shortcut: each effect is one picture facing the camera (Tekken 3's sprites), not its set's particle paths, and the
-// dust is not tinted by arena; decode the paths (EFFECTS.md section 3) to draw them as the game does
-pub fn atlas(pics: &[Vec<(usize, usize, Vec<u8>)>]) -> Option<(Vec<u8>, Value)> {
+/// hits' fireballs, orange and blue (the charged attack's). `sets[k]`: file 4 + k's particle paths, each effect's
+/// `bursts` (0x3A2758: a particle on each path, the guard's on paths drawn at random; table 0x436688 rows 0x24-0x26
+/// scale the paths and give the brightness, 0x44 of 128; the quad 0x90 = 128 over 0x48 = 400 metres at size 1).
+/// None when a picture is missing.
+// shortcut: the dust is not tinted by arena, and a burst is not turned with the strike; read 0x3A2758's use of
+// the strike's heading and the colour table 0x437AC0 for those
+pub fn atlas(pics: &[Vec<(usize, usize, Vec<u8>)>], sets: &[Vec<Vec<[f64; 5]>>]) -> Option<(Vec<u8>, Value)> {
     let cells: Vec<&(usize, usize, Vec<u8>)> =
         (0..4).map(|k| pics.get(k)?.first()).chain(pics.get(4)?.iter().take(20).map(Some)).collect::<Option<_>>()?;
     if cells.len() != 24 {
@@ -91,6 +111,13 @@ pub fn atlas(pics: &[Vec<(usize, usize, Vec<u8>)>]) -> Option<(Vec<u8>, Value)> 
         }
     }
     let strip = |cell: usize, life: usize, blend: &str, note: &str| json!({"cells": vec![cell; life], "life": life, "blend": blend, "note": note});
+    let round = |v: f64| (v * 10000.0).round() / 10000.0;
+    let burst = |cell: usize, scale: f64, level: f64, random: bool, set: usize| {
+        let frame = |f: &[f64; 5]| [f[0] * scale, f[1] * scale, f[2] * scale, f[3], f[4]].map(round);
+        let paths: Vec<Vec<[f64; 5]>> =
+            sets.get(set).into_iter().flatten().map(|p| p.iter().map(frame).collect()).collect();
+        json!({"cell": cell, "size": 128.0 / 400.0, "level": level, "random": random, "paths": paths})
+    };
     let ramp = |first: usize, note: &str| json!({"cells": (first..first + 10).collect::<Vec<_>>(), "life": 0, "blend": "add", "note": note});
     let json = json!({
         "atlas": {"file": "atlas.png", "cell": CELL, "cols": COLS, "rows": rows},
@@ -102,6 +129,12 @@ pub fn atlas(pics: &[Vec<(usize, usize, Vec<u8>)>]) -> Option<(Vec<u8>, Value)> 
             "heavy_a": ramp(4, "damage 21 and more: file 8's orange fireballs (0x3A6110 0x80 / 0x81)"),
             "heavy_b": ramp(14, "the charged attack's: file 8's blue fireballs (0x8B / 0x8C)"),
         },
+        "bursts": {
+            "spark": burst(0, 0.5, 1.0, false, 0),
+            "zero": burst(1, 1.0, 1.0, false, 1),
+            "block": burst(2, 1.0, 0.25, true, 2),
+            "dust": burst(3, 1.0, 1.0, false, 3),
+        },
         "characters": {},
         "ground_offsets": [[0, 0, 0]],
     });
@@ -112,6 +145,35 @@ pub fn atlas(pics: &[Vec<(usize, usize, Vec<u8>)>]) -> Option<(Vec<u8>, Value)> 
 #[allow(clippy::unwrap_used, clippy::indexing_slicing)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn particle_paths_from_a_pack() {
+        // a pack of one path (2 frames) in a pack of two parts
+        let mut path = vec![0u8; 0x38 + 40];
+        path[..4].copy_from_slice(&2u32.to_le_bytes());
+        for (k, v) in [100.0f32, -50.0, 2000.0, 0.5, 0.25].iter().enumerate() {
+            path[0x38 + 20 + 4 * k..0x38 + 24 + 4 * k].copy_from_slice(&v.to_le_bytes());
+        }
+        let pack = |parts: &[&[u8]]| {
+            let head = (8 + 8 * parts.len()).next_multiple_of(16);
+            let mut out = vec![0u8; head];
+            out[..4].copy_from_slice(&(parts.len() as u32).to_le_bytes());
+            let mut at = head;
+            for (k, p) in parts.iter().enumerate() {
+                out[8 + 8 * k..12 + 8 * k].copy_from_slice(&(p.len() as u32).to_le_bytes());
+                out[4 + 8 * k..8 + 8 * k].copy_from_slice(&(at as u32).to_le_bytes());
+                out.extend_from_slice(p);
+                at += p.len();
+            }
+            let last = 12 + 8 * (parts.len() - 1);
+            out[last..last + 4].copy_from_slice(&u32::MAX.to_le_bytes());
+            out
+        };
+        let file = pack(&[&[0; 16], &pack(&[&path])]);
+        let p = paths(&file);
+        assert_eq!(p.len(), 1);
+        assert_eq!(p[0][1].map(|v| (v * 1000.0).round()), [100.0, -50.0, 2000.0, 500.0, 250.0]);
+    }
     use crate::model::{Inf, Node, Strip};
 
     #[test]
@@ -137,11 +199,14 @@ mod tests {
         let pic = |w: usize, v: u8| vec![(w, w, vec![v; w * w * 4])];
         let mut pics: Vec<_> = (0..4).map(|k| pic(if k % 2 == 1 { 128 } else { 64 }, k as u8 + 1)).collect();
         pics.push((0..20).map(|k| (32, 32, vec![10 + k as u8; 32 * 32 * 4])).collect());
-        let (_, j) = atlas(&pics).unwrap();
+        let (_, j) = atlas(&pics, &[vec![vec![[0.1, 0.2, 0.3, 1.0, 0.5]]]]).unwrap();
+        // (the spark's paths at half their spread)
+        assert_eq!(j["bursts"]["spark"]["paths"], json!([[[0.05, 0.1, 0.15, 1.0, 0.5]]]));
+        assert_eq!((&j["bursts"]["block"]["level"], &j["bursts"]["zero"]["paths"]), (&0.25.into(), &json!([])));
         assert_eq!((j["atlas"]["cols"].as_u64(), j["atlas"]["rows"].as_u64()), (Some(8), Some(3)));
         assert_eq!(j["strips"]["heavy_b"]["cells"][0], 14);
         assert_eq!(j["strips"]["dust"]["cells"].as_array().map(Vec::len), Some(150));
         pics.pop();
-        assert!(atlas(&pics).is_none());
+        assert!(atlas(&pics, &[]).is_none());
     }
 }

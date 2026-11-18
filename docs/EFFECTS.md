@@ -25,7 +25,9 @@ model": 18 joints in the arcade slot order, two-matrix vertices; nothing else dr
   0x40 past the table): the shadow's alpha (of 0x80) where the picture holds the silhouette, 0 elsewhere.
 - 0x342128 makes the projection matrix 0x1FC49F0 (that view, scale 1 / gp-0x67A4, + 0.5); the floor and the
   objects flagged +0x148 & 1 / 2 (0x3422C0) are drawn again with it: the silhouette falls along the light onto
-  them. Arena 14 (UNKNOWN) takes 0x342A38 instead (not read).
+  them. That pass (0x356C28, pass 5) sets ALPHA **0x46** (Cv = Cd - Cd x As) and TEX0 0x0E_20A13940 (the picture,
+  TFX decal, its alpha): the floor is **multiplied** by 1 - TA1 / 0x80 under the silhouette (arena 0: x 0.625).
+  Arena 14 (UNKNOWN) takes 0x342A38 instead (not read).
 
 Alpha (x / 0x80) by arena 0-22: 30 48 30 40 40 40 50 40 40 40 48 40 40 48 20 40 40 40 40 20 40 40 40.
 
@@ -48,8 +50,11 @@ picture's 256-texel softness.
 | 8 | 20 fireball frames, 32 x 32: 10 orange, 10 blue (slot 4) | - | - |
 | 9 | two soft grey discs, round and hexagonal (slot 5) | - | - |
 
-A path: `u32 frames`, a 100 x 100 mm quad (four corners), then per frame position (mm), alpha (1 -> 0) and a
-growing value [M]. Sets: table 0x8BF350 `{u32 paths, u16 count}` (0x343F20(k)); texture slots: 0x8BF3A0 + 0x18 x
+A path: `u32 frames`, a 100 x 100 mm quad (four corners), u16 x 2, then from +0x38 20 bytes a frame: position (mm,
+from where the effect starts), size and fade [H: the particle task 0x3A05F8 copies them to +0x60..+0x68 times the
+row's scale, +0x54, +0x58; the draw 0x345A00 sizes the quad 0x90 x size / 0x48 and sets the brightness 0x44 x
+(1 - fade)]. Rows of table 0x436688 (0x343F38): 0x24 the hit spark {scale 0.5, 0x44 128, 0x48 400}, 0x25 the guard
+{1.0, **32**, 400}, 0x26 kind 1 {1.0, 128, 400}: the guard's burst is a quarter as bright. Sets: table 0x8BF350 `{u32 paths, u16 count}` (0x343F20(k)); texture slots: 0x8BF3A0 + 0x18 x
 slot (0x343F08). Effect objects are tasks (0x3464F8 / 0x345780 spawn, 0x3465C8 end; +0x1A texture slot).
 
 ## 4. Hit, guard and move effects [H unless marked]
@@ -70,9 +75,9 @@ slot (0x343F08). Effect objects are tasks (0x3464F8 / 0x345780 spawn, 0x3465C8 e
   20 (True Ogre) in the active frames -> 0x3A4EE8; bone 0x19 -> 0x3A5810 [M, not read].
 
 Exported: `pictures/effects/` (atlas.png, effects.json in the Tekken 3 converter's layout): sets 0-3's pictures
-and file 8's frames as OpenKumite's spark, zero, block, dust and heavy strips. shortcut: each effect is one
-camera-facing picture (Tekken 3's sprite), not the set's particle paths; the dust is not tinted by arena; no
-character effect.
+and file 8's frames as OpenKumite's spark, zero, block, dust and heavy strips, and `bursts`: each set's paths (the
+row's scale applied), its brightness and quad size. Not: the strike's heading turning the burst, the dust's arena
+colour, the character effect (0x3A2BC0).
 
 ## 5. Arena effects [M]
 

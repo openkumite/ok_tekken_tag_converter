@@ -121,7 +121,7 @@ pub fn convert(ctx: &Ctx, src: &dyn DiscFile, research: bool) -> Result<Value> {
     // file 3's uploads: the HUD and select atlas, whose pictures the front end's tables name
     let mut atlas = vec![];
     // the fighters' shadow meshes, and the effect files' pictures (files 4-8)
-    let (mut shadows, mut effect_pics) = (vec![], vec![vec![]; 5]);
+    let (mut shadows, mut effect_pics, mut effect_paths) = (vec![], vec![vec![]; 5], vec![vec![]; 4]);
     ctx.log(&format!("[ttt] {}: the {} files of TEKKEN.BIN", src.name(), archive::FILES));
     // (the first and the last file are random filler)
     for i in 1..archive::FILES - 1 {
@@ -307,6 +307,9 @@ pub fn convert(ctx: &Ctx, src: &dyn DiscFile, research: bool) -> Result<Value> {
             if let Some(e) = i.checked_sub(4).and_then(|k| effect_pics.get_mut(k)) {
                 *e = pics.clone();
             }
+            if let Some(e) = i.checked_sub(4).and_then(|k| effect_paths.get_mut(k)) {
+                *e = effects::paths(&d);
+            }
             if i == 3 {
                 atlas = tex::uploads(&d);
                 for (name, png) in front::angry_strips(&atlas) {
@@ -441,7 +444,7 @@ pub fn convert(ctx: &Ctx, src: &dyn DiscFile, research: bool) -> Result<Value> {
     }
     assets.write("gamedata/shadows.json", serde_json::to_string(&json!({"meshes": shadows}))?.as_bytes())?;
     assets.write("gamedata/stages.json", serde_json::to_string(&effects::stages(&a.elf))?.as_bytes())?;
-    match effects::atlas(&effect_pics) {
+    match effects::atlas(&effect_pics, &effect_paths) {
         Some((png, json)) => {
             assets.write("pictures/effects/atlas.png", &png)?;
             assets.write("pictures/effects/effects.json", serde_json::to_string(&json)?.as_bytes())?;
