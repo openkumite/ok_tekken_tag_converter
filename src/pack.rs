@@ -97,8 +97,9 @@ fn arena(geometry: &[u8], textures: &[u8]) -> Option<Arena> {
 }
 
 /// Converts the Tekken Tag Tournament disc (its data track `src`) into a pack in `ctx.out`, emptied first; writes
-/// the manifest last and returns it.
-pub fn convert(ctx: &Ctx, src: &dyn DiscFile) -> Result<Value> {
+/// the manifest last and returns it. Without `research`, only `assets/` and the manifest (with the source alone):
+/// what OpenKumite plays, a third of the size.
+pub fn convert(ctx: &Ctx, src: &dyn DiscFile, research: bool) -> Result<Value> {
     let out = ctx.out;
     let mut a = Archive::open(src)?;
     out.remove_all("")?;
@@ -126,7 +127,9 @@ pub fn convert(ctx: &Ctx, src: &dyn DiscFile) -> Result<Value> {
             for (k, (name, rate, pcm)) in audio::vag_bank(&d).into_iter().enumerate() {
                 let (file, wav, seconds) =
                     (format!("audio/{i:03}_{k:03}.wav"), audio::wav(rate, 1, &pcm), pcm.len() as f64 / rate as f64);
-                out.write(&file, &wav)?;
+                if research {
+                    out.write(&file, &wav)?;
+                }
                 // OpenKumite's: audio/sfx/NNN/KKK.wav, a folder a bank
                 let sample = format!("{i:03}/{k:03}.wav");
                 assets.write(&format!("audio/sfx/{sample}"), &wav)?;
@@ -139,7 +142,9 @@ pub fn convert(ctx: &Ctx, src: &dyn DiscFile) -> Result<Value> {
         } else if plain {
             let (pcm, pss) = audio::stream(&d);
             let wav = format!("audio/{i:03}.wav");
-            out.write(&wav, &audio::wav(44100, 2, &pcm))?;
+            if research {
+                out.write(&wav, &audio::wav(44100, 2, &pcm))?;
+            }
             let seconds = pcm.len() as f64 / 88200.0;
             if pss.is_empty() {
                 music.push(json!({"id": i, "file": wav, "seconds": seconds}));
@@ -154,7 +159,9 @@ pub fn convert(ctx: &Ctx, src: &dyn DiscFile) -> Result<Value> {
             } else {
                 // not converted yet: the pictures as on the disc, the sound beside them
                 let file = format!("video/{i:03}.pss");
-                out.write(&file, &pss)?;
+                if research {
+                    out.write(&file, &pss)?;
+                }
                 video.push(json!({"id": i, "file": file, "sound": wav, "seconds": seconds, "converted": false}));
             }
         } else if let Some((m, ups)) = pack.as_ref().and_then(|p| {
@@ -162,7 +169,9 @@ pub fn convert(ctx: &Ctx, src: &dyn DiscFile) -> Result<Value> {
             Some((m, p.iter().flat_map(|c| tex::uploads(c)).collect::<Vec<_>>()))
         }) {
             let file = format!("models/{i:03}.glb");
-            out.write(&file, &m.glb(&ups))?;
+            if research {
+                out.write(&file, &m.glb(&ups))?;
+            }
             let tris: usize = m.sections.iter().flatten().map(|s| s.verts.len().saturating_sub(2)).sum();
             let slot = i.checked_sub(FIGHTERS).filter(|s| s % 3 == 0).map(|s| s / 3);
             let who = slot.map(|s| moves::fighter(&a.elf, s)).transpose()?.flatten();
@@ -198,10 +207,12 @@ pub fn convert(ctx: &Ctx, src: &dyn DiscFile) -> Result<Value> {
                 b.append(&mut objects);
             }
             let file = format!("stages/{i:03}.glb");
-            out.write(&file, &stage::glb(&b, &objects, &banks))?;
+            if research {
+                out.write(&file, &stage::glb(&b, &objects, &banks))?;
+            }
             // the arena's background characters: part 0 is a pack of their motions and their models
             let (mut people, mut motions) = (vec![], vec![]);
-            let cast = pack.as_ref().and_then(|p| archive::pack(p.first()?)).unwrap_or_default();
+            let cast = pack.as_ref().filter(|_| research).and_then(|p| archive::pack(p.first()?)).unwrap_or_default();
             for (k, c) in cast.iter().enumerate().skip(1) {
                 let Some(m) = model::parse_low(c) else { continue };
                 let file = format!("stages/{i:03}_p{k}.glb");
@@ -262,7 +273,9 @@ pub fn convert(ctx: &Ctx, src: &dyn DiscFile) -> Result<Value> {
             for (k, (w, h, px)) in pics.iter().enumerate() {
                 let file = format!("textures/{i:03}_{k:03}.png");
                 let png = tex::png(*w, *h, px);
-                out.write(&file, &png)?;
+                if research {
+                    out.write(&file, &png)?;
+                }
                 // OpenKumite's: the front end's pictures (front_end names them)
                 if front::is_2d(i) {
                     assets.write(&format!("pictures/{i:03}_{k:03}.png"), &png)?;
@@ -280,7 +293,7 @@ pub fn convert(ctx: &Ctx, src: &dyn DiscFile) -> Result<Value> {
             unknown = true;
         }
         // kept as they are: files nothing was converted from, and packs (their other parts are not decoded yet)
-        if !plain && (unknown || pack.is_some()) {
+        if research && !plain && (unknown || pack.is_some()) {
             let file = format!("raw/{i:03}.bin");
             out.write(&file, &d)?;
             raw.push(json!({"id": i, "file": file, "size": d.len(), "parts": pack.map(|p| p.iter().map(|c| c.len()).collect::<Vec<_>>())}));
@@ -315,7 +328,9 @@ pub fn convert(ctx: &Ctx, src: &dyn DiscFile) -> Result<Value> {
         };
         let Some(frames) = frames else { continue };
         let file = format!("anims/{k:04}.glb");
-        out.write(&file, &anim::glb(&frames))?;
+        if research {
+            out.write(&file, &anim::glb(&frames))?;
+        }
         anims.push(json!({"id": k, "file": file, "frames": frames.len()}));
         decoded.resize_with(k + 1, || None);
         if let Some(d) = decoded.get_mut(k) {
@@ -358,7 +373,7 @@ pub fn convert(ctx: &Ctx, src: &dyn DiscFile) -> Result<Value> {
         })
         .map(|f| f.copied().unwrap_or(0))
         .collect();
-    let gamedata = fight::export(out, &a.elf, &files, &frames, &models)?;
+    let gamedata = if research { fight::export(out, &a.elf, &files, &frames, &models)? } else { vec![] };
     ctx.log(&format!("[ttt] the fight data: {} files", gamedata.len()));
     // OpenKumite's motions: each one its characters' movesets play, once (a file a moveset would be 869 MB), and
     // each moveset's list of them
@@ -403,8 +418,13 @@ pub fn convert(ctx: &Ctx, src: &dyn DiscFile) -> Result<Value> {
         arenas.len()
     ));
     let source = json!({"image": src.name(), "disc": "SLUS-20001", "version": "2.00"});
-    let manifest = json!({"pack": KIND, "format": FORMAT, "source": source, "models": models, "movesets": movesets, "own": own,
-        "anims": anims, "stages": stages, "textures": textures, "sounds": sounds, "music": music, "video": video, "raw": raw, "gamedata": gamedata});
+    let manifest = match research {
+        true => {
+            json!({"pack": KIND, "format": FORMAT, "source": source, "models": models, "movesets": movesets, "own": own,
+            "anims": anims, "stages": stages, "textures": textures, "sounds": sounds, "music": music, "video": video, "raw": raw, "gamedata": gamedata})
+        }
+        false => json!({"pack": KIND, "format": FORMAT, "source": source}),
+    };
     out.write("manifest.json", serde_json::to_string_pretty(&manifest)?.as_bytes())?;
     out.checkpoint(&[])?;
     Ok(manifest)

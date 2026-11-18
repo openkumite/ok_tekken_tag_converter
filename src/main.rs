@@ -24,7 +24,7 @@ fn main() {
 fn pack_main(args: &[String]) -> Result<()> {
     let [disc, out] = args else { bail!("usage: ttt_convert pack DISC PACK") };
     let disc = Disc::open_path(Path::new(disc))?;
-    pack::convert(&Ctx { out: &StdFs(out.into()), log: &print_line, jobs: 1 }, disc.data()?)?;
+    pack::convert(&Ctx { out: &StdFs(out.into()), log: &print_line, jobs: 1 }, disc.data()?, true)?;
     Ok(())
 }
 
