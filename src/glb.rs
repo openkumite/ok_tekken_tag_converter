@@ -63,6 +63,7 @@ pub fn quat(m: &M4) -> [f32; 4] {
 
 pub const F32: u32 = 5126;
 pub const U8: u32 = 5121;
+pub const I16: u32 = 5122;
 pub const U16: u32 = 5123;
 pub const U32: u32 = 5125;
 
@@ -96,8 +97,8 @@ impl Glb {
     pub fn accessor(&mut self, data: &[u8], comp: u32, ty: &str, count: usize) -> usize {
         let view = self.view(data);
         let mut a = json!({"bufferView": view, "componentType": comp, "type": ty, "count": count});
-        if comp == U8 {
-            set(&mut a, "normalized", json!(true)); // colours
+        if comp == U8 || comp == I16 {
+            set(&mut a, "normalized", json!(true)); // colours; rotations
         }
         self.accessors.push(a);
         self.accessors.len() - 1

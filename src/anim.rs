@@ -4,7 +4,7 @@
 use crate::glb::{self, Glb};
 use crate::model::{RIG, SCALE};
 use crate::u16le;
-use serde_json::json;
+use serde_json::{Value, json};
 
 pub const CHANNELS: usize = 57;
 pub type Frame = [u16; CHANNELS];
@@ -116,36 +116,27 @@ pub fn raw(d: &[u8]) -> Option<Vec<Frame>> {
     Some(frames).filter(|f| !f.is_empty())
 }
 
-/// A motion as a skeleton-only GLB: one animation whose channels target the joints by name, so
-/// it plays on any fighter's GLB (three.js binds tracks by node name).
+/// Each joint of `RIG`'s rotation (x, y, z, w) frame by frame, and the root's position (metres).
 // (a frame's channels are indexed below CHANNELS: 3 + 3 * 17 + 2 = 56)
 #[allow(clippy::indexing_slicing)]
-pub fn glb(frames: &[Frame]) -> Vec<u8> {
-    let mut g = Glb::default();
+fn tracks(frames: &[Frame]) -> (Vec<Vec<f32>>, Vec<f32>) {
     let ang = |v: u16| v as f64 * std::f64::consts::TAU / 65536.0;
-    let times: Vec<f32> = (0..frames.len()).map(|i| i as f32 / 60.0).collect();
-    let input = g.ranged(&times, 1, "SCALAR");
-    let (mut nodes, mut samplers, mut channels) = (vec![], vec![], vec![]);
-    for (p, (joint, twins)) in RIG.iter().enumerate() {
-        let mut q: Vec<f32> = Vec::with_capacity(frames.len() * 4);
-        for f in frames {
-            // the data is for the arcade's mirrored space: x and y angles change sign
-            let mut x = glb::quat(&glb::joint([-ang(f[3 + 3 * p]), -ang(f[4 + 3 * p]), ang(f[5 + 3 * p])], [0.; 3]));
-            // keep the same hemisphere as the previous key so interpolation takes the short way
-            if q.last_chunk::<4>().is_some_and(|l| l.iter().zip(&x).map(|(a, b)| a * b).sum::<f32>() < 0.0) {
-                x = x.map(|v| -v);
+    let rotations = (0..RIG.len())
+        .map(|p| {
+            let mut q: Vec<f32> = Vec::with_capacity(frames.len() * 4);
+            for f in frames {
+                // the data is for the arcade's mirrored space: x and y angles change sign
+                let mut x =
+                    glb::quat(&glb::joint([-ang(f[3 + 3 * p]), -ang(f[4 + 3 * p]), ang(f[5 + 3 * p])], [0.; 3]));
+                // keep the same hemisphere as the previous key so interpolation takes the short way
+                if q.last_chunk::<4>().is_some_and(|l| l.iter().zip(&x).map(|(a, b)| a * b).sum::<f32>() < 0.0) {
+                    x = x.map(|v| -v);
+                }
+                q.extend(x);
             }
-            q.extend(x);
-        }
-        let output = g.accessor(&glb::floats(&q), glb::F32, "VEC4", frames.len());
-        for k in 0..twins.len() {
-            let name = if k == 0 { joint.to_string() } else { format!("{joint}.{k}") };
-            nodes.push(json!({"name": name}));
-            samplers.push(json!({"input": input, "output": output}));
-            channels
-                .push(json!({"sampler": samplers.len() - 1, "target": {"node": nodes.len() - 1, "path": "rotation"}}));
-        }
-    }
+            q
+        })
+        .collect();
     let t: Vec<f32> = frames
         .iter()
         .flat_map(|f| {
@@ -154,17 +145,103 @@ pub fn glb(frames: &[Frame]) -> Vec<u8> {
             [(libm::sin(h) * d) as f32, (f[1] as f64 * SCALE) as f32, (-libm::cos(h) * d) as f32]
         })
         .collect();
+    (rotations, t)
+}
+
+/// A node for each joint of `RIG` and its twist copies (named as the fighters' are), and each one's joint.
+fn rig_nodes() -> Vec<(Value, usize)> {
+    let twins = RIG.iter().enumerate().flat_map(|(p, (joint, twins))| (0..twins.len()).map(move |k| (p, joint, k)));
+    twins
+        .map(|(p, joint, k)| (json!({"name": if k == 0 { joint.to_string() } else { format!("{joint}.{k}") }}), p))
+        .collect()
+}
+
+/// A motion as a skeleton-only GLB: one animation whose channels target the joints by name, so
+/// it plays on any fighter's GLB (three.js binds tracks by node name).
+pub fn glb(frames: &[Frame]) -> Vec<u8> {
+    let mut g = Glb::default();
+    let times: Vec<f32> = (0..frames.len()).map(|i| i as f32 / 60.0).collect();
+    let input = g.ranged(&times, 1, "SCALAR");
+    let (rotations, t) = tracks(frames);
+    let outputs: Vec<usize> =
+        rotations.iter().map(|q| g.accessor(&glb::floats(q), glb::F32, "VEC4", frames.len())).collect();
+    let (mut samplers, mut channels) = (vec![], vec![]);
+    let nodes = rig_nodes();
+    for (node, (_, p)) in nodes.iter().enumerate() {
+        samplers.push(json!({"input": input, "output": outputs.get(*p)}));
+        channels.push(json!({"sampler": samplers.len() - 1, "target": {"node": node, "path": "rotation"}}));
+    }
     let output = g.accessor(&glb::floats(&t), glb::F32, "VEC3", frames.len());
     samplers.push(json!({"input": input, "output": output}));
     channels.push(json!({"sampler": samplers.len() - 1, "target": {"node": 0, "path": "translation"}}));
     let all: Vec<usize> = (0..nodes.len()).collect();
+    let nodes: Vec<Value> = nodes.into_iter().map(|n| n.0).collect();
     g.finish(json!({"scene": 0, "scenes": [{"nodes": all}], "nodes": nodes, "animations": [{"name": "motion", "samplers": samplers, "channels": channels}]}))
+}
+
+/// Motion `motion` as OpenKumite's clip, in a GLB of no mesh: an animation `motion_NNNN`, its channels on the
+/// joints by name (the fighters' character glbs have the same), one key a frame at 60 fps; the rotations as
+/// normalised 16-bit integers, as the Tekken 3 converter writes them, and the root's position (metres) as its
+/// translation.
+pub fn clip_glb(motion: usize, frames: &[Frame]) -> Vec<u8> {
+    let mut g = Glb::default();
+    let n = frames.len();
+    let times: Vec<f32> = (0..n).map(|i| i as f32 / 60.0).collect();
+    let input = g.ranged(&times, 1, "SCALAR");
+    let (rotations, t) = tracks(frames);
+    let q16 = |q: &Vec<f32>| -> Vec<u8> {
+        q.iter().flat_map(|&v| ((v.clamp(-1.0, 1.0) * 32767.0).round_ties_even() as i16).to_le_bytes()).collect()
+    };
+    let outputs: Vec<usize> = rotations.iter().map(|q| g.accessor(&q16(q), glb::I16, "VEC4", n)).collect();
+    let (mut samplers, mut channels) = (vec![], vec![]);
+    let nodes = rig_nodes();
+    for (node, (_, p)) in nodes.iter().enumerate() {
+        samplers.push(json!({"input": input, "output": outputs.get(*p)}));
+        channels.push(json!({"sampler": samplers.len() - 1, "target": {"node": node, "path": "rotation"}}));
+    }
+    samplers.push(json!({"input": input, "output": g.accessor(&glb::floats(&t), glb::F32, "VEC3", n)}));
+    channels.push(json!({"sampler": samplers.len() - 1, "target": {"node": 0, "path": "translation"}}));
+    let all: Vec<usize> = (0..nodes.len()).collect();
+    let nodes: Vec<Value> = nodes.into_iter().map(|n| n.0).collect();
+    let clip = json!({"name": format!("motion_{motion:04}"), "samplers": samplers, "channels": channels});
+    g.finish(json!({"scene": 0, "scenes": [{"nodes": all}], "nodes": nodes, "animations": [clip]}))
 }
 
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::indexing_slicing)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_clip_as_openkumite_reads_it() {
+        // two frames: at rest, then a quarter turn of the chest about z and the root a metre ahead (heading 0)
+        let mut f = [[0u16; CHANNELS]; 2];
+        f[1][3 + 3 + 2] = 16384;
+        f[1][2] = 1000;
+        let (doc, buffers, _) = gltf::import_slice(clip_glb(806, &f)).unwrap();
+        let a = doc.animations().next().unwrap();
+        assert_eq!((a.name(), a.channels().count()), (Some("motion_0806"), 34 + 1));
+        let get = |b: gltf::Buffer| Some(&buffers[b.index()].0[..]);
+        let mut chest = None;
+        for ch in a.channels() {
+            let node = ch.target().node().name().unwrap().to_string();
+            match ch.reader(get).read_outputs().unwrap() {
+                gltf::animation::util::ReadOutputs::Rotations(q) if node == "chest" => {
+                    chest = Some(q.into_f32().collect::<Vec<_>>())
+                }
+                gltf::animation::util::ReadOutputs::Translations(t) => {
+                    assert_eq!(node, "root");
+                    assert_eq!(t.collect::<Vec<_>>(), [[0.0; 3], [0.0, 0.0, -1.0]]);
+                }
+                _ => {}
+            }
+        }
+        let h = std::f32::consts::FRAC_1_SQRT_2;
+        let chest = chest.unwrap();
+        assert_eq!(chest[0], [0.0, 0.0, 0.0, 1.0]);
+        assert!(chest[1].iter().zip([0.0, 0.0, h, h]).all(|(a, b)| (a - b).abs() < 1e-4), "{:?}", chest[1]);
+        assert_eq!(a.channels().next().unwrap().sampler().input().count(), 2);
+    }
 
     #[test]
     fn raw_reads_whole_frames_only() {

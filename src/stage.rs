@@ -7,7 +7,7 @@
 use crate::glb::{self, Glb};
 use crate::model::SCALE;
 use crate::{f32le, tex, u32le};
-use serde_json::json;
+use serde_json::{Value, json};
 use std::collections::{BTreeMap, HashMap};
 
 /// The floor is repeated no further from the centre, and to no more vertices in all (the arenas' go 8 tiles out,
@@ -49,7 +49,7 @@ fn bbox<'a>(points: impl Iterator<Item = &'a [f32; 3]>) -> ([f32; 3], [f32; 3]) 
 /// - A tall grid of one cell is a fixed piece, or an object the game moves (a train): the latter is
 ///   recognised by standing over the centre, and kept apart.
 /// - Anything else is scenery in arena space.
-pub fn arena(parts: &[(usize, &[u8])]) -> (Vec<Batch>, Vec<Batch>) {
+pub fn arena(parts: &[(usize, &[u8])]) -> (Vec<Batch>, Vec<Batch>, Vec<Floor>) {
     const CELL: [u8; 16] = [4, 4, 0, 1, 0, 0, 0, 0x11, 0, 0, 0, 3, 0, 2, 0, 2];
     let (mut scenery, mut objects, mut floors) = (vec![], vec![], vec![]);
     for &(bank, d) in parts {
@@ -143,31 +143,47 @@ pub fn arena(parts: &[(usize, &[u8])]) -> (Vec<Batch>, Vec<Batch>) {
     let low = |p: &&[f32; 3]| p[1] < 300.0;
     let far = scenery.iter().filter(|b| b.pos.iter().any(|p| libm::hypotf(p[0], p[2]) > 10000.0));
     let hole = far.flat_map(|b| b.pos.iter().filter(low).map(|p| libm::hypotf(p[0], p[2]))).fold(f32::MAX, f32::min);
+    let mut laid = vec![];
     for (tiles, px, pz) in floors {
         let radius = if hole < 60000.0 { (hole * 1.5).clamp(16000.0, 40000.0) } else { 16000.0 };
         let reach = (radius / px.min(pz)).ceil() as i32;
         let vertices: usize = tiles.iter().map(|b| b.pos.len()).sum();
         if reach > REACH || vertices.saturating_mul((2 * reach as usize + 1).pow(2)) > FLOOR_VERTICES {
-            scenery.extend(tiles); // not a floor the game has: as it is, once
+            // not a floor the game has: as it is, once
+            laid.push(Floor { tiles, period: [px, pz], at: vec![[0.; 2]] });
             continue;
         }
-        for (ix, iz) in (-reach..=reach).flat_map(|x| (-reach..=reach).map(move |z| (x, z))) {
+        let at = (-reach..=reach).flat_map(|x| (-reach..=reach).map(move |z| (x, z))).filter_map(|(ix, iz)| {
             let (ox, oz) = (ix as f32 * px, iz as f32 * pz);
-            if (ix, iz) != (0, 0)
-                && libm::hypotf((ox.abs() - px / 2.0).max(0.0), (oz.abs() - pz / 2.0).max(0.0)) >= radius
-            {
-                continue;
-            }
-            scenery.extend(tiles.iter().cloned().map(|mut b| {
+            let far = libm::hypotf((ox.abs() - px / 2.0).max(0.0), (oz.abs() - pz / 2.0).max(0.0)) >= radius;
+            ((ix, iz) == (0, 0) || !far).then_some([ox, oz])
+        });
+        laid.push(Floor { tiles, period: [px, pz], at: at.collect() });
+    }
+    (scenery, objects, laid)
+}
+
+/// A floor of an arena: its tiles (at the centre), how far apart their copies are, and where they go (x, z), to a
+/// little past the hole in the far ground.
+pub struct Floor {
+    pub tiles: Vec<Batch>,
+    pub period: [f32; 2],
+    pub at: Vec<[f32; 2]>,
+}
+
+impl Floor {
+    /// Its tiles at every place.
+    pub fn laid(&self) -> impl Iterator<Item = Batch> + '_ {
+        self.at.iter().flat_map(|&[ox, oz]| {
+            self.tiles.iter().cloned().map(move |mut b| {
                 for p in &mut b.pos {
                     p[0] += ox;
                     p[2] += oz;
                 }
                 b
-            }));
-        }
+            })
+        })
     }
-    (scenery, objects)
 }
 
 /// Every batch found in `d`, as stored.
@@ -326,6 +342,143 @@ pub fn glb(scenery: &[Batch], objects: &[Batch], banks: &[Vec<tex::Upload>]) -> 
     g.finish(doc)
 }
 
+/// The arena as OpenKumite's stages are laid out (the arcade converter's `write_game`), `name` its scene's name:
+///
+/// - node `sky`: the scenery, which the game keeps centred on the fighters; scene extras `drum: "model"`, and
+///   `drum_cull: false` (the strips' winding is not stored: both sides are drawn).
+/// - node `floor`: the floor's copies `floor_K`, and the scene extras' `floor_period` (m): the engine moves them by
+///   whole periods. An arena's floors are one: the one of the longest period, with each shorter one laid inside
+///   it (they divide it: 2, 4 or 8 m in 8 m).
+///
+/// Only the opaque, cut-out and ordinarily blended strips: the additive (lights, floor gloss) and darkening ones
+/// are left out (OpenKumite's stages draw neither). A batch without a texture draws the first image, a white texel;
+/// colours are the strips' vertex colours.
+pub fn game_glb(name: &str, scenery: &[Batch], floors: &[Floor], banks: &[Vec<tex::Upload>]) -> Vec<u8> {
+    let mut g = Glb::default();
+    let drawn = |b: &Batch| b.mode == 0 || b.mode == 3;
+    let (mut sky, mut tiles): (Vec<Batch>, Vec<Batch>) =
+        (scenery.iter().filter(|b| drawn(b)).cloned().collect(), vec![]);
+    let floor = floors.iter().max_by(|a, b| (a.period[0] * a.period[1]).total_cmp(&(b.period[0] * b.period[1])));
+    for (f, big) in floors.iter().zip(std::iter::repeat(floor).flatten()) {
+        let n = [big.period[0] / f.period[0], big.period[1] / f.period[1]];
+        if !n.iter().all(|n| (1.0..=64.0).contains(n) && (n - n.round()).abs() < 1e-3) {
+            // shortcut: a floor whose period does not divide the other's (none seen) is laid once with the
+            // scenery, upgrade with a floor node of its own
+            sky.extend(f.laid().filter(drawn));
+            continue;
+        }
+        // its copies within one period of the other, each place of it once
+        let [nx, nz] = n.map(|n| n.round() as i32);
+        let at = (0..nx).flat_map(|x| (0..nz).map(move |z| [(x - nx / 2) as f32, (z - nz / 2) as f32]));
+        let at = at.map(|[x, z]| [x * f.period[0], z * f.period[1]]).collect();
+        tiles.extend(Floor { tiles: f.tiles.clone(), period: f.period, at }.laid().filter(drawn));
+    }
+    // each picture once: (TEX0's texture, size and palette pointers, bank) -> the picture, its part of TW x TH, and
+    // how far the batches' coordinates reach in it (in pictures: low x, y, high x, y)
+    let key = |b: &Batch| (b.tex0 & 0x000f_ffe3_ffff_ffff, b.bank);
+    let st = |b: &Batch, i: usize| b.uv.get(i).copied().unwrap_or_default();
+    let mut pics = BTreeMap::new();
+    for b in sky.iter().chain(&tiles) {
+        let pic = pics.entry(key(b)).or_insert_with(|| {
+            let t = tex::tex0(b.tex0);
+            let (w, h, px) =
+                banks.get(b.bank).and_then(|u| tex::image(u, &t, t.alpha)).filter(|p| p.0 > 0 && p.1 > 0)?;
+            Some((w, h, px, [t.tw as f32 / w as f32, t.th as f32 / h as f32], [f32::MAX, f32::MAX, f32::MIN, f32::MIN]))
+        });
+        for (.., k, r) in pic.iter_mut() {
+            for c in (0..b.pos.len()).map(|i| st(b, i)) {
+                *r = [r[0].min(c[0] * k[0]), r[1].min(c[1] * k[1]), r[2].max(c[0] * k[0]), r[3].max(c[1] * k[1])];
+            }
+        }
+    }
+    // the images: a white texel, then each picture cut to the texels its batches reach (all of it along an axis
+    // they repeat it on): (image, its texture coordinates from the picture's)
+    let mut images = vec![json!({"bufferView": g.view(&tex::png(1, 1, &[255; 4])), "mimeType": "image/png"})];
+    let mut place = BTreeMap::new();
+    for (k, pic) in &pics {
+        let Some((w, h, px, scale, r)) = pic else { continue };
+        let span = |lo: f32, hi: f32, n: usize| {
+            let inside = lo >= 0.0 && hi <= 1.0;
+            let (a, b) = if inside { ((lo * n as f32) as usize, (hi * n as f32).ceil() as usize) } else { (0, n) };
+            let (a, b) = (a.min(n - 1), b.clamp(a.min(n - 1) + 1, n));
+            // (from pictures to the cut image: none along a repeated axis)
+            (a..b, if inside { [n as f32 / (b - a) as f32, a as f32 / (b - a) as f32] } else { [1.0, 0.0] })
+        };
+        let ((x, fx), (y, fy)) = (span(r[0], r[2], *w), span(r[1], r[3], *h));
+        let png = tex::png(x.len(), y.len(), &tex::cut(*w, *h, px, x.clone(), y.clone()));
+        images.push(json!({"bufferView": g.view(&png), "mimeType": "image/png"}));
+        place.insert(*k, (images.len() - 1, *scale, [fx, fy]));
+    }
+    let textures: Vec<Value> = (0..images.len()).map(|i| json!({"source": i, "sampler": 0})).collect();
+    // a material for each image, opaque (cut out by the texture's alpha) or blended; a primitive for each of a
+    // mesh's materials, with vertices of its own
+    let (mut materials, mut material) = (vec![], BTreeMap::new());
+    let mut meshes = vec![];
+    for (name, batches) in [("sky", &sky), ("floor", &tiles)] {
+        // (positions, texture coordinates, colours, indices)
+        type Prim = (Vec<f32>, Vec<f32>, Vec<u8>, Vec<u32>);
+        let mut prims: BTreeMap<usize, Prim> = BTreeMap::new();
+        for b in batches.iter() {
+            let (image, scale, [fx, fy]) = place.get(&key(b)).copied().unwrap_or((0, [0.0; 2], [[1.0, 0.0]; 2]));
+            let mat = *material.entry((image, b.mode)).or_insert_with(|| {
+                let pbr = json!({"baseColorTexture": {"index": image}, "metallicFactor": 0.0, "roughnessFactor": 1.0});
+                let mut m =
+                    json!({"pbrMetallicRoughness": pbr, "doubleSided": true, "alphaMode": "MASK", "alphaCutoff": 0.1});
+                if b.mode == 3 {
+                    m = json!({"pbrMetallicRoughness": pbr, "doubleSided": true, "alphaMode": "BLEND"});
+                }
+                materials.push(m);
+                materials.len() - 1
+            });
+            let (pos, uv, col, idx) = prims.entry(mat).or_default();
+            let base = (pos.len() / 3) as u32;
+            for (i, p) in b.pos.iter().enumerate() {
+                pos.extend(p.map(|v| (v as f64 * SCALE) as f32));
+                let c = st(b, i);
+                uv.extend([c[0] * scale[0] * fx[0] - fx[1], c[1] * scale[1] * fy[0] - fy[1]]);
+                let c = b.col.get(i).copied().unwrap_or([128; 4]);
+                col.extend([c[0], c[1], c[2]].map(|v| (v as u32 * 2).min(255) as u8));
+                col.push(if b.mode > 0 { (c[3] as u32 * 2).min(255) as u8 } else { 255 });
+            }
+            for i in 0..(b.pos.len() as u32).saturating_sub(2) {
+                let (a, c) = (base + i + (i & 1), base + i + 1 - (i & 1));
+                idx.extend([a, c, base + i + 2]);
+            }
+        }
+        if prims.is_empty() {
+            continue;
+        }
+        let prims: Vec<Value> = (prims.into_iter())
+            .map(|(mat, (pos, uv, col, idx))| {
+                let n = pos.len() / 3;
+                let attrs = json!({"POSITION": g.ranged(&pos, 3, "VEC3"), "TEXCOORD_0": g.accessor(&glb::floats(&uv), glb::F32, "VEC2", n),
+                    "COLOR_0": g.accessor(&col, glb::U8, "VEC4", n)});
+                let bytes: Vec<u8> = idx.iter().flat_map(|x| x.to_le_bytes()).collect();
+                json!({"attributes": attrs, "indices": g.accessor(&bytes, glb::U32, "SCALAR", idx.len()), "material": mat})
+            })
+            .collect();
+        meshes.push(json!({"name": name, "primitives": prims}));
+    }
+    let mesh = |name: &str| meshes.iter().position(|m| m["name"] == name);
+    let mut nodes = vec![json!({"name": "sky"})];
+    if let (Some(sky), Some(node)) = (mesh("sky"), nodes.first_mut()) {
+        glb::set(node, "mesh", json!(sky));
+    }
+    let mut extras = json!({"drum": "model", "drum_cull": false, "background_rgb": [0, 0, 0]});
+    if let (Some(f), Some(tile)) = (floor, mesh("floor")) {
+        let copies: Vec<usize> = (0..f.at.len()).map(|k| k + 2).collect();
+        nodes.push(json!({"name": "floor", "children": copies}));
+        for (k, [x, z]) in f.at.iter().enumerate() {
+            nodes.push(json!({"name": format!("floor_{k}"), "mesh": tile, "translation": [*x as f64 * SCALE, 0.0, *z as f64 * SCALE]}));
+        }
+        glb::set(&mut extras, "floor_period", json!(f.period.map(|p| p as f64 * SCALE)));
+    }
+    let roots: Vec<usize> = (0..nodes.len().min(2)).collect();
+    g.finish(json!({"scene": 0, "scenes": [{"name": name, "nodes": roots, "extras": extras}], "nodes": nodes,
+        "meshes": meshes, "materials": materials, "images": images, "textures": textures,
+        "samplers": [{"magFilter": 9729, "minFilter": 9987}]}))
+}
+
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::indexing_slicing)]
 mod tests {
@@ -355,13 +508,13 @@ mod tests {
         assert_eq!(b.len(), 2);
         assert_eq!((b[0].pos.len(), b[0].nrm.len(), b[0].uv.len(), b[0].col.len()), (4, 4, 4, 4));
         assert_eq!((b[0].pos[3], b[1].pos[2]), ([100.0, 50.0, 100.0], [100.0, 60.0, 0.0]));
-        let (scenery, objects) = arena(&[(0, &d)]);
-        assert_eq!((scenery.len(), objects.len()), (2, 0));
+        let (scenery, objects, floors) = arena(&[(0, &d)]);
+        assert_eq!((scenery.len(), objects.len(), floors.len()), (2, 0, 0));
         assert!(glb(&scenery, &objects, &[]).starts_with(b"glTF"));
         // cut anywhere, or noise: the whole strips come out, and nothing panics
         for n in 0..d.len() {
-            let (s, o) = arena(&[(0, &d[..n])]);
-            let _ = glb(&s, &o, &[]);
+            let (s, o, f) = arena(&[(0, &d[..n])]);
+            let _ = (glb(&s, &o, &[]), game_glb("", &s, &f, &[]));
         }
         let noise: Vec<u8> = (0..4096u32).map(|i| (i.wrapping_mul(2654435761) >> 13) as u8).collect();
         let _ = arena(&[(0, &noise)]);
@@ -379,10 +532,39 @@ mod tests {
             d.extend(batch(4, 0.0));
             d
         };
-        let (scenery, _) = arena(&[(0, &grid(4000.0))]);
-        assert!(scenery.len() > 9 && scenery.iter().all(|b| b.floor));
+        let (scenery, _, floors) = arena(&[(0, &grid(4000.0))]);
+        assert!(scenery.is_empty() && floors.len() == 1);
+        let laid: Vec<Batch> = floors[0].laid().collect();
+        assert!(laid.len() > 9 && laid.iter().all(|b| b.floor));
+        assert_eq!((floors[0].period, floors[0].at[0]), ([4000.0; 2], [-16000.0, -8000.0]));
         // a cell a hair wide would be repeated without end: kept once
-        let (scenery, _) = arena(&[(0, &grid(1e-20))]);
-        assert_eq!(scenery.len(), 1);
+        let (_, _, floors) = arena(&[(0, &grid(1e-20))]);
+        assert_eq!(floors[0].laid().count(), 1);
+        // OpenKumite's stage: the two floors in one of 4 m, the 2 m one laid 2 x 2 in it, the additive strip out
+        let (_, _, mut floors) = arena(&[(0, &grid(4000.0)), (0, &grid(2000.0))]);
+        floors[1].tiles[0].mode = 1;
+        let mut sky = batches(&batch(5, 3000.0));
+        sky.extend(batches(&batch(3, 3000.0)).into_iter().map(|b| Batch { mode: 2, ..b }));
+        let doc = gltf::Gltf::from_slice(&game_glb("Arena", &sky, &floors, &[])).unwrap();
+        let extras: Value =
+            serde_json::from_str(doc.scenes().next().unwrap().extras().as_ref().unwrap().get()).unwrap();
+        assert_eq!(
+            extras,
+            json!({"drum": "model", "drum_cull": false, "background_rgb": [0, 0, 0], "floor_period": [4.0, 4.0]})
+        );
+        let nodes: Vec<_> = doc.nodes().collect();
+        assert_eq!(
+            (nodes[0].name(), nodes[1].name(), nodes[1].children().count()),
+            (Some("sky"), Some("floor"), floors[0].at.len())
+        );
+        let count = |m: gltf::Mesh| m.primitives().map(|p| p.get(&gltf::Semantic::Positions).unwrap().count()).max();
+        assert_eq!(count(nodes[0].mesh().unwrap()), Some(5));
+        assert_eq!(count(nodes[2].mesh().unwrap()), Some(4));
+        assert_eq!(nodes[2].mesh().unwrap().primitives().next().unwrap().indices().unwrap().count(), 2 * 3);
+        // the untextured strips draw the white texel, the first image
+        assert_eq!(doc.images().count(), 1);
+        assert!(
+            doc.materials().all(|m| m.pbr_metallic_roughness().base_color_texture().unwrap().texture().index() == 0)
+        );
     }
 }

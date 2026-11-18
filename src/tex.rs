@@ -162,6 +162,68 @@ pub fn image(ups: &[Upload], t: &Tex0, alpha: bool) -> Option<(usize, usize, Vec
     Some((w, h, px))
 }
 
+/// The texels `x` x `y` of a `w` x `h` RGBA picture, which repeats past its edges (as the GS repeats a texture).
+pub fn cut(w: usize, h: usize, px: &[u8], x: std::ops::Range<usize>, y: std::ops::Range<usize>) -> Vec<u8> {
+    let mut out = Vec::with_capacity(x.len() * y.len() * 4);
+    for y in y {
+        let row = px.get(y % h.max(1) * w * 4..).unwrap_or_default();
+        for x in x.clone() {
+            out.extend(row.get(x % w.max(1) * 4..).and_then(|p| p.first_chunk::<4>()).unwrap_or(&[0; 4]));
+        }
+    }
+    out
+}
+
+/// Pictures packed into one: its size and pixels, and where each picture's top left is (in the order given).
+pub struct Atlas {
+    pub w: usize,
+    pub h: usize,
+    pub rgba: Vec<u8>,
+    pub place: Vec<(usize, usize)>,
+}
+
+/// RGBA pictures (width, height, pixels) in an atlas at least 1024 wide: shelves, tallest first, each picture with
+/// a border of its own edge texels (filtering at its edge takes no neighbour's colour); the height a power of two.
+/// None for a picture of no size or fewer pixels than its size, or more than 8192 rows.
+pub fn atlas(items: &[(usize, usize, Vec<u8>)]) -> Option<Atlas> {
+    const PAD: usize = 1;
+    let width = items.iter().map(|p| p.0 + 2 * PAD).max().unwrap_or(1).next_power_of_two().max(1024);
+    let mut order: Vec<usize> = (0..items.len()).collect();
+    order.sort_by_key(|&i| std::cmp::Reverse(items.get(i).map_or(0, |p| p.1)));
+    let (mut x, mut y, mut shelf) = (0, 0, 0);
+    let mut place = vec![(0, 0); items.len()];
+    for i in order {
+        let &(w, h, _) = items.get(i)?;
+        if w == 0 || h == 0 {
+            return None;
+        }
+        if x + w + 2 * PAD > width {
+            (x, y, shelf) = (0, y + shelf, 0);
+        }
+        *place.get_mut(i)? = (x + PAD, y + PAD);
+        x += w + 2 * PAD;
+        shelf = shelf.max(h + 2 * PAD);
+        if y + shelf > 8192 {
+            return None;
+        }
+    }
+    let h = (y + shelf).next_power_of_two();
+    let mut rgba = vec![0; width * h * 4];
+    for ((w, ph, px), &(x, y)) in items.iter().zip(&place) {
+        let rows: Vec<&[u8]> = px.chunks_exact(w * 4).take(*ph).collect();
+        for r in 0..ph + 2 * PAD {
+            let src = rows.get(r.saturating_sub(PAD).min(ph - 1))?;
+            let (first, last) = (src.first_chunk::<4>()?, src.last_chunk::<4>()?);
+            let at = ((y - PAD + r) * width + x - PAD) * 4;
+            let line = rgba.get_mut(at..at + (w + 2 * PAD) * 4)?;
+            for (d, s) in line.iter_mut().zip(first.iter().chain(*src).chain(last)) {
+                *d = *s;
+            }
+        }
+    }
+    Some(Atlas { w: width, h, rgba, place })
+}
+
 pub fn png(w: usize, h: usize, rgba: &[u8]) -> Vec<u8> {
     let mut out = Vec::new();
     let mut e = png::Encoder::new(&mut out, w as u32, h as u32);
@@ -284,5 +346,35 @@ mod tests {
             let ups = uploads(&noise[o..]);
             let _ = (pictures(&ups), image(&ups, &t, true));
         }
+    }
+
+    #[test]
+    fn palettes_baked_into_an_atlas() {
+        // a 16 x 16 PSMT8 image of index 8 in a 256-wide sheet, and a 256-colour palette whose entry 16 is green
+        // and entry 8 red: CSM1 order swaps bits 3 and 4, so the image is green; half-transparent where kept
+        let mut clut = vec![0u8; 1024];
+        clut[64..68].copy_from_slice(&[0, 255, 0, 0x40]);
+        clut[32..36].copy_from_slice(&[255, 0, 0, 0x80]);
+        let mut d = gif(0, 0x13, 256, 16, &[8; 256 * 16]);
+        d.extend(gif(0x300, 0, 16, 16, &clut));
+        let ups = uploads(&d);
+        let t = tex0(4 << 14 | 0x13 << 20 | 4 << 26 | 4 << 30 | 0x300 << 37);
+        let (w, h, px) = image(&ups, &t, true).unwrap();
+        assert_eq!((w, h, &px[..4]), (16, 16, &[0, 255, 0, 0x80][..]));
+        assert_eq!(&image(&ups, &t, false).unwrap().2[..4], &[0, 255, 0, 255]);
+        // in an atlas: the tall one first, each with a border of its edge texels
+        let a = atlas(&[(w, h, px), (2, 40, vec![9; 2 * 40 * 4])]).unwrap();
+        assert_eq!((a.w, a.h, &a.place), (1024, 64, &vec![(5, 1), (1, 1)]));
+        let at = |x: usize, y: usize| &a.rgba[(y * a.w + x) * 4..][..4];
+        assert_eq!(
+            (at(5, 1), at(4, 0), at(21, 17), at(22, 1)),
+            (&[0, 255, 0, 0x80][..], &[0, 255, 0, 0x80][..], &[0, 255, 0, 0x80][..], &[0; 4][..])
+        );
+        assert_eq!((at(0, 0), at(3, 41)), (&[9; 4][..], &[9; 4][..]));
+        // a picture of no size, or of fewer pixels than its size, or taller than an atlas: none
+        assert!(atlas(&[(0, 4, vec![])]).is_none());
+        assert!(atlas(&[(4, 4, vec![0; 60])]).is_none());
+        assert!(atlas(&[(1, 9000, vec![0; 36000])]).is_none());
+        assert_eq!(atlas(&[]).unwrap().h, 1);
     }
 }

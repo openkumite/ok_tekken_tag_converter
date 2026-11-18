@@ -1,7 +1,8 @@
 # The pack's fight data: `gamedata/*.json`
 
 Written by `src/fight.rs` from the executable's tables ([FIGHT_DATA.md](FIGHT_DATA.md) says where they are and how
-they were found). The manifest lists the files under `gamedata`.
+they were found). The manifest lists the files under `gamedata`. The same files are in `assets/gamedata/`, with
+the files OpenKumite reads beside them (section "assets/" at the end).
 
 The shapes are the ones the Tekken 3 converter writes (`ok_tekken3_converter`, read by OpenKumite's
 `kumite_sim::data`) wherever Tekken Tag kept the concept: the same key names, the same nesting. **The numbers are
@@ -137,8 +138,10 @@ Tekken 3's air reactions, throw victims and close-range tables are not here: not
   and three more 135; which is the default is not decoded), **new** `percent_per_character` (34 bodies: a body's
   health is the option times its percent), **new** `recoverable`: the part of a hit's damage the recoverable cap
   loses, `damage_factor` (0.6) and `damage_factor_flag_12a` (1.4), each `{bits, value}`.
+- `dialect`: `"ttt"`, the game whose numbers the files hold (section "Numbering").
 - `hurt_spheres`, `push_spheres`: `layout` (`index`, `bone_slot`, `offset_game`: the head's sphere is lifted 120,
-  the root's 60) and `per_character` (`character`: the body number, `name`, `radii`). Tekken 3's keys; a
+  the root's 60; `gltf_joint`, the slot's joint name in the glbs, and `offset_gltf_m`, the offset in metres with y
+  up, as Tekken 3's) and `per_character` (`character`: the body number, `name`, `radii`). Tekken 3's keys; a
   character here is a body (0-33). Costume bodies 34-38 are not in the tables; they are assumed to use their host
   body's (8, 11, 15, 17, 29).
 
@@ -146,8 +149,8 @@ Tekken 3's other rules (damage zones, counter-hit and juggle scaling, throws, ro
 
 ## `movesets/`
 
-`index.json`: `models` (each fighter model of the pack: `model` its file number, `glb`, `body`, `moveset_id`,
-`moveset_file`), `fighters` (the roster's 39: `name`, `body`, `moveset_id`, `moveset_file`), `files`, `aliases`
+`index.json`: `models` (each fighter model of the pack: `model` and `model_record` its file number, `glb`, `body`,
+`moveset_id`, `moveset_file`), `fighters` (the roster's 39: `name`, `body`, `moveset_id`, `moveset_file`), `files`, `aliases`
 (5532).
 
 `moveset_NN.json`: `moveset_id`, `fighters`, `move_count` (distinct moves), `aliases`: 5 532 values, the move of
@@ -192,3 +195,50 @@ The engine needs a table per game for these; nothing below is translated in the 
 most transition types; req 0xEB; property ops past the ones listed; sound index -> sample; camera scripts; the
 `prefilter`'s classes (table 0x4FF8D0); how a reversal condition picks its motion list; the step bits of a
 sequence other than direction, buttons and tag; the default life option.
+
+## `assets/`: what OpenKumite reads
+
+`assets/` is a folder OpenKumite opens as it opens Tekken 3's converted data (`kumite_assets::Assets`): the Tekken 3
+converter's layout and shapes. Written by `src/pack.rs` (`assets.rs`, `model::fighter_glb`, `anim::clip_glb`,
+`stage::game_glb`).
+
+| File | Content |
+|---|---|
+| `manifest.json` | `{"game": "ttt", "format": 8, "fingerprint"}`. `format` is the layout's (the Tekken 3 converter's FORMAT, which the engine asks for at least); `fingerprint` is the Tekken 3 converter's `convert_all::fingerprint` (SHA-256 over each `.glb` and `.json`, by path in sorted folders, of a JSON file with its keys sorted and a glb without its buffers, views and images then its accessors' data; the first 16 bytes in hex), over `characters/`, `motions/` and `gamedata/` |
+| `characters/model_NNN.glb` | a fighter: body and costume of the roster's (127). NNN is its pack's file number in TEKKEN.BIN (345 + 3 x costume slot), as `models/NNN.glb` |
+| `motions/motion_NNNN.glb` | a motion (4 231: those the characters' movesets play). NNNN is its number in file 133's table, the number of its first move (as `anims/`) |
+| `stages/stage_NN.glb` | an arena (23). NN is its number (geometry file 189 + 7 x NN; 20 is Tekken Bowl, 21 and 22 are not in the stage list); `stages/index.json`: `[{"id", "name", "file"}]` |
+| `gamedata/*.json` | the files above, but each move's `anim` is its clip's name (`motion_NNNN`), not a file |
+| `gamedata/roster.json` | Tekken 3's shape: `characters` (a body each: `id`, `name`, `moveset_id`, `selections`), `selections.entries` (each character file: `selection` = body x 8 + costume, `character` = body, `costume`, `name`, `model_record`, `glb`, `moveset_file`, `moveset_id`), `select_grid.entries` (every character, in body order: the select screen's layout is not decoded) |
+| `gamedata/movesets/index.json` | as above: its `models` are the characters (`model_record`, `glb` = `model_NNN.glb`), the shape of Tekken 3's |
+| `gamedata/movesets/motions_NN.json` | `{"moveset_id", "motions": ["motion_NNNN.glb", ...]}`: the motions moveset NN's moves play |
+
+**A character** is the model's main mesh (section 0, `part_0`; the other sections are left out) skinned with up to
+4 influences on the first 98 nodes, which every fighter shares, in their bind pose (`skins[0].joints` = nodes
+0-97). A vertex on a node past them (cloth, hair) is put on its nearest ancestor among them: no motion moves those
+nodes, so the vertex stays where it was. The 18 animated joints are named as the Tekken 3 converter names its joints,
+slot for slot (FORMATS.md section 7): `root` 0, `chest` 1, `head` 5, `clavicle_A` 29, `upperarm_A` 31, `forearm_A`
+34, `hand_A` 38, `clavicle_B` 54, `upperarm_B` 56, `forearm_B` 59, `hand_B` 63, `pelvis` 79, `thigh_A` 81, `shin_A`
+84, `foot_A` 87, `thigh_B` 90, `shin_B` 93, `foot_B` 96; a slot's twist copies are `name.1`, `name.2` (they turn with
+it); the other nodes `node_N`. The texture is one RGBA PNG (OpenKumite's characters have one): each strip's texture
+in its palette, cut to the texels its strips reach and repeated as far as they reach (the GS repeats a texture; to
+1024 texels: 53 vertices of all the characters reach further and are clamped), packed with a border of edge texels.
+The opaque strips are the first primitive (material `opaque`), the blended ones the second (`blend`), with their
+texture's alpha; each primitive has its own vertices. No animation.
+
+**A motion** has no mesh: nodes named as the joints and their twist copies, and one animation `motion_NNNN`, a key
+a frame at 60 fps: each joint's rotation (normalised 16-bit integers, as the Tekken 3 converter writes them; a twist
+copy takes its joint's) and the root's position in metres (`translation` of `root`: its absolute height, and its
+heading and distance as x and z, forward being -z), which replaces the root's own. Moves that share a motion share
+its file. Motions are stored once (80 MB): a file per moveset with every motion it plays would be 869 MB.
+
+**A stage** is laid out as the arcade converter's `write_game`: node `sky` is the scenery, which the game keeps
+centred on the fighters (scene extras `drum: "model"`, `drum_cull: false`: the strips' winding is not stored, both
+sides are drawn; `background_rgb` black); node `floor` holds copies `floor_K` of the floor mesh, a period apart, to a
+little past the hole in the far ground, and the scene extras' `floor_period` (metres) is that period. An arena's
+floors are one: the one of the longest period, each shorter one (2 or 4 m in 8 or 4 m) laid inside it. Only the
+opaque, cut-out and ordinarily blended strips are there: the additive ones (lights, floor gloss) and the darkening
+ones (shadows, dirt; on Lei's arena the wet street's, so its reflections show bare) are left out, and so are the
+background characters and the objects the game moves. Each primitive (a picture and a blend mode) has its own
+positions, texture coordinates and vertex colours; the first image is a white texel, which strips without a texture
+draw; each picture is cut to the texels its strips reach (all of it along an axis they repeat it on).

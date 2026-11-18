@@ -14,20 +14,25 @@
 //! video/NNN.pss        the movies' pictures as on the disc (MPEG-2 program stream): not converted yet
 //! raw/NNN.bin          files and packs not (fully) decoded, as on the disc, unscrambled
 //! gamedata/*.json      the fight data: moves, cancels, hits, reactions, rules, movesets/ (docs/GAMEDATA.md)
+//! assets/              what OpenKumite reads, laid out as it reads Tekken 3's (`assets`, docs/GAMEDATA.md "assets/"):
+//!   manifest.json             {"game": "ttt", "format": assets::FORMAT, "fingerprint"}
+//!   characters/model_NNN.glb  the roster's fighters (NNN: the file's number in TEKKEN.BIN, as models/)
+//!   motions/motion_NNNN.glb   the motions the characters' movesets play, a clip `motion_NNNN` each (NNNN: as anims/)
+//!   stages/stage_NN.glb       the arenas (NN: the arena's number), stages/index.json
+//!   gamedata/                 the fight data again (moves' `anim`: their clip), roster.json
 //! ```
 //!
-//! shortcut: the layout is the research tool's, to look at in any glTF viewer; the one OpenKumite reads comes with
-//! the engine's side of it (another FORMAT).
+//! The layout outside `assets/` is the research tool's, to look at in any glTF viewer.
 
 use crate::archive::{self, Archive};
-use crate::{anim, audio, fight, model, moves, stage, tex, u32le};
+use crate::{anim, assets, audio, fight, model, moves, stage, tex, u32le};
 use anyhow::{Context, Result, bail};
-use ok_converter_common::io::{Ctx, DiscFile, Vfs};
+use ok_converter_common::io::{Ctx, DiscFile, Sub, Vfs};
 use serde_json::{Value, json};
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeSet, HashMap, HashSet};
 
-/// The pack's layout and contents; another one is converted again.
-pub const FORMAT: i64 = 2;
+/// The pack's layout and contents; another one is converted again (3: `assets/`).
+pub const FORMAT: i64 = 3;
 /// What a pack's manifest names it.
 pub const KIND: &str = "ttt";
 
@@ -48,7 +53,7 @@ fn leaves(d: &[u8]) -> Vec<&[u8]> {
     at(d, 0)
 }
 
-type Arena = (Vec<stage::Batch>, Vec<stage::Batch>, Vec<Vec<tex::Upload>>);
+type Arena = (Vec<stage::Batch>, Vec<stage::Batch>, Vec<stage::Floor>, Vec<Vec<tex::Upload>>);
 
 /// An arena from its geometry pack and the texture pack before it. The n-th part of one goes with
 /// the n-th part of the other (empty parts aside): the banks all load at the same GS addresses.
@@ -77,8 +82,8 @@ fn arena(geometry: &[u8], textures: &[u8]) -> Option<Arena> {
         let all: Vec<tex::Upload> = banks.into_iter().flatten().chain(own).collect();
         banks = (0..g.len()).map(|_| all.clone()).collect();
     }
-    let (scenery, objects) = stage::arena(&parts);
-    Some((scenery, objects, banks))
+    let (scenery, objects, floors) = stage::arena(&parts);
+    Some((scenery, objects, floors, banks))
 }
 
 /// Converts the Tekken Tag Tournament disc (its data track `src`) into a pack in `ctx.out`, emptied first; writes
@@ -87,6 +92,8 @@ pub fn convert(ctx: &Ctx, src: &dyn DiscFile) -> Result<Value> {
     let out = ctx.out;
     let mut a = Archive::open(src)?;
     out.remove_all("")?;
+    let assets = Sub { inner: out, prefix: "assets".into() };
+    let (mut characters, mut arenas) = (vec![], vec![]);
     let (mut sounds, mut music, mut video, mut raw, mut models, mut textures, mut stages) =
         (vec![], vec![], vec![], vec![], vec![], vec![], vec![]);
     let roster = moves::roster(&a.elf)?;
@@ -136,11 +143,29 @@ pub fn convert(ctx: &Ctx, src: &dyn DiscFile) -> Result<Value> {
                 }
                 None => (format!("Extra {i}"), None),
             };
+            // OpenKumite's character: a fighter of the roster, with its moveset
+            if let (Some((body, costume)), Some(set)) = (who, moveset) {
+                match m.fighter_glb(&ups) {
+                    Some(glb) => {
+                        let file = format!("model_{i:03}.glb");
+                        assets.write(&format!("characters/{file}"), &glb)?;
+                        characters.push(json!({"id": i, "name": name, "body": body, "costume": costume, "moveset": set, "file": file}));
+                    }
+                    None => ctx.log(&format!("[ttt] {name} (file {i}): not a fighter OpenKumite can read")),
+                }
+            }
             models.push(json!({"id": i, "name": name, "body": who.map(|w| w.0), "moveset": moveset, "file": file, "nodes": m.nodes.len(), "triangles": tris}));
-        } else if let Some((mut b, mut objects, banks)) =
-            pack.as_ref().map(|_| a.read(i - 1)).transpose()?.and_then(|t| arena(&d, &t)).filter(|b| b.0.len() > 20)
+        } else if let Some((mut b, mut objects, floors, banks)) = pack
+            .as_ref()
+            .map(|_| a.read(i - 1))
+            .transpose()?
+            .and_then(|t| arena(&d, &t))
+            .filter(|b| b.0.len() + b.2.iter().map(|f| f.tiles.len() * f.at.len()).sum::<usize>() > 20)
         {
+            let mut bare = b.clone();
+            b.extend(floors.iter().flat_map(|f| f.laid()));
             if i == BOWL {
+                bare.extend(objects.iter().cloned());
                 b.append(&mut objects);
             }
             let file = format!("stages/{i:03}.glb");
@@ -188,6 +213,12 @@ pub fn convert(ctx: &Ctx, src: &dyn DiscFile) -> Result<Value> {
             let cast: Vec<Value> = (cast.iter())
                 .map(|p| json!({"model": p.model, "pos": p.pos.map(|v| (v as f64 * model::SCALE) as f32), "heading": p.heading, "motions": p.motions, "start": p.start}))
                 .collect();
+            // OpenKumite's stage, by the arena's number
+            if let Some(n) = listed {
+                let file = format!("stage_{n:02}.glb");
+                assets.write(&format!("stages/{file}"), &stage::game_glb(&name, &bare, &floors, &banks))?;
+                arenas.push(json!({"id": n, "name": name, "file": file}));
+            }
             let triangles = b.iter().map(|x| x.pos.len().saturating_sub(2)).sum::<usize>();
             stages.push(json!({"id": i, "name": name, "file": file, "people": people, "motions": motions, "cast": cast, "triangles": triangles}));
         } else if let Some(pics) =
@@ -225,6 +256,8 @@ pub fn convert(ctx: &Ctx, src: &dyn DiscFile) -> Result<Value> {
     let (bank, bank2) = (a.read(MOTIONS.0)?, a.read(MOTIONS.1)?);
     // several moves share one motion: `first` is the number its file is written under
     let (mut anims, mut first) = (vec![], HashMap::new());
+    // each motion decoded, by its first move's number
+    let mut decoded: Vec<Option<Vec<anim::Frame>>> = vec![];
     let count = (u32le(&bank, 8).context("the motions' bank is empty")? as usize / 8).min(bank.len() / 8);
     let offsets: Vec<u32> = (0..count).map_while(|k| u32le(&bank, 8 * k)).collect();
     let canon: Vec<usize> = offsets.iter().enumerate().map(|(k, &o)| *first.entry(o).or_insert(k)).collect();
@@ -240,6 +273,10 @@ pub fn convert(ctx: &Ctx, src: &dyn DiscFile) -> Result<Value> {
         let file = format!("anims/{k:04}.glb");
         out.write(&file, &anim::glb(&frames))?;
         anims.push(json!({"id": k, "file": file, "frames": frames.len()}));
+        decoded.resize_with(k + 1, || None);
+        if let Some(d) = decoded.get_mut(k) {
+            *d = Some(frames);
+        }
     }
     ctx.log(&format!("[ttt] {} motions", anims.len()));
     let mut movesets = Vec::new();
@@ -279,6 +316,36 @@ pub fn convert(ctx: &Ctx, src: &dyn DiscFile) -> Result<Value> {
         .collect();
     let gamedata = fight::export(out, &a.elf, &files, &frames, &models)?;
     ctx.log(&format!("[ttt] the fight data: {} files", gamedata.len()));
+    // OpenKumite's motions: each one its characters' movesets play, once (a file a moveset would be 869 MB), and
+    // each moveset's list of them
+    let motion = |v: usize| canon.get(v).copied().filter(|&c| decoded.get(c).is_some_and(Option::is_some));
+    let sets: BTreeSet<u64> = characters.iter().filter_map(|c| c["moveset"].as_u64()).collect();
+    let mut used = BTreeSet::new();
+    for &m in &sets {
+        let own: BTreeSet<usize> = moves::moveset(&a.elf, m as usize)?.into_iter().filter_map(motion).collect();
+        let files: Vec<String> = own.iter().map(|c| format!("motion_{c:04}.glb")).collect();
+        let list = json!({"moveset_id": m, "motions": files});
+        assets.write(&format!("gamedata/movesets/motions_{m:02}.json"), serde_json::to_string(&list)?.as_bytes())?;
+        used.extend(own);
+    }
+    for &c in &used {
+        if let Some(Some(f)) = decoded.get(c) {
+            assets.write(&format!("motions/motion_{c:04}.glb"), &anim::clip_glb(c, f))?;
+        }
+    }
+    let clips: Vec<Option<String>> = (0..offsets.len()).map(|v| motion(v).map(|c| format!("motion_{c:04}"))).collect();
+    fight::export(&assets, &a.elf, &clips, &frames, &characters)?;
+    assets.write("gamedata/roster.json", serde_json::to_string(&assets::roster(&roster, &characters))?.as_bytes())?;
+    assets.write("stages/index.json", serde_json::to_string(&arenas)?.as_bytes())?;
+    let fingerprint = assets::fingerprint(&assets)?;
+    let engine = json!({"game": assets::GAME, "format": assets::FORMAT, "fingerprint": fingerprint});
+    assets.write("manifest.json", serde_json::to_string_pretty(&engine)?.as_bytes())?;
+    ctx.log(&format!(
+        "[ttt] OpenKumite's assets: {} characters, {} motions, {} stages",
+        characters.len(),
+        used.len(),
+        arenas.len()
+    ));
     let source = json!({"image": src.name(), "disc": "SLUS-20001", "version": "2.00"});
     let manifest = json!({"pack": KIND, "format": FORMAT, "source": source, "models": models, "movesets": movesets, "own": own,
         "anims": anims, "stages": stages, "textures": textures, "sounds": sounds, "music": music, "video": video, "raw": raw, "gamedata": gamedata});

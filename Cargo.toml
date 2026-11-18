@@ -21,8 +21,12 @@ serde_json = { version = "1", features = ["preserve_order", "float_roundtrip"] }
 png = "0.18"
 # pinned: an update could change the output bits (the pack's hash is the netplay fingerprint)
 libm = "=0.2.16"
+# the fingerprint of OpenKumite's files (the Tekken 3 converter's)
+sha2 = "0.11"
 
 [dev-dependencies]
+# the tests read the written glbs as OpenKumite does
+gltf = { version = "1.4", features = ["names", "extras"] }
 cargo-husky = { version = "1.5.0", default-features = false, features = ["user-hooks"] }
 
 [lints.rust]
