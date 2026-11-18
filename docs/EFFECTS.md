@@ -77,15 +77,23 @@ slot (0x343F08). Effect objects are tasks (0x3464F8 / 0x345780 spawn, 0x3465C8 e
   a bone, op 8 kind 0, op 9 kind 1 (set 3, file 5), op 0xA kind 3 (set 2, file 7: dust, coloured by arena table
   0x437AC0, 12 bytes an arena), op 0xB kind 2. As Tekken 3's ops 6-0xA.
 - Landing / ground impact (0x35C240 from 0x36DAF8, 0x36DB50, 0x372DF8): kind 3 at the feet.
-- 0x3A2758(kind, at, flag) picks the set (kind 0 -> 0, 1 -> 3, 2 -> 1, 3 -> 2) and spawns its particles [M].
+- 0x3A2758(kind, at, flag, f12) picks the set (kind 0 -> 0, 1 -> 3, 2 -> 1, 3 -> 2) and spawns its particles [H]:
+  one on each of the set's paths (its count, +4), with row 0x24 / 0x25 / 0x26 (kinds 0, 2, 1); set 2 (the dust)
+  instead on paths drawn at random (rand() % count), as many as the arena's row of table **0x437AC0** says (12
+  bytes: u32 particles, f32 scale, the size's divisor 400 / scale at +0x48, RGB at +0x50, 128 = 1; 3 particles, and
+  the row's colour only below 500 mm, when flag is set). Each particle's +0x74 is atan2(at +0x10, -(at +0x14)), the
+  strike's heading, growing by f12 a frame (0x3A05F8); the draw (0x345A00) turns the particle's path offset (+0x60)
+  about y by it (0x34ACB8: rows (cos, 0, -sin), (0, 1, 0), (sin, 0, cos)) before placing it: the path's +z runs along
+  the strike. The ending scripts' op (0x3AB504) passes the bone's position and the vector from the other bone.
 - The **SPECIAL EFFECTS** option (OFF: "Cancels Explosion Effects") [L: gates the 0x3A6110 explosions].
 - **Ogre's fire** and the other projectile attacks (0x3A6390 each frame from 0x36D99C): attack bone 0x18 with body
   20 (True Ogre) in the active frames -> 0x3A4EE8; bone 0x19 -> 0x3A5810 [M, not read].
 
 Exported: `pictures/effects/` (atlas.png, effects.json in the Tekken 3 converter's layout): sets 0-3's pictures
 and file 8's frames as OpenKumite's spark, zero, block, dust and heavy strips, and `bursts`: each set's paths (the
-row's scale applied), its brightness and quad size. Not: the strike's heading turning the burst, the dust's arena
-colour, the character effect (0x3A2BC0).
+row's scale applied), its brightness and quad size. Since format 13 stages.json
+has each arena's `dust`, and the dust's paths (not the guard's) are drawn at random. Not: the character effect
+(0x3A2BC0); what the hit code puts in at +0x10..+0x14 (OpenKumite turns the burst with the strike) [M].
 
 ## 5. Arena effects [M]
 

@@ -10,6 +10,8 @@ use serde_json::{Value, json};
 /// The arenas' lights (0x54 bytes an arena: light 0's direction first, floats) and the shadow's alpha (u16, of 0x80).
 const LIGHTS: usize = 0x41_6288;
 const ALPHA: usize = 0x46_B280;
+/// The arenas' dust (12 bytes an arena: u32 particles, f32 scale, u8 r, g, b; 0x3A2758's kind 3).
+const DUST: usize = 0x43_7AC0;
 const ARENAS: usize = 23;
 
 /// A fighter's shadow mesh (the Tekken 3 converter's `shadows.json` entry) from its low-detail model, fighter-pack
@@ -48,7 +50,8 @@ pub fn shadow(m: &Model, record: usize) -> Value {
 /// its alpha: towards light 0 (the arena's axes, y up; turned up when it points down: the shadow falls along the
 /// line either way), black, at the arena's alpha (0x342360); and the fighters' `lights` (0x353918 copies them into
 /// each side's light block): towards each of the three lights (the arena's axes, y up), their colours and the
-/// ambient (128 = 1, the GS's modulation).
+/// ambient (128 = 1, the GS's modulation); and its `dust` (0x3A2758, kind 3 at the floor): so many particles, their
+/// size times `scale`, their colour (128 = 1).
 pub fn stages(elf: &[u8]) -> Value {
     let stages: Vec<Value> = (0..ARENAS)
         .filter_map(|a| {
@@ -58,8 +61,11 @@ pub fn stages(elf: &[u8]) -> Value {
             let (x, y, z) = (f.first()?, f.get(1)?, f.get(2)?);
             let s = if *y < 0.0 { -1.0 } else { 1.0 };
             let alpha = u16le(elf, ALPHA + 2 * a - VADDR)?;
+            let row = DUST + 12 * a - VADDR;
+            let dust = json!({"count": u32le(elf, row)?, "scale": f32le(elf, row + 4)?,
+                "colour": elf.get(row + 8..row + 11)?});
             Some(json!({"id": a, "shadow": {"toward": [x * s, y * s, z * s], "colour": [0, 0, 0], "alpha": alpha as f64 / 128.0},
-                "lights": {"toward": [v(0), v(1), v(2)], "colour": [v(3), v(4), v(5)], "ambient": v(6)}}))
+                "lights": {"toward": [v(0), v(1), v(2)], "colour": [v(3), v(4), v(5)], "ambient": v(6)}, "dust": dust}))
         })
         .collect();
     json!({"stages": stages})
@@ -90,11 +96,9 @@ pub fn paths(file: &[u8]) -> Vec<Vec<[f64; 5]>> {
 /// pictures `pics[k]` (files 4 + k, k 0-4: the four sets' and file 8's 20 fireball frames): the hit spark (set 0),
 /// the zero-damage spark (set 3), the guard spark (set 1), the dust (set 2), each its set's frame count; the heavy
 /// hits' fireballs, orange and blue (the charged attack's). `sets[k]`: file 4 + k's particle paths, each effect's
-/// `bursts` (0x3A2758: a particle on each path, the guard's on paths drawn at random; table 0x436688 rows 0x24-0x26
+/// `bursts` (0x3A2758: a particle on each path, the dust's on paths drawn at random; table 0x436688 rows 0x24-0x26
 /// scale the paths and give the brightness, 0x44 of 128; the quad 0x90 = 128 over 0x48 = 400 metres at size 1).
 /// None when a picture is missing.
-// shortcut: the dust is not tinted by arena, and a burst is not turned with the strike; read 0x3A2758's use of
-// the strike's heading and the colour table 0x437AC0 for those
 pub fn atlas(pics: &[Vec<(usize, usize, Vec<u8>)>], sets: &[Vec<Vec<[f64; 5]>>]) -> Option<(Vec<u8>, Value)> {
     let cells: Vec<&(usize, usize, Vec<u8>)> =
         (0..4).map(|k| pics.get(k)?.first()).chain(pics.get(4)?.iter().take(20).map(Some)).collect::<Option<_>>()?;
@@ -137,8 +141,8 @@ pub fn atlas(pics: &[Vec<(usize, usize, Vec<u8>)>], sets: &[Vec<Vec<[f64; 5]>>])
         "bursts": {
             "spark": burst(0, 0.5, 1.0, false, 0),
             "zero": burst(1, 1.0, 1.0, false, 1),
-            "block": burst(2, 1.0, 0.25, true, 2),
-            "dust": burst(3, 1.0, 1.0, false, 3),
+            "block": burst(2, 1.0, 0.25, false, 2),
+            "dust": burst(3, 1.0, 1.0, true, 3),
         },
         "characters": {},
         "ground_offsets": [[0, 0, 0]],
