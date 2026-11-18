@@ -798,6 +798,239 @@ The options config is 0x439C60 (0x68 bytes, saved and loaded to the memory card 
 
 Confidence: high. The descriptor defaults equal the ELF's initial data.
 
+## 21. CPU AI (fifth pass, read in code)
+
+Notation: S = the AI state block (gp-0x6FCC, 1000 bytes), P*xx* = the profile field at profile offset *xx* (the
+copy at S+0x344, so P*xx* is S+0x344+*xx*), T3 P*yy* = Tekken 3's field (`ai.md` section 5.2; P*xx* = T3 P(*xx*-4)).
+"rand < P" is `(rand() & 0xFFF) < P`. Tekken 3's step names are those of its `ai.md` section 7 and of the engine's
+`ai.rs` (4.A-4.T).
+
+### 21.1 The chain, complete
+
+0x380F38 calls 27 steps, not 26: section 19 missed 0x38ABE8 (id 0x16 again). The order, with Tekken 3's step:
+
+| # | Id | Function | What it does | Tekken 3 |
+|---|---|---|---|---|
+| 1 | 0 | 0x381418 | canned sequence word | 2 (4.B) |
+| 2 | 1 | 0x381D30 | bookkeeping; returns 0 (21.5) | 1, 7.0 (4.A, 4.D) |
+| 3 | 2 | 0x381BF8 | hit-confirm chain / throw escape | 5 (4.E) |
+| 4 | 3 | 0x388DE0 | stun recovery, three tiers (21.4) | 6 (4.F) |
+| 5 | 5 | 0x381408 | hold while player +0x188 | 4 (moved after stun) |
+| 6 | 4 | 0x388FA8 | wake-up | 7 (4.G) |
+| 7 | 6 | 0x38A408 | vs-opponent handler (+0xB4), gate P3E, lock S+0xCC | 8 (4.H) |
+| 8 | 0x16 | 0x38AD00 | the same through 0x38BF38, a stub that returns -1: dead | - |
+| 9 | 7 | 0x38A500 | own handler (+0xB8) | 8 (4.H) |
+| 10 | 0x17 | 0x38AC40 | delayed low guard (21.2) | new |
+| 11 | 8 | 0x388170 | guard after a reaction / already safe (21.2) | 9 (4.I), changed |
+| 12 | 9 | 0x388DA8 | attract mode (gp-0x7434) frame skip: hold on the other side's frames (gp-0x74D8 & 1 != side) | 3 (4.C) |
+| 13 | 10 | 0x385C80 | follow-up list collection, candidates, 221-frame rule | 10, 11 (4.J, 4.K) |
+| 14 | 0x16 | 0x38ABE8 | while player +0xF7: pick an entry with trans 0x1A / 0x1B | new |
+| 15 | 11 | 0x3864E8 | stance continuation | 12 (4.L) |
+| 16 | 12 | 0x389B70 | inside his string | 12 (4.M) |
+| 17 | 13 | 0x389D58 | reaction to his first attack (chooser 0x389488) | 13 (4.N, 4.O) |
+| 18 | 0x14 | 0x38A780 | tag out (21.2) | new |
+| 19-21 | 14, 15, 16 | 0x387600, 0x3879A0, 0x387DA8 | follow-up executors C, B, D (21.3) | dead code in Tekken 3 |
+| 22 | 0x15 | 0x38A928 | delayed input executor (21.2) | new |
+| 23 | 0x11 | 0x388278 | anti-air, back turned, turning round | 4.Q |
+| 24 | 0x12 | 0x387120 | neutral offence (21.5) | 14 (4.S) |
+| 25 | 0x13 | 0x388840 | movement (0x388530) | 15 (4.T) |
+| 26 | 0x63 | 0x388D70 | fallback | - |
+
+The order is Tekken 3's except: the hold (5) after stun recovery, the attract frame skip at 9 (not before the hit
+confirm), four new steps, and three live executors. [C]
+
+### 21.2 The new and changed steps
+
+**Step 8, 0x388170** (Tekken 3's 4.I without its "attack now"). [C]
+- Only when a punish is being timed (S+0x9C ≥ 0), he is idle, or his active frame is under 30 frames away;
+  otherwise the step returns 0.
+- Then: when S+0xA4 is set (never: S+0xA4 is only ever cleared) and not already safe, a guard pad (0x386428).
+- Else, when player +0x11A is set (the transition code at 0x36B430 sets it, 1 or 2 [I: after a reaction]), with
+  rand < **P72**: the guard pad of 0x386470 (back 0x8000 vs his 0x31F / 0x217, d/b 0xC000 vs 0x412, else none),
+  movement reset.
+- Else, when already safe (S+0x98): hold the direction bits.
+- Tekken 3 raised "attack now" here when his attack whiffed (P20 + string × difficulty × 30); Tag has no such rule.
+
+**Step 0x17, 0x38AC40** (delayed low guard). The guard pool 0x384D78 (Tekken 3's 0x80057FB8) arms S+0x26C when
+his move is a low 0x10F at his zone < 3 (or 0x31F with randint(0x3FFF) = 0), with S+0x270 = 4 + randint(frames
+until his hit - 4) (randint(4) if fewer). The step counts S+0x270 down and at -1 outputs 0x386428's pad (d/b 0xC000;
+back 0x8000 vs 0x217): a crouch guard timed into the last frames before the low. [C]
+
+**Step 0x14, 0x38A780** (tag out). [C]
+- When S+0x3E0 ("tag wanted", 21.5): mark the tag entries (0x384B80: cmd bit 14, or trans bit 0x2000); at my zone
+  ≥ 2 or when a throw is ruled out (his posture & 0x605, he is airborne or unthrowable, his hit < 10 frames away),
+  only the non-throw ones (0x384BB0). If any, with rand < **P6E**: pick one.
+- Else for Unknown (body 0x21) only, when S+0x278 is armed (stun recovery, 25/4096 at difficulty < 2) and the timer
+  S+0x274 has run out and player +0x12B != 1: with 1/4, entries whose trans has a parameter (bits 7-12) and the
+  swap bit 0x2000 (0x384C70); S+0x274 = 20 + randint(20).
+
+**Step 0x15, 0x38A928, and picker 0x3854B0** (delayed input). Neutral offence picks through 0x3854B0, not 0x3853E8.
+When the chosen entry has window start 1, exec frame > 1, exec < window end and end != 0xFF (0x384BF0; a buffered
+entry), with rand < **P74** it is not input now: S+0x260 = 1, S+0x264 = the entry, S+0x268 = (exec - frame + 1) +
+(end - exec)/2 + randint((end - exec)/2) (randint(end - frame) when the exec frame is past), and the output is 0.
+Step 0x15 then each frame: the entry must still be in its window, its req, its per-alias rule (the same table as
+the chain-throw rule: aliases 0xEE3, 0x197, 0x181, 0x3BC, 0x4CA, 0x1245, 0x1246, 0x1253, 0x1255, 0x1262 by moveset
+and coin) and its cond must pass, I must face him (< 0x2000) and his hit must not come before the move's; it
+waits until my frame reaches S+0x268, then inputs it with the after-attack cooldown. [C]
+
+**Step 0x16, 0x38ABE8**: while player +0xF7 is set [I: an air / recovery state], pick from the entries with trans
+0x1A or 0x1B. [C for the test, I for the meaning]
+
+**Step 11, 0x3864E8** (stance): as Tekken 3's but tag entries are excluded (0x383ED8), the trigger also accepts
+player +0x42 = 2 [I: Tekken 3's quadrant test], it is off while S+0x294 (Ogre's 0xBA9 / 0x1A6), and when nothing is marked it returns 0:
+the chain goes on (Tekken 3 ends the frame). Picking sets the cooldown to -1. [C]
+
+**Step 12, 0x389B70** (inside his string): the guard is the guard pool 0x384D78 first (only when he faces me,
+turn < 0x5000), the plain guard pad when the pool is empty; when the pool armed the delayed low guard, difficulty
+< 3 waits for it and higher ones guard at once; the
+interrupt uses P2A (T3 P26), the guard P2E (T3 P2A), the sidestep P28. [C]
+
+**Reaction chooser 0x389488**: Tekken 3's rules, plus one before the counter rule: when his current attack move
+is in the 20-entry ring S+0x2D0 (the last 20 attack moves he started, pushed by bookkeeping) at least **P76** times
+(3; 2 at ULTRA HARD), guard with rand < **P78**. It replaces the rage (section 19). [C]
+
+### 21.3 Follow-up executors (all live)
+
+All three use the same frame filter as step 0x15 (window, req, per-alias rule, cond), give up when turned ≥ 0x2000
+and exclude tag entries unless S+0x3E0. After every input: the after-attack cooldown (0x385250). [C]
+
+| List | Collected (step 10, on a move change) | Armed by | Executor | Limits |
+|---|---|---|---|---|
+| C, S+0x134, ≤ 4 | 0x3856C0: entries leading to string starters (flags24 & 0x20) | neutral picking a string starter (S+0x12C = 1) | 0x387600 (ported) | P32 count, P34 chance |
+| B, S+0x154, ≤ 48 | 0x3857F8: entries in range of my zone (0x383B88) into jump / hop moves (rec4 0x80000, rec8 0x200000) or throws (kept with rand < P1A; none while he is down) | neutral: I am in a jump (1/2) or the pick is a jump (3/4; a tag jump only when S+0x3E4); 0x3865A0; King's canned throws | 0x3879A0 | P36 count, P38 chance |
+| D, S+0x228, ≤ 10 | 0x385A60: entries with window start 1 and end = exec (the string follow-ups of an attack); string starters only with rand ≥ P4A (always) | every move change while I am in an attack (my move has active frames), not in a stance, C and B idle; S+0x220 += 1 | 0x387DA8 | P3A count, P3C chance |
+
+Executor B (0x3879A0): pick one at random; a pick into a move with rec8 0x200000 counts (S+0x14C += 1). An attack
+is input only if his hit does not come first (frames until his hit ≥ its start-up), the count ≤ P36, my attack
+count S+0x258 < its limit S+0x25C and 0x387518 allows it; otherwise hold and disarm. A jump pick keeps the list
+armed; another keeps it with rand < P38.
+
+Executor D (0x387DA8), each frame of the window: with rand < **P3C** pick one at random, else **hold the direction
+and end the frame** (the later steps do not run). An attack is input only if S+0x220 < **P3A**, S+0x258 < S+0x25C,
+his hit is not first and 0x387518 allows it; otherwise both D fields are cleared and the step returns 0.
+
+0x387518 (veto), skipped with 1/32: veto at my zone < 2 while he is inside a string (S+0x2C0 ≥ 0), at my zone ≥ 4,
+when he is lying (posture & 4), not airborne, and the move neither hits the ground (rec8 0x10000) nor is a low
+(0x10F / 0x51F), and when I am turned more than 0x3800.
+
+P3A is 1 at every level 0, so level 0 never continues a string; from NORMAL level 4 it is 5-10 with P3C 2048-3276
+(50-80 % a frame), so a follow-up is nearly always input inside its window. [C]
+
+### 21.4 Stun recovery, three tiers (0x388DE0)
+
+When my posture is 0x4C02 and my move has no active frames: movement reset; candidates with END links (0x3835A0);
+then, first match:
+1. rand < **P68**: entries with trans 0x1E (0x384B68); cooldown -1 and "attack now" (S+0xE0 / +0xE4 = 1).
+2. rand < **P70**: tag entries (0x384B80): tag out of the stun.
+3. rand < **P66** (T3 P62): entries with trans 0x1C / 0x1D (0x384B50), Tekken 3's only tier.
+4. otherwise output 0. With no candidates also 0. The step always ends the frame.
+
+Values: P68 0-40, P70 2048 (819 at VERY HARD level 7), P66 0-2048. [C]
+
+### 21.5 Attack rate: what differs from Tekken 3
+
+The neutral gate (0x387120) and the attack decision (0x3865A0) are Tekken 3's step for step with the 4-byte shift
+(the 1/12 and 1/8 approach draws, the run stop, the punish timer, the anti-air P4C, P1C / P1E / P24 / P40 reads,
+the throw rules, the pools, the desperation pick with P24). Movement 0x388530 has Tekken 3's thresholds. The
+differences:
+
+1. **Cooldowns (data).** After an attack S+0x94 = P08 + P(0x0A + 2·(rand() & 3)), and it only runs down while not
+   attacking. Tag's top levels keep a long fourth choice:
+
+| Profile | P0A | P0C | P0E | P10 | Mean |
+|---|---|---|---|---|---|
+| Tag EASY L0 / L7 | 300 / 80 | 300 / 120 | 400 / 200 | 400 / 200 | 350 / 150 |
+| Tag NORMAL L0 / L4 / L7 | 150 / 50 / 30 | 150 / 60 / 60 | 200 / 100 / 60 | 200 / 150 / 120 | 175 / 90 / 68 |
+| Tag VERY HARD L7 | 10 | 30 | 30 | 60 | 33 |
+| Tag ULTRA HARD L0 / L3-7 | 30 / 10 | 60 / 30 | 90 / 60 | 150 / 150 | 83 / 63 |
+| Tekken 3 HARD L9 | 10 | 30 | 30 | 30 | 25 |
+
+   ULTRA HARD level 7 waits 2.5 times Tekken 3's top on average; VERY HARD level 7 is the most aggressive profile.
+2. **Distance jitter.** Bookkeeping adds `sin(phase) · 192` to the distance before both zone tests (my zone and his
+   zone): phase S+0x2C += rand() & 0x3F a frame, sine table 0x4FCE88 (4096 s16, ±4096), the term kept at S+0x28.
+   The perceived distance swings ±192 over about 130 frames, so zone 2 / 3 edges flicker. Tekken 3 has none.
+3. **Tag entries.** Neutral excludes the tag entries (0x383E20 with 0x384B80) unless S+0x3E4 (my life below my
+   partner's); every list and the 221-frame rule exclude them unless S+0x3E0.
+4. **Delayed input** with P74 (21.2): 0 at level 0 of EASY-HARD, 1228 (30 %) at most other levels, 2048 at ULTRA
+   HARD level 0, 204 at the top.
+5. **String follow-ups live** (21.3): Tekken 3 never continues a string by list D; Tag does, so one decision can land
+   2-5 hits.
+6. **No "attack now" on his whiff** (step 8) and no rage; instead P76 / P78 guard a repeated move.
+7. The cooldown runs down as in Tekken 3: one a frame while not attacking or while he is airborne (opponent
+   +0x135), one more in zone 1, two more when either side is pushed.
+
+**Tag wanted (S+0x3E0) and behind (S+0x3E4)**, bookkeeping 0x3827AC. Life words come from 0x440940 + 0x60·team
+(player +0x1E) + 0x30·slot, +0xC current and +0x14 maximum [I], for my slot (player +0) and my partner's
+(player +2); in mode 7 the values are reduced by S+0x27C [I]. S+0x3E4 = my life < my partner's. S+0x3E0 is 0 while
+S+0x50 (running) or for a solo Unknown, else 1 when any of:
+- my life < 1/2 of my maximum (10/16 in attract mode), < my partner's, and his ≥ 11/16 of his maximum;
+- my life < 1/3 of my maximum, my partner's ≥ 1/2 of his, and mine < his;
+- my life < 1/8 of my maximum and my partner's > 1/6 of his.
+Both are 0 in mode 5 and in attract mode unless gp-0x6FAC; S+0x3E0 is 0 while stunned against his alias
+0x338 / 0x33A. [C for the arithmetic, I for the life fields]
+
+### 21.6 Per-moveset handlers (table 0x507A80)
+
+Handler calls: step 6 / 7 when S+0xCC < 0 and rand < P3E. Returns: -1 nothing, -2 handled, -3 pick the pool,
+0x2000 / 0x8000 walk 16 frames (0x380540(16)), other = pad word. Every other row is `jr ra; li v0, -1`. [C]
+
+| Moveset | Handler | Behaviour |
+|---|---|---|
+| 0 Paul (vs) | 0x38B698 | his alias 0x39D at my zone < 3: walk back (0x8000) from his frame 16, before that cooldown -1. Alias 0x39C returns at once (a branch bug: both were meant). |
+| 3 King (own) | 0x38BC00 | cooldown ≤ 0 and rand < P1A (T3 P16). He stands, 1/8, my zone < 3, not airborne / unthrowable, I am idle, his hit ≥ 9 frames away, both +0x42 = 0, walk alias 0x3F reachable: one of `n,f,d/f,d/f+1+3,d/f` / `…d/f+2+4…` / `…d/f+1+2…` (0x507A52, 14 bytes each), and list B armed. He crouches, my zone < 2 (same tests, 0x3838B0): `d,d+2+4,d,d,n` (0x507A32, both rows equal). He is down, my zone < 2, his +0x42 0 or 2: `d/b,d/b+1+3,…` / `d/b,d/b+2+4,…` (0x507A12). |
+| 4 Yoshimitsu (vs) | 0x38B368 | reacts to his aliases 0x1A1, 0x1A8, 0x5A9, 0x5C7, 0x5C9, 0x5EE and neighbours: sidesteps (0x38A690), backs off, filters lows (Tekken 3's handler) [I for the detail]. |
+| 6 Hwoarang (own) | 0x38BE78 | in alias 0xA8B (stance): unless frame 13-17 with his hit < 10 frames away, forward 0x2000 with 15/16. |
+| 14 Ogre / True Ogre (vs) | 0x38B820 | his alias 0xBA9 or 0x1A6, by his frame: lock S+0xD0 = 8; 1/32 at frames 9-13 and my zone < 2 a sidestep; early: walk in / cooldown -4 / sidestep by stage side (0x38AF28); during the move: back off or cooldown 8; after: at my zone < 2 a punish pad from 0x507A08 {d/f+2, d/f+1, d/f+4, d/f+4}, at zone 2 d/f (0x6000), else 1/8 walk in. |
+| 25 Ganryu (vs) | 0x38B718 | his alias 0x1407, I am not attacking, not airborne, he faces me: at his frames 24-25 and distance < 3000 the sequence 0x507618 (n, d/f); else at distance < 4000 crouch guard d/b (0xC000). |
+| 27 Devil / Angel (vs) | 0x38AFC0 | Ogre's handler for his aliases 0x1459 / 0x1458, punish pads 0x507A00 (the same four). |
+
+Section 19's "opponent on moveset 14 in alias 0xBA9 or 0x1A6 sets S+0x294" stops movement (0x388530 returns 0)
+and the stance step during Ogre's move. [C]
+
+### 21.7 Levels
+
+- Arcade: 0x359D3C increments settings +0x24 after each won fight (and gp-0x7424 = min(fights, 7)); 8 fights. So
+  the profile is (DIFFICULTY option, level = fight index 0-7): the first fight level 0, the eighth level 7. gp-0x7423 is only
+  ever cleared (0x3BA2BC), so the "≥ 8 → diff 1 level 6" fallback of 0x380120 is dead. [C; that s0 there is the
+  settings block is I]
+- Mode 3: difficulty 1 (NORMAL), level = settings +0x24. Survival-type mode 4: the streak ladder of section 19
+  (exact). Attract: profile 0x432D90.
+
+### 21.8 Profile fields, final map
+
+| Field | Reader | Values (EASY L0 … ULTRA HARD L7) |
+|---|---|---|
+| +4 / +6 | none in the AI (no S+0x348 / 0x34A reads) | 7/7 … 3/5 |
+| P08, P0A-P10 | cooldown | 21.5 |
+| P1A | King's handler; list B throw keep | 0 … 2048 |
+| P32 / P34, P36 / P38, P3A / P3C | executors C, B, D | 21.3 |
+| P3E | handler gate; evade (chooser) | 819 … 3891 |
+| P4A | always 0 (every `rand ≥ P4A` passes) | 0 |
+| P4C | anti-air | 0 everywhere |
+| P50 | keep a walk-back / backdash | 12 … 245 |
+| P66 / P68 / P70 | stun tiers 3 / 1 / 2 | 21.4 |
+| P6E | tag out | 245; 409 at VERY HARD L7 and ULTRA HARD |
+| P72 | guard after a reaction (step 8) | 0 … 2457 |
+| P74 | delayed input | 0 … 2048; 204 at the top (21.5) |
+| P76 / P78 | repeated-move guard | 3 / 0 … 2 / 2048 |
+| P7C / P7E | not read by the AI | 32392 … 31768 / 80 |
+
+### 21.9 What the engine's port (`kumite_sim/src/ai.rs`) should change
+
+1. `run()` 4.P: port executors B (0x3879A0) and D (0x387DA8) for `ttt` beside `string_followup`; D holds and ends the
+   frame when its draw fails. Collection (4.J) must drop tag entries unless "tag wanted".
+2. `run()` 4.F: the two tiers before P66 (P68 trans 0x1E with attack-now, P70 tag entries); return in every case.
+3. `run()` 4.I: for `ttt` drop the whiff "attack now"; add step 8's P72 guard on player +0x11A.
+4. Bookkeeping (4.D): the ±192 sine jitter on both zones; S+0x3E0 / S+0x3E4; the 20-move ring.
+5. `reaction()`: the P76 / P78 rule before the counter rule.
+6. `neutral()` / `pick()`: exclude tag entries unless behind; pick through 0x3854B0's delayed input (P74) and add the
+   0x15 executor.
+7. New steps: tag out (0x14, P6E) before the executors; delayed low guard (0x17) inside `pool_guard`; 4.L falls
+   through when nothing is marked; in-string guard uses the guard pool first.
+8. Handlers: the routines above (`call_handler`), with King's three sequences and the pad tables (`dump_ai5.py`).
+
+Confidence: high for 21.1-21.4 and the handler table; medium for the life fields of 21.5 and player +0xF7 / +0x11A.
+
 ## Not decoded
 
 - Camera (section 18): the camera-motion channel format in file 12 in full; director states 8-15 in detail; the
@@ -808,8 +1041,8 @@ Confidence: high. The descriptor defaults equal the ELF's initial data.
 - Which pad bits pick the intro and win pose (as buttons).
 - How costume bodies 34-38 index the per-body tables (the dump script assumes they use their host body's).
 - Wall / ring-out rules; the ground game was not compared with Tekken 3 in this pass.
-- CPU AI (section 19): the bodies of chain steps 8, 10, 0x11, 0x14, 0x15 and of the per-moveset handlers;
-  the meaning of profile +4 / +6 and of gp-0x7423.
+- CPU AI (section 21): Yoshimitsu's handler in detail; player +0xF7 and +0x11A's exact meaning; the life table
+  0x440940's fields; gp-0x6FAC; the wake-up and first-attack bodies were not re-read against Tekken 3 line by line.
 - Player +0x12E (counter-hit cause), +0x3E8 / +0x3F0 (conditions 0x36 / 0x37), transition bit 0x4000's effect.
 
 Risk: the hit segments have no radius and use raw bone origins, so the engine must pose Tag's skeleton exactly to
@@ -824,4 +1057,5 @@ PAUL`), `dump_tables.py` (reactions, curves, shared cancels, health tables), `t3
 converted game data), `xref.py`, `fn.py`, `dump_rules.py` (the tables of sections 7-12 as JSON, and the usage
 counts of conditions and transition types), `condmap.py` (conditions and transitions of paired Tekken 3 / Tag
 cancel lists), `dump_round_sound.py` (the tables of sections 13-14 as JSON), `dump_camera.py` (section 18's tables as JSON),
-`dump_ai.py` (section 19's AI tables), `gpx.sh` (gp-relative references in `out/code.asm`, the `fulldis.py` output).
+`dump_ai.py` (section 19's AI tables), `dump_ai5.py` (section 21's named profile fields, handler sequences, pad
+tables), `aifn.py` (`python3 aifn.py 387DA8`: an AI function to the next function start, calls named), `gpx.sh` (gp-relative references in `out/code.asm`, the `fulldis.py` output).
