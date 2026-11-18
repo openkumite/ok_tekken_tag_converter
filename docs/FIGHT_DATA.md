@@ -24,7 +24,7 @@ A boot routine at 0x367FF0 turns the indices into pointers.
 | +19, +1A, +1B | jump start, jump end, hold frame | same | 1192/1194 |
 | +1C u32 | sound list index (u16 entries at 0x52C448, ends 0xFFFF); 0xFFFFFFFF = none | +1C | code |
 | +20 u32 | timed property index (4-byte entries at 0x524690, ends at frame 0); 0xFFFFFFFF = none | +20 | code |
-| +24 u32 | flags; the top byte is the camera script | +24 | 1192/1194 for camera |
+| +24 u32 | flags; bits 23-31 are the camera id (section 18) | +24 | 1192/1194 for camera |
 | +28..+2B u8 | attack bones: end0, start0, end1, start1 | descriptor header | 1166/1194 |
 | +2C, +2D u8 | first and last active frame | +2D, +2E | code 0x370808 |
 | +2E s8 | hit-stop | +2C | code 0x371F64 |
@@ -489,31 +489,315 @@ Confidence: high on groups, ids, voice and hit selection, arena music ids; low o
 - Tag throws and tag combos: nothing beyond the partner gates and the juggle counter reset (section 10) was found.
 - Camera during a tag: not decoded (section 16).
 
-## 16. Fight camera (entry points only)
+## 16. Fight camera (entry points; decoded in section 18)
 
 0x38D518(p0, p1, &mode) runs the camera every frame on mode gp-0x7200 (jump table 0x507F70, 20 modes; state at
 0x433330). Mode 0 is the round-start fly-in (0x395400), then mode 1, the fight camera (0x390E08 resets it with an
 offset of y -1200, z -8000 and the field of view from state +0xA4; framing 0x38EC08 per fighter, 0x38F768, 0x396CF8,
 0x391048); mode 1 switches to 0xD when 0x38CFC0 says so. 3 = replay, 0xD-0x12 the end shots of section 13.
 0x35B7A8 / 0x35B858 copy a 36-byte eye / target block into 0x415808 and build the view (0x35B4B0); 0x35B8B8 turns a
-segment into yaw and pitch. The per-move camera script byte (flags top byte) is not traced yet.
+segment into yaw and pitch. The per-move camera id and the framing are in section 18.
 
 ## 17. Hit effects
 
 Not located. The damage function's only effect calls are on chip damage: 0x35BFF8(2, attacker) when the victim
 survives, 0x35C0D8 when chip K.O.s (both lead to 0x35BF10 / 0x3A2FF8, likely vibration and an effect).
 
+## 18. Camera (fourth pass, read in code)
+
+Tekken 3's camera module (ok_tekken3_converter `docs/reference/tekken3/camera.md`, OpenKumite `camera.rs`) was
+ported whole: the same CAM block idea, five key slots, the sampler, the second-order yaw chase, the four-pass framing
+solver, the orbiting key blend, the director state machine and the per-move camera lists. Everything is integer
+(no FPU) except the projection set-up 0x38DA28. Angles are 4096 a turn, kept `<< 6` inside the module; y is down.
+The differences are constants scaled for the PS2 screen and a few additions, listed below. Confidence: high where a
+constant is named with its address; medium on the meaning of the new director states and of the replay passes.
+
+**Blocks.** CAM block 0x433330: +0x0 director state, +0x4..+0x14 weights w0-w4 (4096 = 1) of key slots 0-4,
++0x18..+0x28 last frame's weights, +0x30 thrower side, +0x34 orientation, +0x38 delay, +0x3C / +0x40 blend counter
+/ length, +0x44 throw latch, +0x54 selected list value, +0x58 situation type (> 0) or motion (< 0), +0x60 move
+that triggered it, +0x64 / +0x68 / +0x6C slot-1 pitch / yaw / roll, +0x7C / +0x80 per-side "move already used",
++0xA0 mirror, +0xA4 projection H, +0xA8 / +0xAC H min / max, +0xB0 dolly flag, +0xB4 arena variant, +0xC4 / +0xC8
+cool-downs. Key slots 0x8B90B8, 5 x 28 bytes `{eye x, y, z, pitch<<6, yaw<<6, roll, H}` (Tekken 3: 24 bytes, no
+roll); slot 3 is the output, 0x38E4F8(n) applies slot n to the view block 0x415808 (+0x0 pitch, +0x4 yaw, +0x14
+eye; section 16), 0x38E408 / 0x38E460 load / store a slot. Slot state 0x8B9148 + 0x3C * slot: +0x0 chase state,
++0x4 yaw velocity, +0x8 acceleration, +0xC pitch lag, +0x10 its target, +0x14 its step, +0x18 |error|, +0x20
+settle counter, +0x24 moving flag, +0x28 / +0x2C vertical pull step / pull, +0x30 horizontal pull. Samples 0x433520,
+2 x 16 bytes `{x, y, z, -}`, last frame's at 0x433540; screen x of each side gp-0x6FA0 (section 12).
+
+**Projection per arena** (0x38DBC0 at round reset, table 0x507FE0, 25 x 5 s16 by arena gp-0x743A): H = 615,
+clamp [600, 900] ([500, 900] for arenas 5, 11, 12), dolly flag 1 (0 for arenas 3 and 7), variant 0; entry 24 is
+H 850, variant 1. Tekken 3 has H = 500 for every stage. The variant (Tekken 3's CAM+0x6C) halves situation pitches,
+drops pitched-up ones and changes the random pick of the camera lists (below); the dolly flag (Tekken 3's CAM+0x6A)
+turns a camera motion's zoom into a dolly.
+
+### 18.1 Fight camera, slot 0 (exact)
+
+Per frame in a fight (mode 0xD, 0x38C1E8): sample (0x38EC08), director, then if w0 > 0 `0x390FA8(p0, p1, snap =
+last w0 < 1, dist)` = yaw controller 0x38F7F8 + framing solver 0x38FD90, then the mixer.
+
+- **Depth**: dist = H * 1900 / 256 (0x76C), 4564 at H 615 (Tekken 3: constant 5517); the solver raises it to at
+  least 800. Slot 1 uses dist * 114 / 128 (same as Tekken 3).
+- **Reset** (0x390E08): eye (0, -1200, -8000), pitch and yaw 0, H from +0xA4 (Tekken 3: y -1450); slot states
+  cleared.
+- **Sample** (0x38EC08) per fighter: x / z = the logical position (+0x4 / +0xC), or the root (+0x51C / +0x524)
+  while the fighter is in a throw (+0xE0 != 0) or its move's flags bits 20-21 = 1; changes between the two are eased
+  1/4 a frame. y = chest (+0x70C) - 290 (Tekken 3: the same 290), kept from last frame when bits 20-21 = 2. Equal
+  samples are pushed 1 apart. Camera ids 0x17-0x1A (below) add smoothing.
+- **Yaw controller** 0x38F7F8: Tekken 3's, constant for constant: target = ratan2 of the sample line, oriented so
+  the side with the smaller screen x (+0x624) stays left; start / settle 0xE38 (5 deg), brake zone 0x38E4 (20 deg),
+  freeze above 0x1AAAA (150 deg) or while the round frame counter gp-0x74C8 < 200; acceleration 0x600 (0x300 when
+  braking), damping 14/128, velocity cap 0xDDD0, settle after 32 frames; pitch lag above 20 deg =
+  sin((err - 0x38E3) * 4096 / 0xC71D) * 279616 / 4096, eased 1/16, at most 0x100 a frame. Move caps by camera id
+  (0x38F6B0): 0x13 -> 0x200, 0x14 -> 0x180, 0x15 -> 0x80, 0x16 -> 0x40, cap = value * 0xDDD0 / 256 (Tekken 3 ids
+  0x27-0x2A). A fighter whose flags bits 20-21 = 2 uses its root instead of the sample.
+- **Framing solver** 0x38FD90 (same four passes as Tekken 3; 0x391358 is a copy used by the replay paths):
+
+| Constant | Tag | Tekken 3 |
+|---|---|---|
+| H / depth | 615 / 4564 | 500 / 5517 |
+| centre point height | -450 | -450 |
+| depth push limit (new) | at least -H * 3300 / 256 per frame | - |
+| margin per fighter | 150 | 150 |
+| fit width | 392 px (target half width 196) | 280 (140) |
+| horizontal pull | in 1/32, out 1/8, decay 1/32 / 1/8 | same |
+| lateral easing | 1/8; 1/16 while an id 0x17-0x1A move runs | 1/8 |
+| dead zone | +-68 px | +-48 |
+| centre drop | 140 - 450 * H / dist (80 px); 180 for a pitched-up slot 1 | 100 (60 px); 128 |
+| slot-1 height offset | (y + 1000) * 512 / 640, +-28 a frame | * 368 / 640 |
+| keep the top fighter above | 156 px | 112 |
+| vertical pull | out 1/8 (10/128 with ids 0x17-0x1A, 4/128 with 0x19), at most 800; in 1/16, at most 1200 | 1/8, 1/16 |
+| moving flag | XZ step squared > 1000 | same |
+
+  The pixel constants are Tekken 3's x 1.4 (392 = 280 x 1.4, 196, 68, 156) and the drop 140 / 180 is 100 / 128 x 1.4;
+  so the same algorithm frames the pair a little wider on the PS2's 640-wide screen. New: when the eye must come
+  forward (D.z < 0) during an id 0x17 / 0x18 / 0x1A move by a fighter with +0xF3 set and posture bit 0x400 or
+  +0x135, D.x takes D.z * 0x17FA00 / H instead.
+- **Mixer** (jump table 0x507F20 on the mask of weights > 0): {0}, {1}, {2}, {4} apply; {0,1} and {0,2} blend
+  (0x38E6D0, orbit blend as Tekken 3); {0,4} and {1,4} S-curve sin(w/2 - 0x400)/2 + 0x800; else reset.
+
+### 18.2 Per-move camera scripts
+
+The camera id is **move flags >> 23** (9 bits, 0-0x1FF; section 1 says "top byte", it is bit 23 up).
+
+| Id | Effect (code) | Moves |
+|---|---|---|
+| 0 | none | 6816 |
+| 1-0x10 | random situation camera (lists of types 15-26) | 87 |
+| 3 | also aborts a running special camera (states 3 / 6 back to 1) | 40 |
+| 0x11 | not restarted by 0x391170 | 13 |
+| 0x13-0x16 | yaw speed cap (above) | 33 |
+| 0x17-0x1A | smoothed sampling and softer framing; 0x18 = the tag run-off moves (5394-5398, 5427-5447), 0x19 = the tag entrance 5397 and 5399-5426 | 181 |
+| 0x1C-0x20, 0x23-0x66 | situation cameras by fighter (0x3943A8, tables 0x509700 / 0x5096E8 / 0x509820, 12-byte rows matched on player +0x28 and +0x10C) | 18 |
+| 0x69-0x110 | throws and specials: a list mixing situation types and camera motions | 202, almost one id per move |
+
+Lists (0x393A90; table 0x434C78, 0x134 x 12 bytes `{u32 list, s16 count, s16 total, s16 split, s16 first
+mirrored}`; entries `{u16 flags, s16 weight, s16 value, s16 value when mirrored}`; weights made cumulative / 4096 at
+boot by 0x393898): r = rand() & 0xFFF picks the first entry whose cumulative weight >= r (variant 1 / 2 limit r to
+before the split / mirrored part). value < 30 -> situation type value + 1 (identity table 0x508B60); 30-561 ->
+camera motion value - 29; -1 none. The mirrored value is taken when the orientation +0x34 is set. `dump_camera.py`
+prints every list. Example: 0x69 = 30 % type 18 (or 26 mirrored), 30 % type 28, 40 % motion 1 (2 mirrored).
+
+**Situation types** 0x508908 (30 x 20 bytes `{in frames, hold, pitch[4], yaw offset[4]}`), Tekken 3's layout and
+values: types 1-15 blend in over 35 frames, 16-30 cut; yaw offsets 0, +-341, +-682 (0, 30, 60 deg); pitch 0, -102
+(9 deg up) or 113 / 284 / 455 / 341 (10-40 deg down, one picked of four at random); pitch x 32, yaw x 64 into slot 1
+(0x394110). Slot 1 is framed at depth dist * 114 / 128.
+
+**Camera motions**: 485 in disc file 12 (`012.bin`, 506 656 bytes, the "not identified" file of FORMATS.md), u32
+offsets at 0x508130; streamed in 64-byte pieces (0x3923F0) and decoded with 2-bit delta codes per channel. As in
+Tekken 3: eye and target relative to the thrower's root, turned by the throw's facing, the zoom made a dolly when
+the arena's dolly flag is set (0x392B68), the weight channel sharing the shot with slot 0. The channel scale was not
+re-checked against Tekken 3's 20/32.
+
+**Director** (0x38C1E8, state CAM+0, jump table 0x507EE0, 15 states). It starts a special camera when a fighter is
+in a throw (+0xE0 > 0, the throw latch is free, and not both fighters on ids 0x11-0x68): a situation type -> state 3
+(16-frame delay, blend in over the type's frames), a motion -> state 6. 2 holds slot 1 until 0x393CB8 says the throw
+ended (its timed properties `0x0C00` / `0x0D00`, section 1 +0x20), 4 blends back, 5 is the S-curve from the frozen
+slot 4 (8 or 35 frames, 35 = 0x23 when the throw ends), 6 plays the motion (w1 = progress x 32), 8-15 are the
+per-fighter situation cameras of 0x38DEA0 (hold, cut, blend back). A 30-frame cool-down (+0xC4) follows any state
+other than 1.
+
+### 18.3 Other cameras (modes of 0x38D518)
+
+- **Round start** (mode 0, 0x395400 / per frame 0x3954E8): the base is the snapped fight key; one offset only
+  (0x509C20: eye z -3700, i.e. the eye starts 3700 units nearer than the fight distance along world z, target
+  unchanged), eased by s = sin(0xC00 + 1024 * min(t, 90) / 90) + 4096 over the last 90 frames: round 1 lasts 120
+  frames (the first 30 hold the offset), later rounds 90. w2 = min(t * 4096 / 13, 4096), so the hand-off to the fight
+  camera lasts 13 frames (Tekken 3: 120 / 53 frames, 10 offsets, 16-frame hand-off). Mode 1 blends, then mode 0xD.
+- **Attract / demo** (gp-0x7434 set, by boot 0x357550 and the set-ups at 0x3A97C4, 0x3B91C8, 0x3B96EC...; cleared
+  at 0x3BA2CC; skipped while the game state gp-0x74D0 = 8, 0x3ABCC0; the AI uses a fixed profile in the same flag,
+  section 19, so this is most likely the attract / demo fight [I]): mode 0 picks
+  one of 10 programs (0x433010, 10 x {case, frames}; cases 6 / 8 / 12 / 13, 300-600 frames) and cycles modes 5-12
+  (orbit 0x395D20, 0x395EE0, 0x396320, 0x396620; 0x3963C0 picks a preset of 0x509C10 by counter % 5) and plain fight
+  framing. Only here (0x36D420 -> 0x393838 / 0x392E00, per frame 0x393550 in float) are the arena camera paths played:
+  file id 0x40 + 4 * arena (the `190 + 7n` files), eye, target and H per frame, H clamp lifted to [1, 10000].
+- **Win pose** (modes 0xE / 0xF, 0x395718 -> 0x35BB58 / per frame 0x35BD20): eye at the winner's root + R (cos a,
+  sin a), R = H * 5200 / 955 + 1440 (4788 at H 615; Tekken 3 3978), a = 0x400 + rnd(+-113) - facing / 16, y =
+  chest - 290 for the variant arena (the other height was not read). Its random number is the LCG gp-0x73FC: x = (x + 1) * 69069, r = (x >> 16) *
+  0xE3 >> 16 - 0x71. Team lose (0x11 / 0x12) 0x395C90 -> 0x3959C8; 0x10 after mode 0xE / 0xF (0x395750).
+- **Tag**: no camera mode; the run-off and entrance moves carry ids 0x18 / 0x19, so the normal camera follows them
+  with the smoothed samples (id 0x19 also holds the sample until the fighter's projected points, +0x628-0x62C, are
+  on screen, 21-492).
+
+### 18.4 K.O. replay
+
+Recording (0x364E7C each fight frame): a 120-frame ring (counter gp-0x6568, 0x36 bytes a side at 0x8658xx); replay
+positions are half frames (mod 240), so +2 a frame is full speed and +1 half speed. At the K.O. 0x364678 sets the
+start to (counter - move frame - 30) * 2 (30 frames before the K.O. move, as Tekken 3); 0x364698 (round state 2,
+frame 16) checks for at least 150 frames, then starts at counter - 20 (state 2, gp-0x72A8). Passes (0x364B50, jump
+table 0x4FC630; pass counter gp-0x654C): passes 0-2 run at full speed, from the rewind point counter - 118 to
+counter - 85; the last pass at half speed to counter - 21; each pass sets camera mode 3 and a new shot (0x3D0748).
+Shots: one of 14 random sequences (0x520F88, 4 shot numbers, one per pass) of 42 shots (0x520C40, 20 bytes: target
+{0 other, 1 winner, 2 the midpoint at 0x1FAD3F0}, follow, pitch, yaw (+ facing / 16), roll, three random ranges,
+distance 3250 / 5000 / 7000 +- 100 / 500 scaled by H / 600); eye at least 1500 up, target at most 1800 up, pitch at
+most 568 (50 deg). Confidence: medium on the pass bounds, which are read from the end checks only.
+
+## 19. CPU AI
+
+**Entry.** Match start 0x36D010 calls 0x36C420(player, is_cpu, pad) for each side. That sets +0x424 = 2 for a CPU and 1 for a human, and is_cpu goes to +0x418. Each frame, 0x36C680 switches on +0x420 through jump table 0x4FFD20:
+
+| +0x420 | Input source |
+|---|---|
+| 0 | none |
+| 1 | pad |
+| 2 | CPU AI, 0x380A50(player, &held, &pressed) |
+| 3 | replay / demo playback 0x37C950(side), state 0x8B7EF0 + 8·side, run by 0x37D668 |
+| 4 | hold +0x430 (the time-up winner) |
+
+gp-0x6A78 forces every side to mode 2 (attract mode). [C]
+
+**0x380A50**:
+- State block: gp-0x6FCC = 0x8B8078 + 1000·side (1000-byte blocks, at player +0x20).
+- SELF / OPP pointers: gp-0x6FC8 / gp-0x6FC4.
+- Output goes to state +6; the previous frame's output is at +8; pressed = held & ~prev.
+- It outputs nothing while 0x393810 is true (flag gp-0x7434 and an arena camera path playing, 0x8BC620 ≥ 0; section 18.3). [C]
+
+**Random numbers.** [C]
+- `rand()` at 0x40FBD0 (libc): `x = x·0x41C64E6D + 0x3039`, returns `x & 0x7FFFFFFF`.
+- AI generator at gp-0x64E8: `x = x·5 + 3`, seed 640 in the data.
+- `randint(n)` at 0x3800D8: `(n·((rand() + ai) & 0x7FFF)) >> 15`, then the AI generator steps. Same as Tekken 3, except Tekken 3's rand returns bits 16-30 where Tag takes bits 0-14.
+- Some draws use `rand() & 3` or `& 0xFFF` directly.
+
+**Round init** 0x380568, both sides, called at 0x36D734:
+- Clears the block and sets candidate states to -1 at 0x8B8848 (180 × 12 bytes: `{u32 move*, u32 cancel*, s16 state}`).
+- Range thresholds: table 0x432E10 + 12·body (6 u16 each). Its own row goes to +0x3C4, the opponent's to +0x3D0. Defaults are {1408, 1728, 2304, 3072, 1792, 0}; bodies 3, 7, 11 and 16 differ.
+- Moveset handlers: +0xB4 / +0xB8 from 0x38BEE0 (below).
+- Profile load 0x380120 (below).
+- Initial attack cooldown +0x94 = 60 + P0A·(r15 >> 8)/256; movement cooldown +0x5C = 50 + randint(48).
+
+**Profile selection** 0x380120. The 128-byte profile is copied to state +0x344 from `0x431918 + 0x400·diff + 0x80·level`, with diff 0-4 and level 0-7. [C]
+
+| Mode (settings +0) | diff | level |
+|---|---|---|
+| 4 (a streak mode, "survival" [G]; section 11 guessed mode 2; streak gp-0x7430, capped at 9999) | first row of ladder 0x432D18 (15 × `{u16 max_wins, diff, lo, hi}`, count gp-0x6FC0) with max_wins ≥ streak. randint(255) odd → row diff; even → 1 (0 if the row diff is 0). | lo + randint(hi - lo + 1) |
+| 3 | 1 | settings +0x24 |
+| other | settings +0xD (the DIFFICULTY option) | settings +0x24 (fight number) |
+
+- If gp-0x7423 ≥ 8, or the result is out of range: diff 1, level 6.
+- With gp-0x7434 set (the attract / demo flag of section 18.3 [I]): fixed profile 0x432D90; cooldowns +0x0A..+0x10 are halved and +0x20 is quartered (Tekken 3 does the same).
+- +0x25C = max(P36, P3A) (consecutive-attack limit); +0x3DC = diff.
+
+Ladder:
+
+| Streak up to | 4 | 9 | 14 | 19 | 29 | 39 | 49 | 54 | 59 | 64 | 74 | 99 | 763 | 764 | more |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| diff | 0 | 1 | 1 | 2 | 2 | 3 | 3 | 3 | 3 | 3 | 4 | 4 | 4 | **0** | 4 |
+| level | 0-3 | 2-4 | 3-7 | 2-4 | 3-7 | 3-7 | 4-7 | 5-7 | 6-7 | 7 | 3-7 | 5-7 | 7 | 0 | 7 |
+
+The 764 row is exact; it may be an easter egg.
+
+**Profile layout** [C for the offsets read, I for the names]:
+- Tekken 3's 110-byte layout with 4 bytes inserted at +4, so Tekken 3 offset X ≥ 4 is Tag offset X + 4.
+- +0..+3: wake-up tap intervals.
+- +4 / +6: new (7/7 at EASY down to 3/5 at the top); no reader found.
+- +8: cooldown base. +0x0A..+0x10: cooldown choices, e.g. EASY L0 {300, 300, 400, 400}, NORMAL L0 {150, 150, 200, 200}, HARD-to-ULTRA {10, 10-30, 30-90, 30-150}.
+- +0x20 guard, +0x24 interrupt, +0x5E parry / reversal, +0x3E evade / handler gate, +0x4A always 0, as in Tekken 3.
+- New readers: +0x68 / +0x70 (stun recovery), +0x6E (step 0x14), +0x72 (step 8), +0x74, +0x76 / +0x78 (first-attack reaction).
+
+**Run-time changes** (0x381D30, 0x380B10):
+- When the opponent's health ≤ max / 10, P1C, P1E, P24 and P26 are zeroed.
+- Learning on a hit raises P20/P22, P24/P26, P2A/P2C and P2E/P30 in Tekken 3's pairs.
+- Tekken 3's 600-frame "rage" (reload at the top level after the same move hits three times) was not found.
+
+**Decision chain** 0x380F38. Bookkeeping comes first; then the first handler that returns non-zero produces the pad word, and its id goes to gp-0x6FD0:
+
+| Id | Function | Tekken 3 equivalent (via the profile fields read) |
+|---|---|---|
+| 0 | 0x381418 | canned input (+0xA one-shot word, +0xC sequence of `dir \| btn<<8`) |
+| 1 | 0x381D30 | bookkeeping: zones, frames until his hit (999 / 0x3E5 / 0x3E7), 0xB87 cut-off, low-health zeroing; returns 0 |
+| 2 | 0x381BF8 | hit-confirm strings (P12) and throw escape (P16) |
+| 3 | 0x388DE0 | stun recovery (0x4C02) |
+| 5 | 0x381408 | player +0x188 set (hold) |
+| 4 | 0x388FA8 | wake-up (P00) |
+| 6, 7 | 0x38A408, 0x38A500 | vs-opponent and own moveset handlers (gate P3E) |
+| 0x16, 0x17 | 0x38AD00, 0x38AC40 | handler follow-ups |
+| 8, 9, 10 | 0x388170, 0x388DA8 (practice dummy), 0x385C80 | |
+| 11-13 | 0x3864E8, 0x389B70 (in-string, P28-P2E), 0x389D58 (first-attack reaction, P20/P3E/P5E/P76) | |
+| 0x14 | 0x38A780 | |
+| 14-16 | 0x387600, 0x3879A0, 0x387DA8 | the three planned follow-up lists (P32/34, P36/38, P3A/3C); dead code in Tekken 3, live here [I] |
+| 0x15, 0x11 | 0x38A928, 0x388278 | |
+| 0x12 | 0x387120 | neutral offence (0x3865A0: throws P14, poke pools P1C/P1E) |
+| 0x13 | 0x388840 | movement (0x388530, P50) |
+| 0x63 | 0x388D70 | fallback: hold down (+0x70 ≥ 0) or keep the last direction bits |
+
+The tag bit (pad 4) is removed from the output only for a solo Unknown (body 0x21 without +0x401) or in the gp-0x7434 modes. Otherwise the CPU tags through cancel entries with command bit 14.
+
+**Shared helpers** [C]:
+- 0x383B88 (in range): range class is move +8 & 0x1C0000 (default 0xC0000), tested against zone masks 0x4318D8 {CML, CML, CM, L, 0, 0} and 0x4318F0 {CML, CML, ML, L, L, 0} (equal to Tekken 3's).
+- 0x383BD8: posture-versus-attack-mask tests (0x412 high, 0x217 mid, 0x31F, 0x10F low, 0x51F, 0x4C02).
+- 0x383D70(predicate): marks pool candidates.
+- Picker 0x3853E8: randint over the pool, then 0x381278.
+- 0x381278 (command → pad):
+  - 0x8001 / 0x8002 and commands > 0x8005 replay motion sequences (0x36CF30).
+  - 0x8003 sets +0x12B.
+  - Plain commands: direction from the highest set of bits 5-13 (0x507410 → 0x507428: numpad 1 = 0xC000, 2 = 0x4000, 3 = 0x6000, 4 = 0x8000, 6 = 0x2000, 7 = 0x9000, 8 = 0x1000, 9 = 0x3000); buttons from 0x507440 {0x80, 0x10, 0x40, 0x20}; bit 14 adds 0x4.
+- 0x385250 after an attack: cooldown +0x94 = P08 + P[0x0A + 2·(rand & 3)]; movement cooldown 40.
+
+**Per-moveset handlers**: table 0x507A80, 34 rows of `{moveset, vs-this-moveset handler, own handler}`; most entries return -1.
+- Live vs-opponent handlers: Paul 0x38B698 (opponent alias 0x39C / 0x39D), Yoshimitsu 0x38B368, Ogre 0x38B820, Ganryu 0x38B718, Devil / Angel 0x38AFC0.
+- Live own handlers: King 0x38BC00, Hwoarang 0x38BE78.
+- Also: an opponent on moveset 14 in alias 0xBA9 or 0x1A6 sets +0x294.
+
+Confidence:
+- High: entry, generators, profile selection, tables, chain order, helpers.
+- Medium: the profile field names (Tekken 3's shifted by 4) and the follow-up lists being live.
+- Not read: the bodies of steps 8, 10, 0x11, 0x14 and 0x15; the handler bodies.
+
+## 20. Default options
+
+The options config is 0x439C60 (0x68 bytes, saved and loaded to the memory card by 0x35EBA0 / 0x35ED00). Its initial data in the ELF is the boot default. The option menu's descriptors are 0x40-byte entries at 0x439CE0: `{u32 config byte*, u32 default, u32 label*, u32 0, u32 value-name*[≤6]...}`; "Reset all options" uses their defaults, which equal the boot image. [C]
+
+0x3B1488 loads the config into globals. Mode setup (for example 0x3B9AE0) copies the globals into the match settings 0x43B7F8:
+
+| Option | Config | Global | Settings | Values | Default |
+|---|---|---|---|---|---|
+| DIFFICULTY LEVEL | +0x26 | gp-0x7498 | +0xD | EASY, NORMAL, HARD, VERY HARD, ULTRA HARD (AI diff 0-4) | 1 NORMAL |
+| FIGHT COUNT | +0x27 | gp-0x7496 | +0x1E | 1-5 rounds to win | 1 (2 wins, best of 3) |
+| ROUND TIME | +0x28 | gp-0x748A | +0xB | 30, 40, 60, 80, 99, INFINITY | 2 (60 s, 4260 frames) |
+| CHARACTER CHANGE AT CONTINUE | +0x29 | gp-0x7486 / -0x7488 | +3 / +9 | NO, YES | YES |
+| GUARD DAMAGE | +0x2A | gp-0x7490 | +0xC (chip flag) | OFF, ON | OFF |
+| CHARACTER SELECT CURSOR | +0x2B | gp-0x748C | +0xA | DEFAULT, HOLD | DEFAULT |
+| QUICK SELECT | +0x2C | gp-0x7482 | +8 | OFF, ON | OFF |
+| CHICKEN MARKING | +0x30 | gp-0x7476 | +0xE | OFF, ON | ON |
+| HELP MESSAGES | +0x36 | - | - | OFF, ON | ON |
+| SPEAKER OUT | +0x2D (bit 0) | gp-0x749E | - | MONO, STEREO | STEREO |
+| BGM / SE VOLUME | +0x2E / +0x2F | gp-0x747A / -0x7478 | - | 0-10 | 10 / 10 |
+
+**Life** is not an option: 0x3B1488 always sets gp-0x7494 / gp-0x7492 = 3, which gives 140 (section 11). [C]
+
+Confidence: high. The descriptor defaults equal the ELF's initial data.
+
 ## Not decoded
 
-- The fight camera's framing constants and per-move camera scripts; the camera during a tag (section 16).
+- Camera (section 18): the camera-motion channel format in file 12 in full; director states 8-15 in detail; the
+  replay's per-frame follow (0x3D0A38) and pass bounds beyond the end checks; the demo orbit cameras (modes 5-12).
 - Hit sparks and their table (section 17).
 - The BGM id -> stream file map; ids 0xA8-0xB5 (group 21) and kind-1 group 22's use; the type-8 script semantics in
   full; what 0x376578 (type 9) does.
-- The K.O. replay's speed and window (0x364B50); the default round-time and rounds options.
 - Which pad bits pick the intro and win pose (as buttons).
 - How costume bodies 34-38 index the per-body tables (the dump script assumes they use their host body's).
 - Wall / ring-out rules; the ground game was not compared with Tekken 3 in this pass.
-- The CPU AI's structure.
+- CPU AI (section 19): the bodies of chain steps 8, 10, 0x11, 0x14, 0x15 and of the per-moveset handlers;
+  the meaning of profile +4 / +6 and of gp-0x7423.
 - Player +0x12E (counter-hit cause), +0x3E8 / +0x3F0 (conditions 0x36 / 0x37), transition bit 0x4000's effect.
 
 Risk: the hit segments have no radius and use raw bone origins, so the engine must pose Tag's skeleton exactly to
@@ -527,4 +811,5 @@ takes it from your disc image) and the pack's `raw/` folder (`TTT_RAW`). Plain `
 PAUL`), `dump_tables.py` (reactions, curves, shared cancels, health tables), `t3match.py` (pairing with Tekken 3's
 converted game data), `xref.py`, `fn.py`, `dump_rules.py` (the tables of sections 7-12 as JSON, and the usage
 counts of conditions and transition types), `condmap.py` (conditions and transitions of paired Tekken 3 / Tag
-cancel lists), `dump_round_sound.py` (the tables of sections 13-14 as JSON), `gpx.sh` (gp-relative references in `out/code.asm`, the `fulldis.py` output).
+cancel lists), `dump_round_sound.py` (the tables of sections 13-14 as JSON), `dump_camera.py` (section 18's tables as JSON),
+`dump_ai.py` (section 19's AI tables), `gpx.sh` (gp-relative references in `out/code.asm`, the `fulldis.py` output).
