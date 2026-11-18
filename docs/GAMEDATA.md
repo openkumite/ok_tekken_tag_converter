@@ -213,18 +213,18 @@ converter's layout and shapes. Written by `src/pack.rs` (`assets.rs`, `model::fi
 | `gamedata/movesets/index.json` | as above: its `models` are the characters (`model_record`, `glb` = `model_NNN.glb`), the shape of Tekken 3's |
 | `gamedata/movesets/motions_NN.json` | `{"moveset_id", "motions": ["motion_NNNN.glb", ...]}`: the motions moveset NN's moves play |
 
-**A character** is the model's main mesh (section 0, `part_0`; the other sections are left out) skinned with up to
-4 influences on the first 98 nodes, which every fighter shares, in their bind pose (`skins[0].joints` = nodes
-0-97). A vertex on a node past them (cloth, hair) is put on its nearest ancestor among them: no motion moves those
-nodes, so the vertex stays where it was. The 18 animated joints are named as the Tekken 3 converter names its joints,
-slot for slot (FORMATS.md section 7): `root` 0, `chest` 1, `head` 5, `clavicle_A` 29, `upperarm_A` 31, `forearm_A`
-34, `hand_A` 38, `clavicle_B` 54, `upperarm_B` 56, `forearm_B` 59, `hand_B` 63, `pelvis` 79, `thigh_A` 81, `shin_A`
-84, `foot_A` 87, `thigh_B` 90, `shin_B` 93, `foot_B` 96; a slot's twist copies are `name.1`, `name.2` (they turn with
-it); the other nodes `node_N`. The texture is one RGBA PNG (OpenKumite's characters have one): each strip's texture
-in its palette, cut to the texels its strips reach and repeated as far as they reach (the GS repeats a texture; to
-1024 texels: 53 vertices of all the characters reach further and are clamped), packed with a border of edge texels.
-The opaque strips are the first primitive (material `opaque`), the blended ones the second (`blend`), with their
-texture's alpha; each primitive has its own vertices. No animation.
+**A character** is every section of the model (the fight draws them all: FORMATS.md section 7) in one mesh, skinned
+with up to 4 influences on the first 98 nodes, which every fighter shares, in their bind pose (`skins[0].joints` =
+nodes 0-97). A vertex on a node past them (cloth, hair) is put on its nearest ancestor among them: no motion moves
+those nodes, so the vertex stays where it was. The 18 animated joints are named as the Tekken 3 converter names its
+joints, slot for slot (FORMATS.md section 7): `root` 0, `chest` 1, `head` 5, `clavicle_A` 29, `upperarm_A` 31,
+`forearm_A` 34, `hand_A` 38, `clavicle_B` 54, `upperarm_B` 56, `forearm_B` 59, `hand_B` 63, `pelvis` 79, `thigh_A`
+81, `shin_A` 84, `foot_A` 87, `thigh_B` 90, `shin_B` 93, `foot_B` 96; a slot's twist copies are `name.1`, `name.2`
+(they turn with it); the other nodes `node_N`. The texture is one RGBA PNG (OpenKumite's characters have one): each
+strip's texture in its palette, cut to the texels its strips reach and repeated as far as they reach (the GS repeats
+a texture; to 1024 texels: 53 vertices of all the characters reach further and are clamped), packed with a border of
+edge texels. The opaque strips are the first primitive (material `opaque`), the blended ones the second (`blend`),
+with their texture's alpha; each primitive has its own vertices. No animation.
 
 **A motion** has no mesh: nodes named as the joints and their twist copies, and one animation `motion_NNNN`, a key
 a frame at 60 fps: each joint's rotation (normalised 16-bit integers, as the Tekken 3 converter writes them; a twist

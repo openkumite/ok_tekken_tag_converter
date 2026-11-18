@@ -31,8 +31,8 @@ use ok_converter_common::io::{Ctx, DiscFile, Sub, Vfs};
 use serde_json::{Value, json};
 use std::collections::{BTreeSet, HashMap, HashSet};
 
-/// The pack's layout and contents; another one is converted again (3: `assets/`).
-pub const FORMAT: i64 = 3;
+/// The pack's layout and contents; another one is converted again (3: `assets/`; 4: every section of a fighter).
+pub const FORMAT: i64 = 4;
 /// What a pack's manifest names it.
 pub const KIND: &str = "ttt";
 
