@@ -368,6 +368,15 @@ colour 5, the cursor's 11 over the bar 0x3BB680 (from x 180 to 40 past the text,
 the printf's "{" / "}" (shown as the gold arrows `003_067` / `003_068`) at (320, 250) towards the choice; NO first;
 left / right choose (sound 3), YES takes the reset (0x35A518, sound 4), NO or START back to the entries (sound 3).
 
+**Practice** (checked in PCSX2): the select takes a team of two for the player and, with the CPU's cursor, a team
+of two for the dummy; the fight starts in FREESTYLE with no menu; START opens practice's menu (format 32,
+`practice`): the mode's name, MODE SELECT (left / right: FREESTYLE, VS CPU, CHAIN TRAINING, COMBO TRAINING), CANCEL,
+then the mode's rows (FREESTYLE: COMMAND LIST, TRAINING DUMMY with its value under it, COUNTER ATTACKS, ATTACK DATA,
+HIT ANALYSIS; VS CPU: COMMAND LIST, CPU LEVEL, ATTACK DATA, HIT ANALYSIS; CHAIN TRAINING: RETRY, ATTACK DATA, TIME
+DISPLAY; COMBO TRAINING: COMBO DISPLAY (the character, "(YOU)", TYPE 1), ATTACK DATA, HIT ANALYSIS), CHARACTER SELECT,
+RESET; help texts 135-190. In the fight: TOTAL DMG per side, DMG: n (nnn%), the mode's name at the foot, COMMAND
+CAPTURE / SELECT + O = REC. The menus' code (0x506528-0x507200's users) is not decoded; the layout is as seen. [M]
+
 **The help line** (0x3E5268 -> 0x3E06A0, when HELP MESSAGES is on: 0x3B1468): a band (0, 389, 640 x 48) RGBA
 0x18181860 (0x3DBCF0), the text at (30, 390) (its top) in the help font of the executable's archive 0x457380 entry 0
 (`help_font.png`: 12 x 18 cells, 16 a row from the space), each glyph its byte of 0x4572E0 on, a space 4; `\n` a
