@@ -135,7 +135,7 @@ with QUICK SELECT on (settings +8) 52 lower, over a backdrop of its own (section
 
 | Element | Sprites (texture) | Position (640 x 448) | Rule |
 |---|---|---|---|
-| Health bar | six strips 45, 47, 49, 51, 53, 55 (`003_006`-`011`, 28 px high), palettes 0x2E-0x38; angry: 0x3D-0x42 | side 0: x 29-269, side 1: x 370-610 (240 px), y 30 (both minus the slide-in offset) | width = value * 240 / max; strips: current health, the recoverable cap, and two trails: +0x18 drops max/800 a frame, a second trail max/400 [M on which strip is which] |
+| Health bar | six strips 45, 47, 49, 51, 53, 55 (`003_006`-`011`, 28 px high), palettes 0x2E-0x38; angry: 0x3D-0x42 | side 0: x 29-269, side 1: x 370-610 (240 px), y 30 (minus the member's offset: below) | width = value * 240 / max from the inner end: 45 health, 47 the trail (max / 400 a frame), 55 the recoverable cap, 49 empty, 51 / 53 the caps (below) |
 | Angry flash | palette set 0x3D-0x42 | | team entry +0x28 >= 120 (FD 10), blinks every 8 frames |
 | Name plate | table **0x5206B8** `{sprite, x offset}` per body: `003_018`-`056` (palette 0x4C) over a streak `003_012` or `003_013` (byte table 0x51F678 by body) | y 58, under the bar | 0x3C1DA0; shown for the member in front |
 | Round lamps | 0x43 lit (`003_014`), 0x45 unlit (`003_015`) | x 250, 228, ... (side 0), 364, 386, ... (side 1); y 60 | one per round to win (only when 2 or more); a new win blinks 180 frames, 11-frame period |
@@ -144,6 +144,31 @@ with QUICK SELECT on (settings +8) 52 lower, over a backdrop of its own (section
 | Timer | `003_000` digits [M] | top centre | seconds = (t * 6 / 7 - 1) / 60 (FD 11); INFINITY = `003_004` [M] |
 | Stage | "STAGE %2d" / " FINAL" (0x51ED10 / 0x51ED28, 0x3BBF00) | | alternate every 32 frames on the last stage |
 | Banners | round number, READY!, FIGHT, K.O., TIME UP, PERFECT, GREAT, DOUBLE K.O. | | timings in FD 13; drawn with the chrome font `003_001` [L] |
+
+**Decoded (format 18; checked against PCSX2 captures of an arcade fight).** 0x3C2F40 per side draws the member in
+back first (0x3C23F0 with a3 0: offset 15, i.e. 15 up and 15 out, colour level 0x50, 0x70 while angry) and the
+member in front over it (a3 1: offset 0, level 0x80, its name plate). A tag sets a counter n to 30 while 0x3D3228
+reports the tag under way, then it counts down while the round is fought: the offsets are n / 2 (front) and
+15 - n / 2 (back). Per member: x of the inner end 269 - offset (side 0) or 370 + offset, y 30 - offset; widths
+240 x value / max from the inner end: health (strip 45, cyan), the trail of the health it lost (47, yellow; team
+member +0x18 refill aside, a per-member word at 0x1FAC8BC dropping max / 400 a frame to the health, 0 at 0 health),
+the recoverable cap (55, red, from the health to the cap), empty (49) to the outer end; caps 51 / 53, 9 wide at
+both ends; all 0x3CE318, no blending. Angry (+0x28 >= 120): palettes 0x3D-0x42, 5 frames on, 3 off (counter 8).
+Team +0x18 / +0x1C: the refill from the old health and cap at max / 800 a frame, set only by Team Battle's and
+Survival's 15 % between rounds (0x3C1620). Name plate 0x3C1DA0: streak (57 or 59 by 0x51F678) 124 x 34 in draw mode 4
+(added) and the plate 0x3CF1C0 (the table's x offset not added) at x 20 - offset / 490 + offset, y 58 - offset. Lamps
+y 60, 8 higher (+0x24) with no partner. Timer 0x3C6738(0, secs, 320, 6): the tens at x 281, the ones at 320; INFINITY
+(sprite 7) at 285. The top row (0x3BC540 -> 0x3BC048, kinds per side by 0x3BC370, feet at y 24, small font): 4 STAGE
+(0x3BBF00: x 15 / 370, colour 0) and the run's time 130 right (colour 5); 1 / 2 INSERT COIN / CREDIT (0x3BC828 at
+160 / 480, colour 3); 3 GAME OVER (x 144 / 496 less 0x48, colour 2); 5 TIME ATTACK, 7 SURVIVAL, 8 TEAM BATTLE (labels
+at 144 / 496 less 0x58 / 0x40, colours 6, 3, 5); 6 WINS n and the rank (Survival). The round texts by round state
+(0x36EA88, table 0x500440): 0 0x36EDE0 (ROUND %d at (165, 220) colour 2 on the first round's frames 66-104, the
+others' 6-44; "TAG BATTLE" at x 116 instead when gp-0x747E is 1 and neither side is solo; READY! (192, 220) from 106 /
+46), 2 0x36EF58 by the result flags (TIME UP 188 colour 12; PERFECT! 170 colour 11; DOUBLE K.O. 114 colour 12; else
+K.O. 245 at size 12, colour 12: GREAT shows K.O., only its voice differs), 4 0x36F0D8 (DRAW 232 colour 12; one human:
+YOU WIN! (157, 360) colour 2 or YOU LOSE (152, 360) colour 12; two humans: the winner's name). No FIGHT text. The
+printf (0x3C6C60): %H the left x, %V the foot (the glyphs' top 20 above, whatever the size), %S the size; the chrome
+font's advances at size 10 are table 0x51FF08 by glyph, an A is drawn 6 x size / 10 further left (0x3C69D8).
 
 Counter-hit text and combo counters were not found in the fight HUD (practice has COMBO DISPLAY). [M]
 
@@ -408,13 +433,11 @@ Ranked by how much a player would notice:
 
 1. The VS screen's special portraits (0x3C3948's bodies 0x32, 0x7B).
 2. What sets gp-0x6230 (Xiaoyu's costume 5).
-3. The exact roles of the six health-bar strips and the timer and banner drawing (positions of the round / K.O.
-   texts).
-4. Tekken Bowl's ball and pin physics.
-5. The ending scenes' scripts (descriptor `script*`), the staff roll, which cutscene files (41-128) they use.
-6. QUICK SELECT's select backdrop (0x3BBC40, 0x3BE8C0).
-7. The attract loop's code (0x3BCC88's steps 0-2) and PAIR PLAY MODE (0x3C4A28: shown with a multitap).
-8. What settings +8 means beyond the two grid slots; config +0x08 and +0x37.
+3. Tekken Bowl's ball and pin physics.
+4. The ending scenes' scripts (descriptor `script*`), the staff roll, which cutscene files (41-128) they use.
+5. QUICK SELECT's select backdrop (0x3BBC40, 0x3BE8C0).
+6. The attract loop's code (0x3BCC88's steps 0-2) and PAIR PLAY MODE (0x3C4A28: shown with a multitap).
+7. What settings +8 means beyond the two grid slots; config +0x08 and +0x37.
 
 ## Scripts (`docs/re/`)
 

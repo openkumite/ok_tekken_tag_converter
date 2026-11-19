@@ -623,7 +623,11 @@ pub fn rounds() -> Value {
             "first_round_start_frame": "a motion of 151 frames or more starts at frame frames - 149 (it ends with the call), a shorter one at 1",
             "other_rounds_start_frame": 1, "unknown_when": "body 33 in the mode 0x3B6220 tests"},
         "end": {"note": "state 2, counting from the end of the fight (gp-0x71C8); inputs go off except a K.O.'d fight's winner's",
-            "ko": {"replay_from": 16, "replay_plays": 2, "match_over_at": 50, "replay_ends": 110, "done": 135, "done_without_replay": 120},
+            // (the replay from the ring's last 20 frames (0x364698), at full speed, a new shot each pass; the counter held
+            // at 16 / 17 while it runs: 64 frames, three passes of 21-22, seen in PCSX2; then the last shot stays on the
+            // live fight to the end of the state, the round's text shown again)
+            "ko": {"replay_from": 16, "replay_frames": 20, "replay_passes": 3, "match_over_at": 50, "replay_ends": 110, "done": 135,
+                "done_without_replay": 120},
             "time_up": {"match_over_at": 50, "done": 160, "winner_motion": "player +0x420 = 4, +0x430 = 0x1000"}, "other_done": 600},
         "win_poses": {"routine": "0x368528", "aliases": [4770, 4771, 4772, 4773],
             "pick": {"pad_bits": [[0x80, 0], [0x10, 1], [0x40, 2], [0x20, 3]], "else": "the frame counter gp-0x74D8 & 1"},
