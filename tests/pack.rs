@@ -395,6 +395,16 @@ fn openkumite(pack: &Hashed) {
         (&1.into(), &10.into(), &serde_json::json!(-2000.0), &21.into())
     );
     assert_eq!(&stages["stages"][1]["scales"][0], &serde_json::json!(1.2));
+    // Law-A's lanterns (4-13, lattices of 1 m) and its 40 leaves from object 20
+    let law = &stages["stages"][1]["objects"];
+    assert_eq!(
+        (
+            law["lanterns"]["objects"].as_array().map(Vec::len),
+            &law["lanterns"]["objects"][0][1],
+            &law["leaves"]["first"]
+        ),
+        (Some(10), &serde_json::json!(1000.0), &20.into())
+    );
     // Eddy-A's lens flare: its sun 85.6 m ahead, strength 0.6, nine discs (the first a hexagon of 0.1 at 192)
     let flare = &stages["stages"][10]["flare"];
     assert_eq!(

@@ -214,18 +214,7 @@ pub fn weather(elf: &[u8], arena: usize, entries: &[Entry], cells: &[Option<usiz
                 let s = stream(u(r + 16)?, at(r)?, 0.0, vec![4.0; 3], [160.0, 160.0, 170.0], 128.0, 450.0, false);
                 streams.push(with(s, json!({"wind": gain, "most": 15})));
             }
-            let row = WIND + 12 * arena;
-            let list = u(row + 4)? as usize;
-            let waves: Vec<Value> = (0..(u(row)? as usize).min(3))
-                .map(|k| {
-                    let w = list + 32 * k;
-                    let (x, z) = (f(w + 16)?, f(w + 24)?);
-                    let n = (x * x + z * z).sqrt();
-                    (n > 0.0).then_some(())?;
-                    Some(json!({"step": u(w)? as i32, "speed": f(w + 4)? * SCALE, "strength": f(w + 8)? * SCALE, "toward": [x / n, z / n]}))
-                })
-                .collect::<Option<_>>()?;
-            wind = json!({"dt": gp(0x7D30)?, "beta": gp(0x7D2C)?, "reach": gp(0x7D4C)?.sqrt() * SCALE, "waves": waves});
+            wind = self::wind(elf, arena)?;
         }
         // 0x3A0CE8: every 34 frames a particle from each of three rows `{x, y, z, 1, heading}`, the path 1.2 times
         // as long along x (gp-0x7F44), 0x48 400 x 1.43 (gp-0x7F40), added
@@ -327,6 +316,26 @@ pub fn weather(elf: &[u8], arena: usize, entries: &[Entry], cells: &[Option<usiz
         })
         .collect();
     Some(json!({"sets": sets, "streams": streams, "wind": wind, "wisps": wisps, "beacons": beacons}))
+}
+
+/// Arena `arena`'s wind (0x3D3630, the waves 0x3D3D08 sums; [`weather`]'s `wind`): `dt`, `beta`, `reach` and its
+/// `waves` (`step`, `speed`, `strength`, `toward`), metres.
+pub fn wind(elf: &[u8], arena: usize) -> Option<Value> {
+    let f = |a: usize| f32le(elf, a.checked_sub(VADDR)?).map(f64::from);
+    let u = |a: usize| u32le(elf, a.checked_sub(VADDR)?);
+    let gp = |off: usize| f(GP - off);
+    let row = WIND + 12 * arena;
+    let list = u(row + 4)? as usize;
+    let waves: Vec<Value> = (0..(u(row)? as usize).min(3))
+        .map(|k| {
+            let w = list + 32 * k;
+            let (x, z) = (f(w + 16)?, f(w + 24)?);
+            let n = (x * x + z * z).sqrt();
+            (n > 0.0).then_some(())?;
+            Some(json!({"step": u(w)? as i32, "speed": f(w + 4)? * SCALE, "strength": f(w + 8)? * SCALE, "toward": [x / n, z / n]}))
+        })
+        .collect::<Option<_>>()?;
+    Some(json!({"dt": gp(0x7D30)?, "beta": gp(0x7D2C)?, "reach": gp(0x7D4C)?.sqrt() * SCALE, "waves": waves}))
 }
 
 /// The atlas's square cells: the largest picture's size (a sparkle's lone texels would not survive shrinking).

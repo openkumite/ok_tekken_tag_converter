@@ -67,8 +67,8 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 /// 30: bowl.json `texts` `bowl_style`, `switch_hands`, `help_messages`, `special_effects`; 31: ai.json
 /// `rules.wake_wait`, `per_moveset`; 32: stages.json `scales` and `objects`, Nina's and King's objects' copies, Law-A's
 /// pitching boats; 33: camera.json `team_intro.start_frames`, `fighter_cameras`; 34: front_end `practice`; 35: Unknown's
-/// moveset 28).
-pub const FORMAT: i64 = 35;
+/// moveset 28; 36: Law-A's lanterns and leaves in stages.json `objects`, the leaves' and their shadows' copies).
+pub const FORMAT: i64 = 36;
 /// What a pack's manifest names it.
 pub const KIND: &str = "ttt";
 
