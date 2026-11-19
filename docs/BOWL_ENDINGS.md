@@ -447,9 +447,10 @@ scroll 1.5 px a frame (y << 8 less 0x180) from y 480, freed above 0, up to 64 on
 
 Reached as screen 11 (gp-0x74D0; jump table 0x4FB970 -> 0x3BB310, gp-0x74CE its state) by 0x3BB4C0(a): gp-0x62BE
 = a. The title's attract (0x3BCC88, state 0 at 0x3BCD14) takes a variant from gp-0x6BE8 +5 (stored to +4; +5 counts
-0, 1, 2 and wraps): 0 runs 0x3C9358(1) then 0x3BB4C0(1), 1 0x3C9358(0), 2 0x3C9358(2). In PCSX2 (this save) variant 0,
-forced by writing 0 to +5, played a demo fight, not the EMBU; what else screen 11 needs to start the scene (Theater's
-unlock, config +0x10?) is not read [L]. The menu's entry for screen 11 is looked up in the main menu's list 0x51EFE0 (8
+0, 1, 2 and wraps): 0 runs 0x3C9358(1) then 0x3BB4C0(1), 1 0x3C9358(0), 2 0x3C9358(2). Variant 0 is the EMBU: in
+PCSX2, with 0 kept in +5, every attract went title -> screen 11 (state 2, scene 1) for about 2290 frames, then the
+title; no unlock is needed. The EMBU's own frame counter is gp-0x63CE (s16, 0x3A9E48 compares the script's frames to
+it; not the endings' gp-0x63B4). An earlier note here said variant 0 played a demo fight: it read the wrong counter. The menu's entry for screen 11 is looked up in the main menu's list 0x51EFE0 (8
 bytes an entry, +4 the screen; 0x3BD240); state 0 treats gp-0x62BE 0xD apart (0x3BB35C) [M].
 
 Set-up 0x3A97B0: gp-0x6E94 counts the plays; once config +0x37 is set (0x3BFDC8) odd plays take cast 1, else cast
