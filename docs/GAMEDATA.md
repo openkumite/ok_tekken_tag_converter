@@ -226,8 +226,11 @@ The CPU AI's tables (FIGHT_DATA.md sections 19 and 21), in the shape of the Tekk
   0-14 of its state; Tekken 3's 16-30).
 - **new** `distance_jitter`: `amplitude` 192 and `sine` (0x4FCE88, 4096 x s16, 4096 = 1): bookkeeping's swing of
   the distance before the zone tests.
+- **new** (format 18) `survival` (0x432D18, as many rows as gp-0x6FC0: 15): `rows` of `max_wins`, `difficulty`,
+  `levels` [lo, hi]: SURVIVAL's profile (0x380120): the first row whose `max_wins` reaches the streak, its
+  `difficulty` on an odd `randint(255)` (else NORMAL, EASY for an EASY row), a level `lo + randint(hi - lo + 1)`.
 
-Not exported: the survival ladder and the attract mode's profile.
+Not exported: the attract mode's profile.
 
 ## `movesets/`
 

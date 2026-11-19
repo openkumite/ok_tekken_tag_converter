@@ -658,6 +658,9 @@ fn sound(load: &dyn Fn(&str) -> serde_json::Value, samples: usize, tracks: usize
     assert!(canned.iter().any(|c| c["id"] == "throws_stand_0" && c["words"] == serde_json::json!([5, 6, 3, 1283, 3])));
     let sine = ai["distance_jitter"]["sine"].as_array().unwrap();
     assert_eq!((sine.len(), &sine[1024], &sine[3072]), (4096, &4096.into(), &(-4096).into()));
+    // SURVIVAL's ladder: 15 rows, the 764-win row EASY level 0
+    let rows = ai["survival"]["rows"].as_array().unwrap();
+    assert_eq!((rows.len(), &rows[13]), (15, &serde_json::json!({"max_wins": 764, "difficulty": 0, "levels": [0, 0]})));
 }
 
 /// Tekken Bowl (docs/BOWL_ENDINGS.md sections 1-5): bowl.json's tables and constants, the bowler's motions as clips,

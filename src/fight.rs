@@ -554,6 +554,14 @@ pub fn ai(elf: &[u8]) -> Result<Value> {
     let wake = (0..6).map(|k| u32_at(elf, 0x5078e0 - VADDR + 8 * k, what)).collect::<Result<Vec<_>>>()?;
     let pads = (0..4).map(|k| u16_at(elf, 0x507a08 - VADDR + 2 * k, what)).collect::<Result<Vec<_>>>()?;
     let sine = (0..4096).map(|k| s16(0x4fce88 - VADDR + 2 * k)).collect::<Result<Vec<_>>>()?;
+    // the streak mode's profile ladder (0x380120): its rows, as many as gp-0x6FC0 counts
+    let rows = u32_at(elf, 0x5fd0f0 - 0x6fc0 - VADDR, what)? as usize;
+    let survival = (0..rows.min(64))
+        .map(|k| {
+            let v = |j: usize| u16_at(elf, 0x432d18 - VADDR + 8 * k + 2 * j, what);
+            Ok(json!({"max_wins": v(0)?, "difficulty": v(1)?, "levels": [v(2)?, v(3)?]}))
+        })
+        .collect::<Result<Vec<_>>>()?;
     Ok(json!({
         "dialect": "ttt",
         "profiles": {"address": "0x431918", "layout": "difficulty*0x400 + level*0x80", "probability_unit": 4096,
@@ -577,6 +585,9 @@ pub fn ai(elf: &[u8]) -> Result<Value> {
         "motion_records": {"routine": "0x36CF30", "entries": dashes},
         "evade_choices": evade,
         "wakeup_categories": wake,
+        // SURVIVAL (settings mode 4): the first row whose max_wins reaches the streak; its difficulty on an odd
+        // randint(255), else NORMAL (EASY when the row's is EASY); a level in `levels`, both ends in
+        "survival": {"address": "0x432D18", "rows": survival},
         // the AI generator's start (gp-0x64E8), and libc rand() 0x40FBD0 returning bits 0-14 (Tekken 3's: 16-30)
         "rng": {"ai_lcg_seed": u32_at(elf, 0x5fd0f0 - 0x64e8 - VADDR, what)?, "rand_shift": 0},
     }))
