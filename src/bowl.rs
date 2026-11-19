@@ -28,7 +28,7 @@ const RECORDS: usize = 0x52_3C00;
 const CARDS: usize = 0x52_3C10;
 const BODY_NAMES: usize = 0x41_5CC0;
 /// The texts of the results, the records and the pause menu (printf formats: their control codes left out).
-const TEXTS: [(&str, usize); 17] = [
+const TEXTS: [(&str, usize); 21] = [
     ("replay", 0x52_3990),
     ("king", 0x52_3F68),
     ("top", 0x52_3F40),
@@ -46,6 +46,10 @@ const TEXTS: [(&str, usize); 17] = [
     ("jukebox", 0x52_3BB8),
     ("top_bowlers", 0x51_E760),
     ("exit", 0x52_3BF0),
+    ("bowl_style", 0x52_38F0),
+    ("switch_hands", 0x52_3908),
+    ("help_messages", 0x52_3B78),
+    ("special_effects", 0x52_3B98),
 ];
 const SUMMARY: usize = 0x5F_6A70;
 const ORDINALS: usize = 0x5F_6AA0;

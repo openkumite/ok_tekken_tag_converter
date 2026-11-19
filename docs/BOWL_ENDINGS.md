@@ -36,7 +36,7 @@ Per frame the fight loop calls **0x3F0008** (from 0x35ACA0 / 0x35B454), a state 
 | 4 | 0x3F05E4 | spectator hit: 180 frames, "K.O." (0x523A30) and voice 0x1059 at frame 90, then 8 |
 | 5-7 | 0x3F0670-0x3F083C | strike: both fighters stand at z -6500 / -9500, take their pose (0x5237D8 by moveset) and play their reaction (0x523590), START skips |
 | 8 | 0x3F0898 | score the ball (0x3EA2B0), next ball / player; 10 when both cards are done |
-| 9 | 0x3F0950 | the pause / quit menu (START or TRIANGLE in the throw) |
+| 9 | 0x3F0950 | in the throw's first step START opens Tekken Tag's pause menu with Bowl's entries (gp-0x71E8), TRIANGLE the whole score card (gp-0x6042, any face button closes it) |
 | 10 | 0x3F0AE0 | winner (higher total; draw), records, results 0x3F1570 |
 
 **Replay** [H] (format 23). As the ball passes z 4000 (state 1 -> 3) 0x3EF1D0 keeps the ball (0x1FC62C0), the
@@ -70,13 +70,19 @@ TRIANGLE, 0x100 SELECT, 0x800 START.
 | Phase | Name | Rule |
 |---|---|---|
 | 0 | start | slot +0xC (stand), prompt 1 |
-| 1 | **position** | left / right: bowler x += -/+ 8 a frame, clamped to +-1000 (start x random in [-64, 64), z -11000); step-left / step-right / stand slots; SELECT = bowl-style menu (0x3EAE08); START quit menu; CROSS -> 2 |
+| 1 | **position** | left / right: bowler x += -/+ 8 a frame, clamped to +-1000 (start x random in [-64, 64), z -11000); step-left / step-right / stand slots; SELECT switches the hand (0x3EAE08, below); START the pause, TRIANGLE the score card (state 9); CROSS -> 2 |
 | 2 | **aim + spin** | left / right turn the bowler +-0x10 a frame, clamped +-0x800 (+-11.25 degrees); the spin meter swings: m += v each frame, v reverses outside [-2, 1] (right-handers), [-1, 2] (left-handers), [-1.2, 1.2] (movesets 0x10 Gun Jack, 0x13 Jack-2); CIRCLE back to 1; CROSS locks it -> 3 |
 | 3 | **power** | p += power speed a frame while p < 100, else p = 0 (it wraps). CROSS: if p > 0 -> 4; if p == 0 (the frame it wrapped): "OVER CHARGED" with probability S / 2000, else 4 |
 | 4 | run-up | throw motion (slot +0xF, 150 frames) from frame 1; left / right still steer the bowler by 1280 / S a frame (+-1000); the ball leaves the hand at **motion frame 106** |
 | 5 | message | "OVER CHARGED" (or "TIME UP") for 60 frames -> 6 |
 | 6 | charge | the bowler runs down the lane with slot +0x10 (0x6A-0x6D, 175 frames): distance 256 f for f < 25, 256 f - (f - 25)^2 to 50, a further ease to 75, then 14825; voice 3 at frame 25; the pins react to the body (0x3EEBF8); then slot +0x11 (0x6E-0x71) |
 | 7 | done | back to stand |
+
+**SWITCH HANDS** (0x3EAE08 -> 0x3EAE28) [H]: SELECT in the position step switches the hand of characters 2, 6, 11,
+22 and 30 (Lei, Hwoarang, Kuma, P. Jack, Jun; never Unknown, moveset 0x21): the motion slots (0-3 / 4-7), the
+charge's (0x6A / 0x6E, +2 the female style, +1 left), the hand joints and +0x12, the step back to 0; gp-0x6032 = 120
+frames of "BOWL STYLE" (239, 364; size 4, colour 15) and "SWITCH HANDS:%C" (174, 384; size 5, colour 15), %C R or L
+(0x5F69B0). Nobody else's hand changes: SELECT does nothing.
 
 **Turn set-up** 0x3E9C58 (bowler stat S from 0x523618; Mokujin and Unknown use the copied character): S' = S, or
 400 + 0.3 (S - 400) above 400. Spin meter starts uniform in [-1, 1), speed `S' x 0.06 / 200 + 0.03` (Jacks 0.048)
@@ -226,12 +232,76 @@ RECORD!, PLAYER%d, WINNERS / LOSERS / DRAW, SUMMARY with STRIKES SPARES MISSES F
 BOWLERS, EXIT:START. The pause (state 9) also shows the HELP MESSAGES instructions first when gp-0x6042 is set
 (any face button goes on).
 
-## 6. Camera and HUD [M]
+## 6. Camera and HUD
 
-Camera modes (0x3EBC98, table 0x523970, set through 0x1FC51B0 +0x24): 0 fixed behind the lane (0, -2300, -12000),
-1 behind the bowler (bowler x, y -2350, bowler z, bowler yaw) during the throw, 2 follows the ball, easing to
-(0, -1500, 4000) as the ball nears z 4000, 3-6 the replay's random angles (pi/12, -0.88, pi/6, -pi/4 ... rad), 7 hold.
+**Camera** (0x3EBC98, table 0x523970; the struct 0x1FC51B0: pivot x, y, z, +0x10 pitch, +0x14 yaw, +0x20 distance,
++0x24 mode) [H]. The eye is the pivot less the view's direction (pitch about x, yaw about y) times the distance; each
+turn starts (0x3E9C10) at pivot (0, -2300, -12000), pitch -0.2 rad, distance 2000. The throw's phases set the mode:
+
+| Mode | Set by | Does |
+|---|---|---|
+| 0 | position (0x3EB05C) | pivot (0, -2300, -12000), distance 2000, yaw 0: the fixed view behind the lane; then 7 |
+| 1 | aim (0x3EB290) | pivot (bowler x, -2350, bowler z), distance 0, yaw the bowler's: from the bowler's eye along its aim |
+| 7 | power, run-up (0x3EB424, 0x3EB528) | hold |
+| 2 | the release (0x3EB7B0), a charge (0x3EB888) | t = ((ball z - 4000) - pivot z) / (4000 - pivot z): while > 0 the pivot moves t of the way to (0, -1500, 4000) (0x523960) and yaw and distance shrink by 1 - t (the pivot's z ends 4000 behind the ball); at t >= 1 there, yaw and distance 0, then 7 |
+| 3 | a replay (0x3EF2A4) | section 1 |
+| 4 | the strike's pose (0x3F071C) | pivot = the bowler's body (+0x590) 500 up, yaw pi, distance 3500, pitch 0; then 5 |
+| 5 | | the pivot follows the body: halfway a frame, a Hwoarang (moveset 6, a Mokujin copying him) 0.03 of the way |
+
 The aiming guide is a 7-triangle overlay (0x3EA978).
+
+**The throw's gauges** (0x3C65D0, every frame; the step's row of table 0x51FD30 gives each one's alpha: position
+the rack, aim the spin meter and the power bar at half, power the rack, half the spin meter and the power bar, run-up
+all three at half; none from the release) [H], pictures of file 130 (`130_NNN.png`):
+
+- the rack (0x3C6280, only for a frame's second ball, 0x3E9450): `130_015` at (524, 20), a dot a pin at (+37, +66),
+  (+26, +46), (+48, +46), (+15, +26), (+37, +26), (+59, +26), (+4, +6), (+26, +6), (+48, +6), (+70, +6) (0x51FCE0),
+  `130_024` standing, `130_023` down;
+- the spin meter (0x3C6410): the arc `130_019` at (50, 280); the needle `130_022` centred at (138, 369) + 94 (cos a,
+  sin a), a = (spin / 4 - 0.5) x 3.14, turned spin / 1.3 (gp-0x7D94);
+- the power bar (0x3C64E8): `130_020` at (550, 140), 64 x 246; its lowest power x 236 / 100 + 4 rows in `130_021`.
+
+**Texts** (the printf 0x3C6C60 in the chrome font, `x` the left, `y` the foot) [H]: SPEED (464, 396; size 4), the mph
+whole part `%3d` (448, 412; 5), `.%02d` (512, 417; 4), MPH (564, 422; 3), all colour 5, in states 3 and 4 (0x3EAD18;
+" --" ".--" for a charge); REPLAY (48, 412; size 5, colour 14) blinking while the slow replay after the roll plays
+(0x3EF348); OVER CHARGED (113, 240; size 8, colour 24 / 12 by frame & 2; TIME UP at 208); K.O. (state 4 from frame 90,
+blinking: 270 + 224 x side, 200; size 5, colour 12; an arrow `{` / `}` at 304 + 274 x side, 204; side -1 for the 13
+people on +x); the help band with help text 105 over a K.O. and a foul. **Callouts** at y 360, 150 frames (gp-0x6022):
+the strikes' (0x3EF8B0: x 178, 144, 129, 125, 126, 170 and colours 2, 9, 18, 11, 18, PERFECT blinking 11 / 2 for
+STRIKE! .. PERFECT; from a TURKEY on a chicken a strike, `003_016`, 36 apart from (644 - 36 n) / 2 at y 296); SPARE /
+NICE COVER (0x3EF660: widths 214 / 420, colours 17 / 7, sliding 32 a frame from the bowler's side to the middle);
+MISS / FOUL (0x3EF470: x 242 / 232, colours 1 / 10, dropping from y -20 at 5 a frame, 0.5 more each, rebounding from
+360 at half the speed). HELP MESSAGES on: the help band and help text 93 + 4 x ball + step (the frame's first,
+second or third ball; position, spin, power, the run-up's steering) during the throw (0x3F0330).
+
+**The score card** (0x3C59D8; a row a player, 68 high, the second's 46, then a 4-high bottom; pieces of file 130 each
+over a faint green rectangle, colour 0x20009050, 0x3DBE98) [H]: the left edge (`130_000`-`002`, 4 wide), frames
+(`130_003`-`005`, 47 wide; the tenth `130_006`-`008`, 70) with their number at (+15, +25), the balls' marks at
+(+5, +27, +50; foot +47, the second row's +26): `%d` the pins, a strike's `130_017` and a spare's `130_016` (21 up), G a
+first ball's miss, - a second's, F a foul (colour 1), a split's count (colour 5), the next ball an arrow `130_018`
+blinking (frame & 0x30); the running total centred on +24 (+34) at foot +69 (+48); the total cell (`130_009`-`011`,
+54) when asked; the right edge (`130_012`-`014`). All in the small font (11), colour 6. In the throw's position step
+four frames at (20, 20), the bowled one and three before it (0x3EA868 from 0x3EB248); the whole card at (63, 128)
+for TRIANGLE (state 9).
+
+**Pause** (state 9, START): Tekken Tag's pause (FRONTEND.md 8, 0x3B7B98) with entries CANCEL, RESET, TOP BOWLERS,
+BOWLING OPTIONS, ADJUST DISPLAY, CONTROLLER SETUP (mode 8 skips 2 and 3, the others skip 4 and 5; window
+`h_capture` high). TOP BOWLERS: TOP 5 BOWLERS (0x3F2D00, below). **BOWLING OPTIONS** (0x3F1968): the pause's window
+at (135, 172, 370, 88); HELP MESSAGES:, SPECIAL EFFECTS: (155, 200 / 220; size 4; the cursor's colour 11 over the
+bar to x 291 / 322 + 185 (0x3F1898), else 5; the value ON 16 / OFF 12 after it; the arrow at 450 / 483); JUKEBOX:
+and its track (0x455D80) once a 200 game unlocked it, else BONUS AT 200 PTS (colour 17) at 240; EXIT at 260; the
+cursor row's help text 106 + row. Both switches are ON at first (0x3F20E8), kept at save block +0x1FE / +0x200.
+
+**TOP 5 BOWLERS** (0x3F2D00 / 0x3F2AC0): the title (183, 64; size 5, colour 10); a record every 71 from y 135: its
+place `%2d` (16, y - 27; size 10) and ST / ND / RD / TH (y - 7; size 5); the team's faces (`003_110` frames, 51 x 52
+faces) at (176, y - 57), 52 apart; the score (size 9) ending on 364 (x 364, 326 or 288 by its digits) at y - 23 and
+PTS (408, y - 3; size 4), colour 21; the name (468, y - 27; size 10). The new record's row: a band (0x3F2A38) and
+colour 11. **Results** (state 10, 0x3F0FF0): a player every 176: its team's faces from (216, 64), 64 apart; PLAYERn
+(48, 116; size 5, colour 14); WINNERS (blinking 2 / 11), LOSERS (12) or DRAW (10) right-aligned on 472 (widths 115,
+101, 70) at 78 and the total `%3d` (415, 110), size 8, in that colour; the whole card at (36, 128); a placed game's NEW
+(-26, -6) RECORD! (-60, +12) taking turns every 64 frames with 1ST..5TH (-32), blinking, from (123, 84) (0x3F0E28).
+**THE KING OF IRONBOWL** (0x3F3108: 112, 40; size 5, colour 15) over TOP 5 BOWLERS: a placed player's name entered
+with Tekken Tag's letters (0x3F2EB8 -> 0x3D0450), EXIT:START (72, 440; size 4, colour 5) on the help band.
 
 **The ball and the pins drawn** [H]: the roll's draw 0x3EEF00 calls the arena-object drawer 0x3D10D0 with object 0 at
 the ball (its matrix from 0x1FC61A0, its roll angles +0x50), object 2 its shadow, then for each pin on the deck
@@ -242,9 +312,8 @@ of the geometry pack's object part (file 329's part 3, a grid of one cell and 13
 1 (the ball, radius 158), 1 = model 2 (the pin, 661 tall: the hall's gold pin), 2 / 3 = models 3 / 4 (the shadows),
 4-6 = models 5-7 (three more pins, not drawn by the bowl), 10 = model 12 at z 10000 (the pin deck's masking unit)
 with 7-9 (models 8, 10, 11) linked to it at (0, 0, 3000), (0, 2500, 2000), (0, 2500, 1000): its back, its round
-sign and the sign's glow. 0x3D2280 (objects 8, 9's script) is not read. HUD texts: SPEED / MPH, BOWL STYLE, SWITCH HANDS (swaps the
-hand, 0x3EAE28), REPLAY, OVER CHARGED / TIME UP, the callouts; the score card is drawn by 0x3E4BC0. Gauge art: FE 1
-(file 130) [L]. Strings at 0x5232F8 (DISTANCE, ANGLE, FRICTION, WEIGHT, POWER, ENERGY, DR.BOSKONOVITCH) look like
+sign and the sign's glow; models 0 and 9 are empty blocks (0x130 bytes, no batch). 0x3D2280 (objects 8, 9's script)
+is not read. Strings at 0x5232F8 (DISTANCE, ANGLE, FRICTION, WEIGHT, POWER, ENERGY, DR.BOSKONOVITCH) look like
 an unused debug display [L].
 
 ## 7. Endings
@@ -422,10 +491,12 @@ Ranked by how much a player would notice:
    match pin for pin without decoding these.
 2. Ending effect ops (10, 17, 18, 21-25, 29, 30, 32): the visible flourishes in many endings.
 3. The face part's joint mapping (33 triples; section 7.3's outline).
-4. The results' and the records' screen layouts (0x3F1570, 0x3F2D98) and the name entry (0x3F2EB8).
+4. What a spectator the ball hits plays (0x3DB860).
 5. Whether the staff roll draws over the ending scene (its texts are 7.5's); the flash / fade colours (table 0x43FD10, 9 and 10).
-6. The HUD layout (0x3E4BC0) and the bowl gauges' sprite ids.
-7. The BOWL STYLE menu's other entries; HELP MESSAGES / SPECIAL EFFECTS behaviour (FE 6).
+6. What 0x3E4BC0 draws in the throw (a panel by the bowler's motion); what SPECIAL EFFECTS switches off ("Explosion
+   Effects"); the JUKEBOX's list and its music; the backgrounds behind the results and TOP 5 BOWLERS.
+7. The black band behind the pin deck: the object part's models 0 and 9 are empty blocks (0x130 bytes, no batch),
+   no fill; how the PS2 shows that place is to be compared.
 8. File 128 parts 1-2 and file 127 (the bowl's camera path, 600 frames) use.
 
 ## Scripts (`docs/re/`)
