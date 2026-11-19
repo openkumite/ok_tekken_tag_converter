@@ -312,12 +312,20 @@ their weight. There is no rest pose in the file.
 `u16 frames, u16 19`, then 57 `u16` per frame.
 
 **Who stands where** is in the executable at `0x114FC8`: per arena three pointers - two lists of
-people and a table of motion data. A list is 32-byte records up to one at the origin:
-`u16, u16 start frame, u16, u16, f32 x, y, z, f32 heading (degrees, 0 = +z), u8, u8 character,
-u8 motion (255 = scripted), u8, u32 script`. A script is 16-byte steps up to a null pointer, with
-the motion number in byte 6 (255 = none; a few name a motion one past the arena's last, meaning
-unknown). Not decoded: the script's conditions, the other record fields, and
-Law's junks (stored as characters, but they come out wrongly posed). OpenKumite's: GAMEDATA.md (format 20).
+people and a table of how far each motion takes one (a pointer a motion to `f32 dx, dz` (mm, the person's
+axes) and a turn in degrees). A list is 32-byte records up to one at the origin: `u8 wait, u8 wait_most`
+(seconds unseen before it first shows, at random between), `u16 start, u16 start_most` (the frame its motion
+starts at, likewise), `u16, f32 x, y, z, f32 heading (degrees, 0 = +z), u8, u8 character, u8 motion (255 =
+scripted), i8 repeat, u32 script`. A script (0x3D8908 starts it, 0x3D8D38 / 0x3D8E30 step it as each motion
+ends, 0x3D9718 counts the frames) is 16-byte steps up to one whose first word is null (its byte 7 set: the
+person is gone at the end, else the script starts again where it stood at first): `u32 *motions, u8 count`
+(one of them at random), `i8 model` (added to the character's), `i8 repeat` (once more that many times, at
+least twice in all, going `back` steps first; 0 on; -1 for ever, the motion simply looping when there is
+no going back and one motion), `i8 back, i16 wait` (unseen first), `i16 start` (frame), `i16 frames` (to
+play; else to the end), each when not negative. As a motion ends the person moves on by the table's
+entry for it. Arenas 7 and 21 draw each person with the next character (0x3D86D8). A character file's
+`f32` at +4 / 1000 scales its root's motion and the table's distances. Law's junks (stored as characters)
+come out wrongly posed. OpenKumite's: GAMEDATA.md (format 20, the scripts since format 26).
 
 The four small files after an arena's geometry (`190 + 7n` ...) are camera paths:
 `u32 count`, then `f32 eye x, y, z, target x, y, z, field of view` per frame (y is down).

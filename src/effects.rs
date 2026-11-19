@@ -96,11 +96,27 @@ pub fn stages(elf: &[u8], fx: &BTreeMap<usize, (Vec<Entry>, Vec<Option<usize>>)>
             let row = DUST + 12 * a - VADDR;
             let dust = json!({"count": u32le(elf, row)?, "scale": f32le(elf, row + 4)?,
                 "colour": elf.get(row + 8..row + 11)?});
-            let people: Vec<Value> = (moves::cast(elf, a).unwrap_or_default().iter())
-                .map(|p| json!({"model": p.model, "at": p.pos.map(|v| (v as f64 * SCALE) as f32), "heading": p.heading, "motions": p.motions, "start": p.start}))
+            let cast = moves::cast(elf, a).unwrap_or_default();
+            // (0x3D86D8: arenas 7 and 21 draw each person with the model after its own)
+            let next = usize::from(a == 7 || a == 21);
+            let people: Vec<Value> = (cast.iter())
+                .map(|p| {
+                    let script: Vec<Value> = (p.script.iter())
+                        .map(|s| json!({"motions": s.motions, "model": s.model, "repeat": s.repeat, "back": s.back, "wait": s.wait, "start": s.start, "frames": s.frames}))
+                        .collect();
+                    json!({"model": p.model + next, "at": p.pos.map(|v| (v as f64 * SCALE) as f32), "heading": p.heading, "motions": p.motions,
+                        "wait": p.wait, "start": p.start, "repeat": p.repeat, "script": script, "stop": p.stop})
+                })
                 .collect();
+            // how far each of their motions takes them (metres, degrees)
+            let mut walk = serde_json::Map::new();
+            for m in cast.iter().flat_map(|p| p.motions.iter().copied()) {
+                if let Some([x, z, turn]) = moves::walk(elf, a, m) {
+                    walk.insert(m.to_string(), json!([x as f64 * SCALE, z as f64 * SCALE, turn]));
+                }
+            }
             Some(json!({"id": a, "shadow": {"toward": [x * s, y * s, z * s], "colour": [0, 0, 0], "alpha": alpha as f64 / 128.0},
-                "lights": {"toward": [v(0), v(1), v(2)], "colour": [v(3), v(4), v(5)], "ambient": v(6)}, "dust": dust, "people": people, "flare": flare(a),
+                "lights": {"toward": [v(0), v(1), v(2)], "colour": [v(3), v(4), v(5)], "ambient": v(6)}, "dust": dust, "people": people, "walk": walk, "flare": flare(a),
                 "weather": fx.get(&a).and_then(|(e, cells)| weather(elf, a, e, cells))}))
         })
         .collect();

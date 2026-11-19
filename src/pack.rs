@@ -62,7 +62,7 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 /// `strike`, `records`, `texts`; 24: the help line's font and texts, the pause menu; 25: camera.json `team_intro`,
 /// `replay_shots`, the fly-in's offset negated, `intro.ease_frames` from the start; 26: the endings' and the EMBU's
 /// clips turn the fingers; 27: camera.json `win_pose`, the camera motions decoded, slot 1's centre drop and lift; 28:
-/// stages.json `weather`, the arenas' pictures in the effects' atlas).
+/// stages.json `weather`, the arenas' pictures in the effects' atlas, the people's scripts and `walk`).
 pub const FORMAT: i64 = 28;
 /// What a pack's manifest names it.
 pub const KIND: &str = "ttt";
@@ -339,7 +339,7 @@ pub fn convert(ctx: &Ctx, src: &dyn DiscFile, research: bool) -> Result<Value> {
                 None => vec![],
             };
             let cast: Vec<Value> = (cast.iter())
-                .map(|p| json!({"model": p.model, "pos": p.pos.map(|v| (v as f64 * model::SCALE) as f32), "heading": p.heading, "motions": p.motions, "start": p.start}))
+                .map(|p| json!({"model": p.model, "pos": p.pos.map(|v| (v as f64 * model::SCALE) as f32), "heading": p.heading, "motions": p.motions, "start": p.start[0]}))
                 .collect();
             // OpenKumite's stage, by the arena's number
             if let Some(n) = listed {

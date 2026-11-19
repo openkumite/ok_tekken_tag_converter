@@ -368,6 +368,17 @@ fn openkumite(pack: &Hashed) {
                 .iter()
                 .all(|m| written.contains_key(&format!("assets/stages/stage_10_m{m}.glb")))
     }));
+    // Paul's scripted spectators: motions 10 and 11, the first step's twice (its repeat 2), the script round again
+    let paul = &stages["stages"][0]["people"];
+    let scripted = paul.as_array().unwrap().iter().find(|p| !p["script"].as_array().unwrap().is_empty()).unwrap();
+    assert_eq!(
+        (&scripted["motions"], &scripted["script"][0], &scripted["stop"]),
+        (
+            &serde_json::json!([10, 11]),
+            &serde_json::json!({"motions": [10], "model": 0, "repeat": 2, "back": 0, "wait": -1, "start": -1, "frames": -1}),
+            &false.into()
+        )
+    );
     // Eddy-A's lens flare: its sun 85.6 m ahead, strength 0.6, nine discs (the first a hexagon of 0.1 at 192)
     let flare = &stages["stages"][10]["flare"];
     assert_eq!(

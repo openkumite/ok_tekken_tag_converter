@@ -44,22 +44,44 @@ pub fn arena(elf: &[u8], number: usize) -> Result<Option<String>> {
 
 const CAST: usize = 0x114fc8; // per arena: u32 pointer to a list of people, a second list, a table of motion data
 
-/// A background character of an arena: which of its models, where, facing (degrees about the
-/// vertical axis, 0 = +z), the motions it goes through in turn, and the frame it starts at.
+/// A background character of an arena: which of its models, where, facing (degrees about the vertical axis, 0 =
+/// +z), every motion it may play (the first its first), the frames it waits unseen before it first shows (`wait`,
+/// at random between the two) and the frame of its motion it starts at (`start`, likewise), how often its one
+/// motion plays (`repeat`, when it has no script) and its `script`.
 pub struct Person {
     pub model: usize,
     pub pos: [f32; 3],
     pub heading: f32,
     pub motions: Vec<usize>,
-    pub start: usize,
+    pub wait: [u16; 2],
+    pub start: [u16; 2],
+    pub repeat: i8,
+    pub script: Vec<Step>,
+    /// At the script's end it is gone for good (else its script starts again, as at first).
+    pub stop: bool,
 }
 
-/// The people of arena `number`. A list is 32-byte records up to one at the origin:
-///   u16 ?, u16 start frame, u16 ?, u16 ?, f32 x, y, z, heading, u8 ?, u8 model, u8 motion, u8 ?, u32 script
-/// A script (used when the motion is 255) is 16-byte steps up to a null pointer: u32 pointer to a
-/// flag, u16 1, u8 motion (255 = none), u8 flag. A few steps name a motion one past the arena's last
-/// (King 8, Hwoarang 6); what that means is not known and those steps are skipped.
-// shortcut: a script's conditions and its 255 steps are ignored, its motions simply follow each other
+/// A step of a person's script (16 bytes: `u32 *motions, u8 count, i8 model, i8 repeat, i8 back, i16 wait, i16 start,
+/// i16 frames`): a motion of these at random; the model's number plus `model`; once more `repeat` times going `back`
+/// steps first (-1: for ever; back 0 and one motion: the motion looping on), else on to the next step; unseen for
+/// `wait` frames first, from frame `start`, for `frames` frames (each when not negative; frames 0 or less: to the
+/// motion's end).
+pub struct Step {
+    pub motions: Vec<usize>,
+    pub model: i8,
+    pub repeat: i8,
+    pub back: i8,
+    pub wait: i16,
+    pub start: i16,
+    pub frames: i16,
+}
+
+/// The people of arena `number` and how far each of its motions takes one ([dx, dz] mm in the person's axes, a turn
+/// in degrees: table CAST + 8, a pointer a motion; 0x3D8B20 moves the person by it as the motion ends). A list is
+/// 32-byte records up to one at the origin: `u8 wait, u8 wait_most` (seconds), `u16 start, u16 start_most`, u16,
+/// `f32 x, y, z, heading`, u8, `u8 model, u8 motion` (255: the script's), `i8 repeat, u32 *script` (0x3D8908 starts
+/// it; 0x3D8D38 and 0x3D8E30 step it as each motion ends, 0x3D9718 counts its frames). A script is [`Step`]s up to
+/// one whose motions are null (its byte 7 set: the end).
 pub fn cast(elf: &[u8], number: usize) -> Result<Vec<Person>> {
     let what = "an arena's people";
     let file = |p: u32| Some((p as usize).wrapping_sub(VADDR)).filter(|&o| p != 0 && o.saturating_add(32) <= elf.len());
@@ -73,24 +95,60 @@ pub fn cast(elf: &[u8], number: usize) -> Result<Vec<Person>> {
             if pos == [0.; 3] {
                 break;
             }
+            let (mut script, mut stop) = (vec![], false);
             let mut motions: Vec<usize> =
                 Some(u8_at(r, 26, what)? as usize).filter(|&m| m != 255).into_iter().collect();
-            if let Some(script) = file(u32_at(r, 28, what)?).filter(|_| motions.is_empty()) {
-                let steps = (0..64)
-                    .map_while(|i| bytes(elf, script + 16 * i, 16, what).ok())
-                    .take_while(|s| !s.starts_with(&[0; 4]));
-                motions = steps.filter_map(|s| s.get(6).map(|&m| m as usize)).filter(|&m| m != 255).collect();
+            if let Some(at) = file(u32_at(r, 28, what)?).filter(|_| motions.is_empty()) {
+                for s in (0..64).map_while(|i| bytes(elf, at + 16 * i, 16, what).ok()) {
+                    let i8_at = |o: usize| u8_at(s, o, what).map(|b| b as i8);
+                    let i16_at = |o: usize| u16_at(s, o, what).map(|h| h as i16);
+                    let Some(list) = file(u32_at(s, 0, what)?) else {
+                        stop = i8_at(7)? != 0;
+                        break;
+                    };
+                    let count = u8_at(s, 4, what)? as usize;
+                    let choices: Vec<usize> =
+                        (0..count.min(16)).map_while(|j| elf.get(list + j).map(|&m| m as usize)).collect();
+                    for &m in &choices {
+                        if !motions.contains(&m) {
+                            motions.push(m);
+                        }
+                    }
+                    script.push(Step {
+                        motions: choices,
+                        model: i8_at(5)?,
+                        repeat: i8_at(6)?,
+                        back: i8_at(7)?,
+                        wait: i16_at(8)?,
+                        start: i16_at(10)?,
+                        frames: i16_at(12)?,
+                    });
+                }
             }
             out.push(Person {
                 model: u8_at(r, 25, what)? as usize,
                 pos,
                 heading: f(3)?,
                 motions,
-                start: u16_at(r, 2, what)? as usize,
+                wait: [u8_at(r, 0, what)? as u16 * 60, u8_at(r, 1, what)? as u16 * 60],
+                start: [u16_at(r, 2, what)?, u16_at(r, 4, what)?],
+                repeat: u8_at(r, 27, what)? as i8,
+                script,
+                stop,
             });
         }
     }
     Ok(out)
+}
+
+/// How far motion `motion` of arena `number` takes its person ([`cast`]): [dx, dz] (mm, the person's axes) and the
+/// turn (degrees); none for a motion the table does not name.
+pub fn walk(elf: &[u8], number: usize, motion: usize) -> Option<[f32; 3]> {
+    let file = |p: u32| Some((p as usize).wrapping_sub(VADDR)).filter(|&o| p != 0 && o.saturating_add(12) <= elf.len());
+    let table = file(crate::u32le(elf, CAST + 12 * number + 8)?)?;
+    let entry = file(crate::u32le(elf, table + 4 * motion.min(255))?)?;
+    let f = |k: usize| crate::f32le(elf, entry + 4 * k).filter(|v| v.is_finite());
+    Some([f(0)?, f(1)?, f(2)?])
 }
 
 /// (name, body, moveset) of each fighter of the game's roster, in its order.
