@@ -573,7 +573,12 @@ pub fn front_end(elf: &[u8], ups: &[Upload], clips: &[Option<String>]) -> Result
         // "select" (CHARACTER SELECT), "reset", "retry", "commands"
         "practice": {"window": [38, 82, 404], "colour": [[0, 32, 60, 0x70], [8, 66, 112, 0x70]], "title_xy": [67, 106], "title_size": 5, "title_colour": 7, "x": 48,
             "value_right": 426, "below": 12, "size": 4, "colours": {"item": 5, "cursor": 11, "on": 16, "off": 22, "value": 12},
-            "modes": practice_modes()},
+            "modes": practice_modes(),
+            // the practice fight (PCSX2 captures): with ATTACK DATA on "TOTAL DMG: n" per side at x 32 / 352, foot 38,
+            // size 4, colour 17; "DMG: n (nnn%)" (the last hit on the dummy and its share of the move's damage) at
+            // (32, 58) colour 0; the mode's name at (18, 427) colour 0; no health bars or timer
+            "hud": {"total": {"x": [32, 352], "y": 38, "size": 4, "colour": 17},
+                "damage": {"xy": [32, 58], "size": 4, "colour": 0}, "mode": {"xy": [18, 427], "size": 4, "colour": 0}}},
     }))
 }
 
