@@ -184,6 +184,11 @@ pub fn glb(frames: &[Frame]) -> Vec<u8> {
 /// the rotations as normalised 16-bit integers, as the Tekken 3 converter writes them, and the root's position
 /// (metres) as its translation.
 pub fn clip_glb(name: &str, frames: &[Frame]) -> Vec<u8> {
+    clip_glb_with(name, frames, &[])
+}
+
+/// [`clip_glb`] with more nodes' rotations (`extra`: node name, a rotation a frame from frame 0; an ending's fingers).
+pub fn clip_glb_with(name: &str, frames: &[Frame], extra: &[(String, Vec<[f32; 4]>)]) -> Vec<u8> {
     let mut g = Glb::default();
     let n = frames.len();
     let times: Vec<f32> = (0..n).map(|i| i as f32 / 60.0).collect();
@@ -201,8 +206,16 @@ pub fn clip_glb(name: &str, frames: &[Frame]) -> Vec<u8> {
     }
     samplers.push(json!({"input": input, "output": g.accessor(&glb::floats(&t), glb::F32, "VEC3", n)}));
     channels.push(json!({"sampler": samplers.len() - 1, "target": {"node": 0, "path": "translation"}}));
+    let mut nodes: Vec<Value> = nodes.into_iter().map(|n| n.0).collect();
+    for (node, q) in extra.iter().filter(|e| !e.1.is_empty()) {
+        let times: Vec<f32> = (0..q.len()).map(|i| i as f32 / 60.0).collect();
+        let input = g.ranged(&times, 1, "SCALAR");
+        let q: Vec<f32> = q.iter().flatten().copied().collect();
+        samplers.push(json!({"input": input, "output": g.accessor(&q16(&q), glb::I16, "VEC4", times.len())}));
+        channels.push(json!({"sampler": samplers.len() - 1, "target": {"node": nodes.len(), "path": "rotation"}}));
+        nodes.push(json!({"name": node}));
+    }
     let all: Vec<usize> = (0..nodes.len()).collect();
-    let nodes: Vec<Value> = nodes.into_iter().map(|n| n.0).collect();
     let clip = json!({"name": name, "samplers": samplers, "channels": channels});
     g.finish(json!({"scene": 0, "scenes": [{"nodes": all}], "nodes": nodes, "animations": [clip]}))
 }

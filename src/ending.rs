@@ -5,7 +5,7 @@
 
 use crate::archive;
 use crate::moves::VADDR;
-use crate::{anim, u16_at, u32_at};
+use crate::{anim, glb, u16_at, u16le, u32_at};
 use anyhow::{Context, Result};
 use serde_json::{Value, json};
 
@@ -112,14 +112,53 @@ pub fn endings(elf: &[u8]) -> Result<Value> {
 
 /// A scene's motion pack: its three parts (body, face, hands), each a pack of tracks `u16 frames, u16 triples`, then
 /// the frames. The body tracks (19 triples, a motion's 57 channels) as clips `NAME_K` (an ending's `ending_EE`, K
-/// the actor slot; the EMBU's `embu`, K the track its script names).
+/// the actor slot; the EMBU's `embu`, K the track its script names), with track K's hands: hand tracks 2K and 2K + 1.
 pub fn body_clips(name: &str, d: &[u8]) -> Vec<Vec<u8>> {
     let parts = archive::pack(d).unwrap_or_default();
     let tracks = parts.first().and_then(|p| archive::pack(p)).unwrap_or_default();
+    let hands = parts.get(2).and_then(|p| archive::pack(p)).unwrap_or_default();
     tracks
         .iter()
         .enumerate()
-        .filter_map(|(k, t)| Some(anim::clip_glb(&format!("{name}_{k}"), &anim::raw(t)?)))
+        .filter_map(|(k, t)| {
+            let mut fingers = vec![];
+            for side in 0..2 {
+                fingers.extend(hands.get(2 * k + side).map(|h| hand(h, side == 1)).unwrap_or_default());
+            }
+            Some(anim::clip_glb_with(&format!("{name}_{k}"), &anim::raw(t)?, &fingers))
+        })
+        .collect()
+}
+
+/// A hand track (15 triples a frame: the 5 fingers' 3 joints, 65536 a turn) as its finger nodes' rotations
+/// (0x3DE0D8): track 2K turns hand_A's nodes 39-53, 2K + 1 hand_B's 64-78; each triple's matrix (0x349D70, as a
+/// joint's) replaces the node's turn, its bind position kept (0x34A180 at weight 1 in a scene, 0x3634F4). hand_A
+/// takes (-x, -y, z) as the body does (0x3DD788); hand_B mirrors by joint (table 0x522CC0): its first (x - pi, -y,
+/// -z), the next two as hand_A, then (x, -y, -z), (x, -y, -z), (-x, -y, -z) a finger.
+fn hand(t: &[u8], b: bool) -> Vec<(String, Vec<[f32; 4]>)> {
+    if u16le(t, 2) != Some(15) {
+        return vec![];
+    }
+    // (whole frames only)
+    let frames = (u16le(t, 0).unwrap_or(0) as usize).min(t.len().saturating_sub(4) / 90);
+    let k = std::f64::consts::TAU / 65536.0;
+    let at = |f: usize, j: usize, i: usize| u16le(t, 4 + 2 * (3 * (15 * f + j) + i)).map(|v| v as i16 as f64 * k);
+    (0..15)
+        .map(|j| {
+            let q = (0..frames)
+                .map_while(|f| {
+                    let [x, y, z] = [at(f, j, 0)?, at(f, j, 1)?, at(f, j, 2)?];
+                    let r = match (b, j) {
+                        (false, _) | (true, 1 | 2) => [-x, -y, z],
+                        (true, 0) => [x - std::f64::consts::PI, -y, -z],
+                        (true, _) if j % 3 == 2 => [-x, -y, -z],
+                        (true, _) => [x, -y, -z],
+                    };
+                    Some(glb::quat(&glb::joint(r, [0.; 3])))
+                })
+                .collect();
+            (format!("node_{}", if b { 64 } else { 39 } + j), q)
+        })
         .collect()
 }
 
@@ -139,5 +178,22 @@ mod tests {
         assert_eq!(files(37), (121, 122));
         assert!(body_clips("ending_00", &[0; 40]).is_empty());
         assert!(endings(&[0; 64]).is_err());
+    }
+
+    #[test]
+    fn hands_by_side() {
+        // one frame, 15 triples: the thumb's root turned a quarter about z
+        let mut t = vec![1, 0, 15, 0];
+        t.extend([0u8; 90]);
+        t[8..10].copy_from_slice(&16384i16.to_le_bytes());
+        let (a, b) = (hand(&t, false), hand(&t, true));
+        assert_eq!((a[0].0.as_str(), b[14].0.as_str()), ("node_39", "node_78"));
+        let h = std::f32::consts::FRAC_1_SQRT_2;
+        let near = |q: [f32; 4], r: [f32; 4]| q.iter().zip(r).all(|(x, y)| (x - y).abs() < 1e-4);
+        // hand_A: +z; hand_B's first: x - pi, then -z
+        assert!(near(a[0].1[0], [0.0, 0.0, h, h]), "{:?}", a[0].1);
+        assert!(near(b[0].1[0], [-h, h, 0.0, 0.0]) || near(b[0].1[0], [h, -h, 0.0, 0.0]), "{:?}", b[0].1);
+        assert!(near(a[1].1[0], [0.0, 0.0, 0.0, 1.0]) && near(b[1].1[0], [0.0, 0.0, 0.0, 1.0]));
+        assert!(hand(&t[..50], false).iter().all(|(_, q)| q.is_empty()));
     }
 }
