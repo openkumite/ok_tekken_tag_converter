@@ -342,7 +342,7 @@ sound driver (0x39A208). [H]
 **After GAME OVER** (screen 7, 0x3C8A88 and the draw 0x3C75E8) the ranking is not the RECORDS page: over an arena in
 3D, a banner (CHARACTER USAGE / GREATEST SURVIVORS / TIME ATTACK with the TAG TOURNAMENT logo) and rows 75 apart with
 large ranks, faces, names, a usage bar and large shares, scrolling up from the last row to the first. A new TIME ATTACK
-or SURVIVAL record is named there (0x3C9144: 0x3D0350 each frame, 3000 frames to do it). The rows (format 28,
+or SURVIVAL record is named there (0x3C9144: 0x3D0350 each frame, 3000 frames to do it). The rows (format 29,
 `ranking`): the banner (0x3C93A0) at (0, 20); rows clipped to y 20-446, TIME ATTACK and SURVIVAL 93 apart from foot
 153 (4 shown), CHARACTER USAGE 75 from 135 (5); the window puts the entry third (0x3C9034); per row (0x3C75E8 /
 0x3C7AB0) `132_000` at the foot, the rank (0x3C7278) and suffix, both faces with their frames and name plates, the
