@@ -369,7 +369,7 @@ the printf's "{" / "}" (shown as the gold arrows `003_067` / `003_068`) at (320,
 left / right choose (sound 3), YES takes the reset (0x35A518, sound 4), NO or START back to the entries (sound 3).
 
 **Practice** (checked in PCSX2): the select takes a team of two for the player and, with the CPU's cursor, a team
-of two for the dummy; the fight starts in FREESTYLE with no menu; START opens practice's menu (format 32,
+of two for the dummy; the fight starts in FREESTYLE with no menu; START opens practice's menu (format 34,
 `practice`): the mode's name, MODE SELECT (left / right: FREESTYLE, VS CPU, CHAIN TRAINING, COMBO TRAINING), CANCEL,
 then the mode's rows (FREESTYLE: COMMAND LIST, TRAINING DUMMY with its value under it, COUNTER ATTACKS, ATTACK DATA,
 HIT ANALYSIS; VS CPU: COMMAND LIST, CPU LEVEL, ATTACK DATA, HIT ANALYSIS; CHAIN TRAINING: RETRY, ATTACK DATA, TIME
