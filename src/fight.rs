@@ -31,6 +31,8 @@ const AIR: (usize, usize) = (0x500678 - VADDR, 0x5f2ba8 - VADDR);
 const ARENA_PROJECTION: (usize, usize) = (0x507fe0 - VADDR, 25); // {H, H min, H max, dolly flag, variant}, s16
 const SITUATIONS: (usize, usize) = (0x508908 - VADDR, 30); // {in frames, hold, pitch[4], yaw offset[4]}, s16
 const CAMERA_LISTS: (usize, usize) = (0x434c78 - VADDR, 0x134); // {u32 list, s16 count, total, split, first mirrored}
+/// Disc file 12: the camera motions.
+pub const CAMERA_FILE: usize = 12;
 const CAMERA_MOTIONS: usize = 0x508130 - VADDR; // u32 offsets of the camera motions in disc file 12, rising
 const INTRO_OFFSET: usize = 0x509c20 - VADDR; // s16 eye x, y, z
 const TEAM_SHOTS: (usize, usize) = (0x521140 - VADDR, 2); // 18 x s16: two turns, then four points (0x3D2330)
@@ -680,7 +682,7 @@ fn s16s<const N: usize>(elf: &[u8], o: usize, what: &str) -> Result<[i16; N]> {
 
 /// camera.json: the fight camera in the Tekken 3 converter's shape (OpenKumite's `kumite_sim::camera`): Tekken 3's
 /// camera module with Tekken Tag's constants (FIGHT_DATA.md section 18); the code's constants as read there.
-pub fn camera(elf: &[u8]) -> Result<Value> {
+pub fn camera(elf: &[u8], file12: &[u8]) -> Result<Value> {
     let mut arenas = Vec::new();
     for i in 0..ARENA_PROJECTION.1 {
         let [h, h_min, h_max, dolly, variant] = s16s(elf, ARENA_PROJECTION.0 + 10 * i, "the arena projections")?;
@@ -709,10 +711,20 @@ pub fn camera(elf: &[u8]) -> Result<Value> {
         });
         lists.push(json!({"id": id, "split": h(r, 8) as i16, "first_mirrored": h(r, 10) as i16, "entries": entries.collect::<Vec<_>>()}));
     }
-    let (mut motions, mut last) = (0, 0);
-    while let Some(o) = crate::u32le(elf, CAMERA_MOTIONS + 4 * motions).filter(|&o| motions == 0 || o > last) {
-        (last, motions) = (o, motions + 1);
+    let (mut starts, mut last) = (Vec::new(), 0);
+    while let Some(o) = crate::u32le(elf, CAMERA_MOTIONS + 4 * starts.len()).filter(|&o| starts.is_empty() || o > last)
+    {
+        last = o;
+        starts.push(o as usize);
     }
+    let motions = starts
+        .iter()
+        .enumerate()
+        .map(|(k, &at)| {
+            camera_motion(file12, at, starts.get(k + 1).copied().unwrap_or(file12.len()))
+                .with_context(|| format!("camera motion {}", k + 1))
+        })
+        .collect::<Result<Vec<_>>>()?;
     // (0x3954E8 subtracts the eye's offset; Tekken 3's adds it, as OpenKumite does: written negated)
     let intro = s16s::<3>(elf, INTRO_OFFSET, "the round-start offset")?.map(|v| -i32::from(v));
     let mut team_shots = Vec::new();
@@ -746,6 +758,19 @@ pub fn camera(elf: &[u8]) -> Result<Value> {
                 .collect::<Vec<_>>())
         })
         .collect::<Result<Vec<_>>>()?;
+    // the win pose's reference (0x3D7DA8): light 0's direction by arena, L = -atan2(-x, -z) put in [0, 2 pi) by
+    // 0x3D80E8 / 0x3D8088, * 65535 / 2 pi (gp-0x7B64 / -0x7B60) truncated; written L >> 4, 4096 a turn (0x35BC24).
+    // In a fight 0x353C88 also turns it by the world's turn gp-0x7278, which OpenKumite has none of
+    let light_yaw = (0..crate::effects::ARENAS)
+        .map(|a| {
+            let at = |k: usize| crate::f32le(elf, crate::effects::LIGHTS + 0x54 * a + 4 * k - VADDR);
+            let (x, z) = (at(0).context("the arena lights")?, at(2).context("the arena lights")?);
+            let tau = std::f32::consts::TAU;
+            let l = -(-x).atan2(-z);
+            let l = if l < 0.0 { l + tau } else { l };
+            Ok((l * 65535.0 / tau) as i64 >> 4)
+        })
+        .collect::<Result<Vec<_>>>()?;
     let h0 = arenas.first().map_or(json!(0), |a| a["h"].clone());
     Ok(json!({
         "angle_units": "4096 per turn (camera module keeps pitch/yaw << 6)",
@@ -761,6 +786,9 @@ pub fn camera(elf: &[u8]) -> Result<Value> {
             "sample_y_offset": -290, "margin": 150, "fit_px": 392, "dead_zone_px": 68, "lateral_easing": [1, 8],
             "pullback_out": [1, 8], "pullback_in": [1, 32], "vertical_keep_px": 156, "centre_point_world_y": -450,
             "centre_drop": 140, "centre_drop_px": "140 - 450*H/dist",
+            // slot 1 (0x38FD90): pitched up its centre drop; pitched down it lifts (y + 1000) * 512 / 640 by the top
+            // fighter's height y (when under 1000), eased 28 a frame
+            "centre_drop_pitched_up": 180, "slot1_lift": 512,
             "vertical_out": {"rate": [1, 8], "max_step": 800}, "vertical_in": {"rate": [1, 16], "max_step": 1200},
             "yaw": {"start_threshold": 3640, "brake_zone": 14564, "freeze_above": 109226, "acc": 1536, "acc_brake": 768,
                     "damping": [14, 128], "max_velocity": 56784, "settle_frames": 32, "freeze_first_frames": 200,
@@ -793,10 +821,51 @@ pub fn camera(elf: &[u8]) -> Result<Value> {
         // the way to `follow` (0 the winner's root, 1 the loser's, else none); the pitch (mod 4096) at most `pitch_max`
         "replay_shots": {"routine": "0x3D0748", "per_frame": "0x3D0A38", "sequences": sequences, "shots": replay_shots,
             "eye_y": -1500, "target_y": -1800, "pitch_max": 568, "follow_easing": [6, 128], "distance_per_h": 600},
+        // The win pose (0x35BB58, per frame 0x35BD20; FIGHT_DATA.md 18.3): the eye at the winner's root + R (cos a,
+        // sin a), a = `arc_from` + rand(`arc_range`) - the arena's `light_yaw`, R = H * `distance_per_h` + `radius_add`,
+        // at `eye_y` (on a variant arena the chest - 290); each frame 8 nearer while farther than H * `distance_per_h`,
+        // the view eased >> 5 (Tekken 3's camera A after; its aim without the 5800 minimum, the pitch not up on a
+        // variant arena)
+        "win_pose": {"routine": "0x35BB58", "arc_from": 0x400 - 113, "arc_range": 227, "distance_per_h": [5200, 955],
+            "radius_add": 1440, "eye_y": -850, "light_yaw": light_yaw},
         "situation_presets": {"address": "0x508908", "entries": situations},
-        "move_camera_lists": {"address": "0x434C78", "note": "by camera id (move flags >> 23); weights out of the list's sum; type 1 = situation type, 2 = camera motion (not decoded), 0 = none; the mirrored value when the orientation is set", "lists": lists},
-        "camera_motions": {"address": "0x508130", "file": 12, "count": motions, "decoded": false},
+        "move_camera_lists": {"address": "0x434C78", "note": "by camera id (move flags >> 23); weights out of the list's sum; type 1 = situation type, 2 = camera motion, 0 = none; the mirrored value when the orientation is set", "lists": lists},
+        // The camera motions (disc file 12 at the offsets 0x508130, by motion - 1; 0x3923F0): `flag` the first byte
+        // (0x3928B8: the yaw, by the anchor's facing f (65536 a turn): 0 / 4 0x400 - f/16, 1 0x800 - f/16, 2 -f/16, 3 / 5
+        // -(f/16 + 0x400)), then per frame the shot 0x8B92D0 after it: the eye x, y, z (an offset from the target
+        // when the arena's dolly flag is set), the target x, y, z, the weight (128 = all the motion's) and the
+        // projection H the shot was made for (FIGHT_DATA.md 18.2)
+        "camera_motions": {"address": "0x508130", "file": 12, "motions": motions},
     }))
+}
+
+/// A camera motion of disc file 12 from `at` to `end` (0x3923F0): its flag byte, then each frame a u16 of eight
+/// 2-bit codes (channel 0 first: 0 none, 1 the channel's last delta again, 2 an s8, 3 an s16) and the deltas; each
+/// channel's total (s16 for 0-5, s32 for 6-7) goes to the shot's +2, +0xA, +0, +4, +8, +0xC, +0x14, +0x10. Written
+/// in the shot's order: [+0, +2, +4, +8, +0xA, +0xC, +0x10, +0x14].
+fn camera_motion(d: &[u8], at: usize, end: usize) -> Result<Value> {
+    let mut b = d.get(at..end).context("past the file")?.iter().copied();
+    let flag = b.next().context("no flag")?;
+    let (mut last, mut total, mut frames) = ([0i32; 8], [0i32; 8], Vec::new());
+    // (the last motion ends a byte before the file's end: a pad)
+    while let (Some(lo), Some(hi)) = (b.next(), b.next()) {
+        let codes = u16::from_le_bytes([lo, hi]);
+        for (c, (l, t)) in last.iter_mut().zip(total.iter_mut()).enumerate() {
+            let delta = match codes >> (2 * c) & 3 {
+                0 => 0,
+                1 => *l,
+                2 => i32::from(b.next().context("a cut frame")? as i8),
+                _ => {
+                    i32::from(i16::from_le_bytes([b.next().context("a cut frame")?, b.next().context("a cut frame")?]))
+                }
+            };
+            *l = delta;
+            *t = if c < 6 { i32::from(t.wrapping_add(delta) as i16) } else { t.wrapping_add(delta) };
+        }
+        let t = total;
+        frames.push([t[2], t[0], t[3], t[4], t[1], t[5], t[7], t[6]]);
+    }
+    Ok(json!({"flag": flag, "frames": frames}))
 }
 
 /// Writes `gamedata/` into `out`; returns its files. `anims`, `frames`: each motion's file in the pack and its
@@ -807,6 +876,7 @@ pub fn export(
     anims: &[Option<String>],
     frames: &[u8],
     models: &[Value],
+    file12: &[u8],
 ) -> Result<Vec<String>> {
     let mut files = vec![
         ("gamedata/moves.json".to_string(), moves(elf, anims, frames)?),
@@ -814,7 +884,7 @@ pub fn export(
         ("gamedata/hits.json".into(), hits(elf)?),
         ("gamedata/reactions.json".into(), reactions(elf)?),
         ("gamedata/rules.json".into(), rules(elf)?),
-        ("gamedata/camera.json".into(), camera(elf)?),
+        ("gamedata/camera.json".into(), camera(elf, file12)?),
         ("gamedata/ai.json".into(), ai(elf)?),
     ];
     movesets(elf, models, &mut files)?;

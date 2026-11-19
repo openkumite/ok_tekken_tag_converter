@@ -61,8 +61,8 @@ use std::collections::{BTreeSet, HashMap, HashSet};
 /// endings.json `embu`; 22: the arenas' background people, the lens flare, faces to the camera; 23: bowl.json `replay`,
 /// `strike`, `records`, `texts`; 24: the help line's font and texts, the pause menu; 25: camera.json `team_intro`,
 /// `replay_shots`, the fly-in's offset negated, `intro.ease_frames` from the start; 26: the endings' and the EMBU's
-/// clips turn the fingers).
-pub const FORMAT: i64 = 26;
+/// clips turn the fingers; 27: camera.json `win_pose`, the camera motions decoded, slot 1's centre drop and lift).
+pub const FORMAT: i64 = 27;
 /// What a pack's manifest names it.
 pub const KIND: &str = "ttt";
 
@@ -484,7 +484,8 @@ pub fn convert(ctx: &Ctx, src: &dyn DiscFile, research: bool) -> Result<Value> {
         })
         .map(|f| f.copied().unwrap_or(0))
         .collect();
-    let gamedata = if research { fight::export(out, &a.elf, &files, &frames, &models)? } else { vec![] };
+    let file12 = a.read(fight::CAMERA_FILE)?;
+    let gamedata = if research { fight::export(out, &a.elf, &files, &frames, &models, &file12)? } else { vec![] };
     ctx.log(&format!("[ttt] the fight data: {} files", gamedata.len()));
     // OpenKumite's motions: each one its characters' movesets play, once (a file a moveset would be 869 MB), and
     // each moveset's list of them
@@ -504,7 +505,7 @@ pub fn convert(ctx: &Ctx, src: &dyn DiscFile, research: bool) -> Result<Value> {
         }
     }
     let clips: Vec<Option<String>> = (0..offsets.len()).map(|v| motion(v).map(|c| format!("motion_{c:04}"))).collect();
-    fight::export(&assets, &a.elf, &clips, &frames, &characters)?;
+    fight::export(&assets, &a.elf, &clips, &frames, &characters, &file12)?;
     // Tekken Bowl's bowler motions (file 128 part 0: unpacked, as the arenas' people's) as clips `bowl_NNN`, and
     // their frame counts for bowl.json (0: a track not read)
     let scene = a.read(bowl::MOTIONS)?;

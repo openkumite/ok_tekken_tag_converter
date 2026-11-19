@@ -620,24 +620,63 @@ values: types 1-15 blend in over 35 frames, 16-30 cut; yaw offsets 0, +-341, +-6
 (0x394110). Slot 1 is framed at depth dist * 114 / 128.
 
 **Camera motions**: 485 in disc file 12 (`012.bin`, 506 656 bytes, the "not identified" file of FORMATS.md), u32
-offsets at 0x508130 (by motion - 1); streamed in 64-byte pieces (0x3923F0). A motion: a flag byte (returned to the
-director), then a frame each up to the next motion's offset (motions 1 and 2: 109 frames): a u16 of eight 2-bit
-codes (low bits first, channel 0 first) and the deltas they name: 0 none, 1 the channel's last delta again, 2 an s8,
-3 an s16 (little-endian). Each channel adds its delta to its total (0x8B92A0, s32, zeroed at the start): channels
-0-5 to the shot's s16 +2, +0xA, +0, +4, +8, +0xC (jump table 0x5088D0), 6 and 7 to its s32 +0x14 and +0x10 (the
-zoom, 128 on the first frame). Checked: 484 of 485 end exactly at the next's offset, the last one byte before the file's end:
-motion 1's first frame is (-395, -1155, 162, -5273, -678, -29, 703, 128), motion 2 its mirror in channel 3. As in
-Tekken 3: eye and target relative to the thrower's root, turned by the throw's facing, the zoom made a dolly when
-the arena's dolly flag is set (0x392B68), the weight channel sharing the shot with slot 0. The channel scale was not
-re-checked against Tekken 3's 20/32.
+offsets at 0x508130 (by motion - 1); streamed in 64-byte pieces (0x3923F0). A motion: a flag byte, then a frame each
+up to the next motion's offset (motions 1 and 2: 109 frames): a u16 of eight 2-bit codes (low bits first, channel 0
+first) and the deltas they name: 0 none, 1 the channel's last delta again, 2 an s8, 3 an s16 (little-endian); the
+last delta is kept per channel (0 after a code 0). Each channel adds its delta to its total (0x8B92A0, zeroed at the
+start; s16 for 0-5, s32 for 6-7): channels 0-5 to the shot 0x8B92D0's s16 +2, +0xA, +0, +4, +8, +0xC (jump table
+0x5088D0), 6 and 7 to its s32 +0x14 and +0x10. Checked: 484 of 485 end exactly at the next's offset, the last one
+byte before the file's end. The shot: +0 / +2 / +4 the eye **from the target**, +8 / +0xA / +0xC the target, +0x10
+the fight camera's share (128 all of it: motions start and end at 128 and go to 0 for the shot proper), +0x14 the H
+the shot was made for (703 on 397 motions, 955 on 38). Motion 1's frame 48: eye (-3484, -539, -2835) from the target
+(-454, -869, 322); motion 2 is motion 1 with z negated.
 
-**Director** (0x38C1E8, state CAM+0, jump table 0x507EE0, 15 states). It starts a special camera when a fighter is
-in a throw (+0xE0 > 0, the throw latch is free, and not both fighters on ids 0x11-0x68): a situation type -> state 3
-(16-frame delay, blend in over the type's frames), a motion -> state 6. 2 holds slot 1 until 0x393CB8 says the throw
-ended (its timed properties `0x0C00` / `0x0D00`, section 1 +0x20), 4 blends back, 5 is the S-curve from the frozen
-slot 4 (8 or 35 frames, 35 = 0x23 when the throw ends), 6 plays the motion (w1 = progress x 32), 8-15 are the
-per-fighter situation cameras of 0x38DEA0 (hold, cut, blend back). A 30-frame cool-down (+0xC4) follows any state
-other than 1.
+Play (0x3928B8 start / 0x392B68 a frame): at the start the flag gives the yaw from the victim's facing f (+0x1A,
+65536 a turn; jump table 0x5088F0): 0 and 4 0x400 - f/16, 1 0x800 - f/16, 2 -f/16, 3 and 5 -(f/16 + 0x400), else 0;
+the anchor is the victim's position (+0x4..+0xC). Each frame: z of eye and target negated when mirrored (CAM+0xA0);
+with the arena's dolly flag (CAM+0xB0) the eye offset is scaled by the live H / the shot's H and the shot is seen at
+the live H, else at the shot's H; eye = target + offset (s16); both turned by the yaw (x' = cos x - sin z, z' = sin x
++ cos z, >> 12) about the anchor; slot 2 = look-at(eye, target) (0x38E308); it returns the shot's share. While it
+plays, a new move of the thrower (still +0xE0 > 0, camera id not 0x11) re-picks (0x392888): a camera id under 0x68
+picks anew from its list (0x38D1B8: a situation is held, state 2; the frame is not drawn), 0x9E then 0x9F starts the
+new list's motion with yaw -(f/16 + 0xA00) from the victim's root (0x38D290), else the same entry of the new move's
+list restarts from its first frame (0x393BF0).
+
+**Director** (0x38C1E8 each fight frame, state CAM+0, jump table 0x507EE0, 15 states; weights w0 +4 .. w4 +0x14, last
+frame's +0x18 ..). In order: sample; cool-downs +0xC4 / +0xC8 down (+0xC4 set to 30 while the state is not 1); the
+throw latch +0x44 (the thrower's side) freed when that side's +0xE0 is 0; the state; then if w1 > 0 slot 1
+(0x391170, snapped when last w1 < 1; a situation frames slot 1 at its pitch / yaw at depth dist x 114 / 128), if w0 >
+0 slot 0 (snapped when last w0 < 1), then the mixer (0x507F20 on the mask of weights > 0: {0} {1} {2} {4} apply,
+{0,1} {0,2} orbit blend on w0, {0,4} {1,4} the S-curve on w0 / w1; any other mask resets 0x38C0F0).
+
+- 1 (the fight camera): when the latch is free and a fighter has +0xE0 > 0 (the thrower; the victim's is < 0), unless
+  both moves' camera ids are 0x11-0x68: side = the thrower, orientation +0x34 = the thrower right of the other on
+  screen (+0x624; a tie -1). The thrower's move list (camera id, 0 when 0x134 or more; 0x393A90): r = rand() &
+  0xFFF (variant 1: randint(split)) picks the first entry whose cumulative weight >= r; the value (the mirrored one
+  with the orientation) gives a situation type (value < 30: 0x508B60, value + 1) or a motion (value - 29); the
+  mirror +0xA0 = orientation and flags & 3 = 1. A situation: 0x3910D0 draws randint(0xE3), takes the fighters' axis
+  (the screen-left one first), one of the type's four pitches (rand & 3, << 5; halved on variant 1) and yaw offsets
+  (rand & 3, << 6; subtracted with the orientation); state 3 with a 16-frame delay, count = length = its frames in;
+  a cut when they are under 2. A motion: state 6.
+- 3: the delay (an id-3 move ends it: state 1), then w0 = count / length, w1 = 1 - w0, count down; at -1 state 2.
+  When the throw ends (below) with the blend under way: the count and length = the type's hold, then state 1 (w1 0),
+  5 (w0 > 0: slot 3 frozen into slot 4, w4 = 1) or 4.
+- 2: w1 = 1; when the throw ends, count and length = the hold, state 4. 4: w1 = count / length back to 0, then 1.
+  5: w4 = count / length, w0 = 1 - w4 (the S-curve from slot 4), then 1.
+- 6: the motion (started on the first frame, delay -1 to -2), w0 = share x 32, w2 = 1 - w0. An id-3 move: 8 frames
+  of state 5 (state 1 if the share is 128); the thrower's +0xE0 < 0: 35 frames of state 5; else when the share has
+  been 0 (delay -3) and is 128 again: state 1.
+- "The throw ends" (0x393CB8, thrower t, other o): t no longer +0xE0 > 0 and o not < 0; t's move camera id 3;
+  else never on a cut; o's move posture bit 0x400000; else the frames to t's move's last timed property op 0x0C
+  and to o's op 0x0D (frame - move frame +0xC4, -1 without): at the later one's 0 (not while t's +0x17A is 0x20).
+- A chain throw (the thrower's new move with camera id 0x71, 0xA1-0xA3, in a situation; 0x38D3D0) picks anew: a
+  motion starts at once with yaw 0x400 - f/16 from the victim's root; a situation is held (state 2, w1 = 1).
+- 7-15: the per-fighter situation cameras of 0x38DEA0 (ids 0x1C-0x66 by 0x3943A8; hold, cut, blend back), also
+  checked in states 1, 2 and 6.
+
+Slot 1's framing (0x38FD90 with slot 1): pitched up (pitch < 0) its centre drop is 180 (slot 0 140); pitched down
+it is lifted by (y + 1000) x 512 / 640, y the top fighter's sample height x cos pitch >> 12 when >= -1000, eased 28
+a frame unless snapped (gp-0x6FA8).
 
 ### 18.3 Other cameras (modes of 0x38D518)
 
@@ -658,8 +697,9 @@ other than 1.
   4788 at H 615; Tekken 3 3978), a = 0x400 + rnd(+-113) - L / 16, where L (0x3D7DA8, 65536 a turn) is the angle of
   light 0's direction (0x353C88: entry 0 of the light table 0x1FC42A0, turned in game state 4) by atan2(-x, -z),
   negated: the winner is shot from beside the key light, not by its facing; per frame the eye closes 8 units a frame
-  while farther than H * 5200 / 955 and the view eases at >> 5 (0x35BA58, as Tekken 3's camera A); y =
-  chest - 290 for the variant arena (the other height was not read). Its random number is the LCG gp-0x73FC: x = (x + 1) * 69069, r = (x >> 16) *
+  while farther than H * 5200 / 955 and the view eases at >> 5 (0x35BA58, as Tekken 3's camera A); y = -850
+  (0x35BCDC), chest - 290 on the variant arena; the aim (0x35BA58) is Tekken 3's camera A's without its 5800
+  minimum distance, its pitch not up on the variant arena. Its random number is the LCG gp-0x73FC: x = (x + 1) * 69069, r = (x >> 16) *
   0xE3 >> 16 - 0x71. Team lose (0x11 / 0x12) 0x395C90 -> 0x3959C8; 0x10 after mode 0xE / 0xF (0x395750).
 - **Tag**: no camera mode; the run-off and entrance moves carry ids 0x18 / 0x19, so the normal camera follows them
   with the smoothed samples (id 0x19 also holds the sample until the fighter's projected points, +0x628-0x62C, are

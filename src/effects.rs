@@ -8,11 +8,11 @@ use crate::{archive, f32le, tex, u16le, u32le};
 use serde_json::{Value, json};
 
 /// The arenas' lights (0x54 bytes an arena: light 0's direction first, floats) and the shadow's alpha (u16, of 0x80).
-const LIGHTS: usize = 0x41_6288;
+pub(crate) const LIGHTS: usize = 0x41_6288;
 const ALPHA: usize = 0x46_B280;
 /// The arenas' dust (12 bytes an arena: u32 particles, f32 scale, u8 r, g, b; 0x3A2758's kind 3).
 const DUST: usize = 0x43_7AC0;
-const ARENAS: usize = 23;
+pub(crate) const ARENAS: usize = 23;
 /// The lens flare (0x3A1C78, a task of every arena): the jump table by arena - 1 (16), its cases (one a row of the
 /// suns 0x437A50, 16 bytes: x, y, z, 1; and of the strengths gp-0x7EB8, floats) and the case of none; the nine discs
 /// (0x5196C0, 12 bytes: u32 picture of file 9 (disc k's is the word before its row's size), f32 size, f32 brightness).
