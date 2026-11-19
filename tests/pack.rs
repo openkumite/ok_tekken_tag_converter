@@ -576,8 +576,8 @@ fn front_end(pack: &Hashed) {
     let mut named = vec![];
     pictures(fe, &mut named);
     // (format 16: the small font's 36 colours, the VS screen's fire and logo, and its colours' picture; format 24:
-    // the help font)
-    assert_eq!(named.len(), 276);
+    // the help font; format 29: the records' up / down marks, the ranking's banners, separator and face frame)
+    assert_eq!(named.len(), 282);
     // (format 24, FRONTEND.md 8: the pause's entries, the help texts, GAME OPTIONS' 14 rows, the records' letters)
     assert_eq!(
         (&fe["pause"]["items"][7], &fe["help"]["texts"][31], &fe["options"][13]["label"], &fe["options"][0]["arrows"]),

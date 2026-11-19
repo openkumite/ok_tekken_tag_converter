@@ -62,8 +62,9 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 /// `strike`, `records`, `texts`; 24: the help line's font and texts, the pause menu; 25: camera.json `team_intro`,
 /// `replay_shots`, the fly-in's offset negated, `intro.ease_frames` from the start; 26: the endings' and the EMBU's
 /// clips turn the fingers; 27: camera.json `win_pose`, the camera motions decoded, slot 1's centre drop and lift; 28:
-/// stages.json `weather`, the arenas' pictures in the effects' atlas, the people's scripts and `walk`).
-pub const FORMAT: i64 = 28;
+/// stages.json `weather`, the arenas' pictures in the effects' atlas, the people's scripts and `walk`; 29: front_end's
+/// GAME OPTIONS `modes` and values as printed, `backdrop`, `volumes`, the records' `defaults` and `more`, `ranking`).
+pub const FORMAT: i64 = 29;
 /// What a pack's manifest names it.
 pub const KIND: &str = "ttt";
 
