@@ -233,6 +233,9 @@ pub fn front_end(elf: &[u8], ups: &[Upload], clips: &[Option<String>]) -> Result
     }
     let titles: Vec<String> =
         (0..9).map(|m| u32_at(elf, a(0x51EC18 + 12 * m), what).map(|p| string(elf, p))).collect::<Result<_>>()?;
+    let quick: Vec<[u32; 2]> = (0..9)
+        .map(|m| Ok([u32_at(elf, a(0x51EC18 + 12 * m) + 4, what)?, u32_at(elf, a(0x51EC18 + 12 * m) + 8, what)?]))
+        .collect::<Result<_>>()?;
     // the select grid 0x440A68 {slot, up, down, left, right, visible, body, x, y} and slot -> character 0x520460
     // (55: RANDOM)
     let mut slots = vec![];
@@ -374,15 +377,13 @@ pub fn front_end(elf: &[u8], ups: &[Upload], clips: &[Option<String>]) -> Result
             // and 6, while its partner's place stands nobody (select +0x14 + 4 x side) and `second_after` frames after
             // the pick (the side's +0x18, set by 0x3CA9B4))
             // QUICK SELECT (0x3CCCB8 with settings +8 set): no lightning, frame, 3D characters (0x3AE7C8 is not run) or
-            // timer; the mode's title (0x3BBC40: table 0x51EC18 by mode {text, width, colour}) centred by its width at
+            // timer; the mode's title (0x3BBC40: table 0x51EC18 by mode {text, width, colour}; `titles` the texts,
+            // `quick.titles` [width, colour]) centred by its width at
             // foot 40 size 5, and under the plates white lines 4 high fading out 164 long (0x3BE8C0: 0x3BB680 with the
             // templates 0x4400B8 / 0x440070: from 6 to 2 above the point, the even ones from 4 right of it leftwards, the
             // odd ones from 4 left of it rightwards), at the points of 0x440708 (TEAM BATTLE 0x440728; 1 ON 1 the first
             // two 10 higher)
-            "quick": {"titles": (0..9u32).map(|k| {
-                    let at = |o: u32| u32_at(elf, (0x51EC18 + 12 * k + o) as usize - VADDR, "QUICK SELECT's titles").unwrap_or(0);
-                    json!([string(elf, at(0)), at(4), at(8)])
-                }).collect::<Vec<_>>(), "title_y": 40, "title_size": 5,
+            "quick": {"titles": quick, "title_y": 40, "title_size": 5,
                 "lines": [[230, 318], [410, 318], [200, 298], [440, 298]], "team_lines": [[160, 298], [160, 298], [480, 298], [480, 298]],
                 "one_on_one_dy": -10, "line": {"y": [-6, -2], "near": 4, "far": 160, "alpha": 0x80}, "face_dy": 52},
             "start_slots": [18, 27], "ordinal": {"text": string(elf, 0x5205C8), "x": [62, 480], "y": 350,
