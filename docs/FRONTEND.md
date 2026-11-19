@@ -44,7 +44,7 @@ What the files hold (from the art and the draw calls):
 | 134 | title screen: logo `134_003`, namco logos, PAIR PLAY MODE `134_001`, `134_004` |
 | 136 | `136_000` a controller, "VS" pieces [L: the VS screen's] |
 | 141 | 45 blue lightning pictures (320 x 150), `141_045` the select grid's frame [L: the arcade-version select's] |
-| 142 | the boot logo `142_000`, controller `142_001` |
+| 142 | the VS / loading screen: its fire `142_000` (640 x 448) and "VS" `142_001` (section 9) |
 | 143-181 | one 188 x 256 portrait per body, in name order (ArmorKing, Alex, Angel, Anna, Baek, Bruce, Bryan, Devil, Eddy, Ganryu, Heihachi, Hwoarang, Jack-2, Gun Jack, Jin, Julia, Jun, Kazuya, King, Kuma, Kunimitsu, Law, Lee, Lei, Xiaoyu, Michelle, Mokujin, Nina, True Ogre, Ogre, Panda, Paul, P.Jack, Roger, Tetsujin, Tiger, Unknown, Wang, Yoshimitsu) |
 | 182 | two 292 x 391 pictures (ids 401-404): `182_000` Kuma, `182_001` a blue flame (403: drawn full-height and mirrored, 0x3C3A74) |
 
@@ -324,10 +324,30 @@ flash in the select's own code: a pick shows as the 3D model's pose. Also seen o
 `frame`, `cursors`, `cursor_rect`, `cursor_pulse`, `tag_dx`, `tag_dy`, `random_roll`, `plates`, `ordinal`, `timer`,
 `done`, `start_slots` (2P's [L]).
 
-**VS (seen on the PS2, the code not read)**: a moving fire behind (no 2D file of the converted ones: a stream [L]),
-each team's leader high (its left at about x 140, y 56) and its partner low in front (x 26, y 196), mirrored for 2P,
-a ring and a glow between, "VS" (VS modes) or "STAGE n" (the arcade) in the chrome font at the foot; about 1
-second, then black.
+**VS / loading (0x3C45B0, drawn by 0x3C3FB8; format 16)**: the fire `142_000` (ids 0xF5 / 0xF6, still: the
+"moving" fire of the first pass was not seen again) over the screen; 0x3C3948 draws each side's portraits (188 x 256,
+their edges faded over 20 pixels: 0x3C3370 draws nine pieces with gouraud alpha 0x80 inside, 0 at the border; 2P's
+mirrored by 0x3C3648) at x = x0 + dx x step, y = y0 + dy x step: 1P's leader (-257 + 38 s, 20 + 3 s), its partner
+(-360 + 38 s, 216 - 3 s), 2P's (708 - 38 s, 20 + 3 s) and (810 - 38 s, 216 - 3 s), the partner over its leader;
+TEAM BATTLE's 22 and 90 higher. The step goes 0 to 10, one a frame (state 3), then holds while the fight loads
+(states 4-6: about 4 s in PCSX2 from the arcade's select, 3.5 s in the attract). "VS" `142_001` (0xF7 / 0xF8) centred
+at y 340 when gp-0x7440 and -0x743E are set (the VS modes, the attract); otherwise "STAGE" / "FINAL" and the number
+(0x51F6C0, 0x51F6F0) in the chrome font at y 350 and 385. Bodies 0x32 and 0x7B take another drawing over the blue
+flame `182_001` (not followed). `front_end.vs`: `background`, `logo`, `logo_y`, `steps`, `portrait`, `feather`,
+`places` [side][member] `[x0, dx, y0, dy]`, `team_dy`.
+
+**Small texts** (format 16): the small font `003_002` (upload 4 of file 3): 21 glyphs of 16 x 17 a row in ASCII
+order from `!` (`/` after `]`, `\` drawn as a yen sign, `@` as ©), each drawn 16 apart whatever its ink (the
+title's line measured in PCSX2). The printf (0x3C6C60) takes the left x and the text's foot y. Its colours are the
+palettes 9-44 of file 3 as for the chrome font (`003_002_cNN.png`), but the code's colour numbers do not pick them
+as for the chrome font: the PS2 shows the title's line (colour 5) in palette 31's yellow, the copyright (11) in
+palette 0's white, INSERT COIN (0x11) in palette 29's green [M]. The title (0x3BC998, 0x3BC868): the line at x 336 -
+16 - 0xD8 (its width) = 120, foot 329; the copyright (0x3BCC0C) at x 0x24 and 0x123, feet 409 and 429. The select's
+side nobody plays (0x3CC4A4 -> 0x3BC828): while frame & 0x30, INSERT COIN (0x3BCA30) or, while frame & 0x40, " CREDIT
+0" (0x3BC650), from x = 160 + 320 x side - 12.8 x letters (the code's measure "%T%F%S%s" at size 4; the place as seen),
+foot 400. `fonts.small` (`picture`, `glyph`, `rows`, `advance`, `colours`), `title.press_x`, `press_colour`,
+`copyright_x`, `copyright_colour`, `select.insert` (`texts`, `x`, `y`, `colour`, `show_mask`, `second_mask`,
+`measure`).
 
 **Options (screen 9, 0x3B4B20)**: over the logo dimmed to 0x40; ADJUST DISPLAY moves play entry 0x103F, its reset
 0x1040.
@@ -339,13 +359,13 @@ second, then black.
 Ranked by how much a player would notice:
 
 1. Which button gives which costume (seen: × gives costume 1).
-2. The VS / loading screen's code (file 136, "VS" `0x51F208`, the "%3d%%" loading percent) and its moving
-   background.
+2. The VS screen's STAGE / FINAL texts and its special portraits (0x3C3948's bodies 0x32, 0x7B); how the
+   printf's colour numbers map to the small font's palettes.
 3. The exact roles of the six health-bar strips and the timer and banner drawing (positions of the round / K.O.
    texts).
 4. Tekken Bowl's ball and pin physics.
 5. The ending scenes' scripts (descriptor `script*`), the staff roll, which cutscene files (41-128) they use.
-6. QUICK SELECT's select backdrop (0x3BBC40, 0x3BE8C0) and the small font's glyph order (the title's line).
+6. QUICK SELECT's select backdrop (0x3BBC40, 0x3BE8C0).
 7. The attract loop's code (0x3BCC88's steps 0-2) and PAIR PLAY MODE (0x3C4A28: shown with a multitap).
 8. What settings +8 means beyond the two grid slots; config +0x08 and +0x37.
 

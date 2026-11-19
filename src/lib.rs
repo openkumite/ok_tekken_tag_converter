@@ -7,6 +7,9 @@
 //! Everything on the disc is little-endian and untrusted: a read outside the data is an error or "not this format",
 //! never a panic.
 
+// (roster.json `front_end` is one json! literal, deeper than the default limit)
+#![recursion_limit = "256"]
+
 pub mod anim;
 pub mod archive;
 pub mod assets;

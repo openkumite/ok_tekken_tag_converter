@@ -523,7 +523,12 @@ fn front_end(pack: &Hashed) {
     }
     let mut named = vec![];
     pictures(fe, &mut named);
-    assert_eq!(named.len(), 236);
+    // (format 16: the small font's 36 colours, the VS screen's fire and logo, and its colours' picture)
+    assert_eq!(named.len(), 275);
+    assert_eq!(
+        (&fe["vs"]["places"][1][0], &fe["select"]["insert"]["texts"][1], &fe["title"]["press_x"]),
+        (&serde_json::json!([708, -38, 20, 3]), &" CREDIT 0".into(), &120.into())
+    );
     for p in named {
         assert!(pack.exists(&format!("assets/pictures/{p}")), "{p}");
     }
