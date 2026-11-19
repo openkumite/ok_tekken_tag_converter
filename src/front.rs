@@ -460,7 +460,7 @@ pub fn front_end(elf: &[u8], ups: &[Upload], clips: &[Option<String>]) -> Result
         // 20-446 (0x3DBAA8), `dy` apart from foot `first` (gp-0x6264 / -0x625C: 93 from 153, 4 shown; CHARACTER USAGE 75
         // from 135, 5), `132_000` (sprite 251) across at each foot (0x3C9458); a row (0x3C75E8, 0x3C7AB0): the rank "%2d" at x 16, 27
         // above the foot, size 10, and its suffix size 5, 7 above (0x3C7278); the members' faces (0x3CBFB8, 51 x 51 in
-        // the cursor frame `003_110` 2 out, 0x3CC078), the second first, and their name plates (0x3CF1E8); TIME ATTACK's
+        // the cursor frame `003_110` 2 out, 0x3CC078), the second first, and their name plates (0x3CF1E8: less the plate's `x`); TIME ATTACK's
         // time size 5 at (300, -8); SURVIVAL's "WINS" size 5 at (275, -7) then the number size 10 at -26 (0x3C7428; "WINS
         // " below 100); the name at (488, -28) size 10. Colours: the entry's row 11, the others 13, a time 10, wins 12.
         // The entry's row: a band over the row (0x3CE5D8, from 93 above the foot, grey at alpha 0x40), the name so far
@@ -475,7 +475,15 @@ pub fn front_end(elf: &[u8], ups: &[Upload], clips: &[Option<String>]) -> Result
             "time": {"x": 300, "dy": -8, "size": 5}, "wins": {"x": 275, "dy": -7, "size": 5, "number_dy": -26, "number_size": 10},
             "name": {"x": 488, "dy": -28}, "band": {"h": 93, "colour": [128, 128, 128, 0x40]},
             "cursor": {"dy": -8, "w": 48, "h": 4, "low": 5, "high": 113, "step": 5},
-            "counter": {"x": 480, "dy": -54, "size": 5, "colour": 0}, "frames": 3000},
+            "counter": {"x": 480, "dy": -54, "size": 5, "colour": 0}, "frames": 3000,
+            // CHARACTER USAGE's row (0x3C7F60): the rank in colour 14, one face at (160, -57) and the plate at (220,
+            // -54); the share (0x3C74A8) "%2d" size 10 at (470, -24) and ".%d%" size 5 at -4 ("100" and "%" at 1000);
+            // the bar (0x3C7530 -> 0x3CFE38) 212 x share / 1000 wide from x 228, 36 high from 38 above the foot, from the
+            // character's first colour to its second (table 0x520140, 6 bytes a character)
+            "usage": {"rank_colour": 14, "face": [160, -57], "plate": [220, -54],
+                "share": {"x": 470, "dy": -24, "small_dy": -4, "small_size": 5, "colour": 14},
+                "bar": {"x": 228, "w": 212, "dy": -38, "h": 36,
+                    "colours": u8s(0x520140, 6 * 34)?.chunks(6).map(|c| c.to_vec()).collect::<Vec<_>>()}}},
         "options_menu": {"title": format(elf, 0x51E0C8), "title_xy": [193, 40], "title_size": 5, "title_colour": 19,
             "items": (0..6).map(|k| u32_at(elf, a(0x439CC8) + 4 * k, what).map(|p| string(elf, p))).collect::<Result<Vec<_>>>()?,
             "item_xy": [40, 90], "item_dy": 30, "size": 4, "colours": {"item": 5, "cursor": 11},
