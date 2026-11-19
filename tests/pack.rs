@@ -292,7 +292,10 @@ fn fight_data(pack: &Hashed) {
     let rows = camera["arena_projection"]["rows"].as_array().unwrap();
     let h: Vec<[i64; 2]> = rows.iter().map(|r| [r["h"].as_i64().unwrap(), r["h_min"].as_i64().unwrap()]).collect();
     assert_eq!((h.len(), h[0], h[5], h[11], h[24]), (25, [615, 600], [615, 500], [615, 500], [850, 600]));
-    assert_eq!(camera["camera_motions"]["count"], 485);
+    // motion 1: 109 frames, its first at the fight camera's share 128 and H 703, its frame 48 the shot proper
+    let motions = camera["camera_motions"]["motions"].as_array().unwrap();
+    assert_eq!((motions.len(), motions[0]["frames"].as_array().unwrap().len()), (485, 109));
+    assert_eq!(motions[0]["frames"][48], serde_json::json!([-3484, -539, -2835, -454, -869, 322, 0, 703]));
     assert_eq!(camera["intro"]["offsets"], serde_json::json!([[0, 0, 3700]]));
     // the team intro's two shots and 97 pairs, the replay's 42 shots in 14 sequences of 4
     assert_eq!(camera["team_intro"]["shots"][1]["eye_from"], serde_json::json!([0, 100, 6500]));
