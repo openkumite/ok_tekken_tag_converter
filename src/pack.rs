@@ -58,8 +58,9 @@ use std::collections::{BTreeSet, HashMap, HashSet};
 /// end's motion, its sounds per action, the font's colours; 16: the select's 3D characters; 17: the front end's
 /// sounds and music, the small font's colours; 18: the fight HUD as drawn, its round texts and the chrome font's advances;
 /// 19: ai.json `survival`; 20: Yoshimitsu's CPU handler in ai.json; 21: the movies, `assets/video/`, and the EMBU,
-/// endings.json `embu`; 22: the arenas' background people, the lens flare, faces to the camera).
-pub const FORMAT: i64 = 22;
+/// endings.json `embu`; 22: the arenas' background people, the lens flare, faces to the camera; 23: bowl.json `replay`,
+/// `strike`, `records`, `texts`).
+pub const FORMAT: i64 = 23;
 /// What a pack's manifest names it.
 pub const KIND: &str = "ttt";
 

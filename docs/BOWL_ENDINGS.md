@@ -39,6 +39,26 @@ Per frame the fight loop calls **0x3F0008** (from 0x35ACA0 / 0x35B454), a state 
 | 9 | 0x3F0950 | the pause / quit menu (START or TRIANGLE in the throw) |
 | 10 | 0x3F0AE0 | winner (higher total; draw), records, results 0x3F1570 |
 
+**Replay** [H] (format 23). As the ball passes z 4000 (state 1 -> 3) 0x3EF1D0 keeps the ball (0x1FC62C0), the
+bowler's motion frame and two random orders of 0, 1, 2 (0x1FC6340, by 0x3E92E0), and zeroes the frame count
+gp-0x6046. State 0 allows gp-0x603A = 3 replays on a frame's first ball (an even ball index), none on its second.
+0x3EFB00, each frame of state 3: the first frame no pin moves is kept (gp-0x6036); once every pin is down (+0x170
+clear) the end is set halfway between that frame and now; before frame 91 a replay starts at once (state 2), else
+gp-0x602E and one replay are set for when the roll is over, played with the physics stepped every other frame
+(gp-0x602C). A replay (0x3EF290) puts the ball back, re-racks the pins (the physics has no randomness: the same
+roll again), zeroes the count, sets gp-0x6034 and draws its camera (mode 3: around (0, -290, 8000) at 4000, pitch
+(order1[k % 3] + U) pi / 12 - 0.8796, yaw (order2[k'] + U) pi / 6 - pi / 4, k the replays left); playing, it starts
+again past the kept end while any are left. START in a replay knocks every pin down and counts (a strike). An
+OVER CHARGED charge that strikes gets 9 replays of 60 frames.
+
+**The strike's pose** [H] (states 5-7, 0x3F0670): the other player's fighter is loaded as the bowler's team's second
+member (0x3E99C0 slot 1; a Mokujin there takes the bowler's moveset), the bowler stands at z -6500, the partner at
+-9500 and 1000 to the side (-x for player 1), both take their strike pose move (0x5237D8) and play the second of
+their reactions (0x523590 + 1, 0x3E9550: the copied character's row for Mokujin) frame by frame until both are over
+or START (0x3E9628); camera mode 4: 3500 in front of the bowler, 500 up, looking back (yaw pi), then mode 5 eases
+after the body (0.97 / 0.03 a frame). State 7 loads the other player's own fighter again. So Bowl's select takes a
+team of two [M: from the slot-1 loads and the records' two bodies].
+
 There is **no CPU bowler**: a player whose pad slot gp-0x7440[p] is empty is skipped, so one or two humans take
 turns [M].
 
@@ -192,6 +212,19 @@ converted [M]). The results summary counts STRIKES, SPARES, MISSES, FOULS, SPLIT
 **Results** (0x3F1570): "THE KING OF IRONBOWL" top 5 (save block 0x46BC70, FE 6); a 200+ game sets gp-0x5FFC
 (JUKEBOX unlock, "BONUS AT 200 PTS"), 300 sets gp-0x5FFA and plays 0x1058. "THANKS FOR PLAYING MISHIMA LANE!" on
 leaving. Music: FE 6.
+
+**Records** [H] (format 23). Save block 0x46BC70: 5 entries of 0x66 bytes `{u8 1, u8, u8 body, u8 body (the
+team's two), char name[4], score card 0x5E}`, then u16 +0x1FE / +0x200 (the BOWLING OPTIONS' two switches, 0x3F1F18),
++0x202 the JUKEBOX unlock and +0x204 the 300 flag (OR-ed in by 0x3F1F30). 0x3F1408 places each player's game
+(0x3F2128): from the bottom up, the new score passes every entry it is not below (an equal one too), the last
+falls out; the second player cannot pass the first's new entry. The new entry's name starts "A" (the name entry,
+0x3F2EB8). gp-0x6000 / -0x5FFE are the two players' places (5: none). 0x3F1570 sets gp-0x5FFC for a placed game of
+200 or more, gp-0x5FFA for a placed 300 (with 0x1058). Defaults (0x3F1F58, cards 0x523C10, bodies 0x523C00, the
+name the first body's three letters): GAN (Ganryu, Michelle) 268, ALE (Alex, Kuma) 214, PAN (Panda, Xiaoyu) 157,
+TIG (Tiger, Anna) 103, GUN (Gun Jack, Yoshimitsu) 30. Texts: SCORE SHEET, YOUR SCORE:%3d, RANK %s:%3d, NEW
+RECORD!, PLAYER%d, WINNERS / LOSERS / DRAW, SUMMARY with STRIKES SPARES MISSES FOULS SPLITS, 1ST-5TH, TOP 5
+BOWLERS, EXIT:START. The pause (state 9) also shows the HELP MESSAGES instructions first when gp-0x6042 is set
+(any face button goes on).
 
 ## 6. Camera and HUD [M]
 
@@ -369,7 +402,7 @@ Ranked by how much a player would notice:
    match pin for pin without decoding these.
 2. Ending effect ops (10, 17, 18, 21-25, 29, 30, 32): the visible flourishes in many endings.
 3. The face part's joint mapping (33 triples).
-4. The replay: when it is offered (gp-0x603A / -0x602E) and its camera angles.
+4. The results' and the records' screen layouts (0x3F1570, 0x3F2D98) and the name entry (0x3F2EB8).
 5. Whether the staff roll draws over the ending scene; the flash / fade colours (table 0x43FD10, 9 and 10).
 6. The HUD layout (0x3E4BC0) and the bowl gauges' sprite ids.
 7. The BOWL STYLE menu's other entries; HELP MESSAGES / SPECIAL EFFECTS behaviour (FE 6).
