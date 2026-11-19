@@ -999,7 +999,13 @@ and the stance step during Ogre's move. [C]
   ever cleared (0x3BA2BC), so the "≥ 8 → diff 1 level 6" fallback of 0x380120 is dead. [C; that s0 there is the
   settings block is I]
 - Mode 3: difficulty 1 (NORMAL), level = settings +0x24. Survival-type mode 4: the streak ladder of section 19
-  (exact). Attract: profile 0x432D90.
+  (exact; ai.json `survival`). Attract: profile 0x432D90.
+- Measured (PCSX2, PINE reads of the state block's profile copy S+0x344 and S+0x3DC): arcade stages 1, 4 and 8 at the
+  default DIFFICULTY load NORMAL levels 0, 3 and 7. Against a 1P who stands still the CPU does about 195 damage a
+  fight minute at stage 1 (Lei, Julia: a K.O. in 31-36 s), 240 at stage 4 (Michelle), 120 at stage 8 (Unknown);
+  against one holding back 38, 140 and 120. A still fighter blocks its highs and mids; its lows and throws knock him
+  down, and a 1P who never presses a button lies until the next hit, so most of the damage is its ground attacks
+  (Lei's 420; the stomps 409 / 419 at active frame 16 strike 700 high and whiff a lying body here too).
 
 ### 21.8 Profile fields, final map
 
