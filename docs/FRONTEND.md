@@ -259,7 +259,7 @@ Life is fixed at 140. [H]
 Pause menu (0x51E710): resume, COMMAND LIST, SCREEN CAPTURE (once unlocked), CONTROLLER SETUP, ADJUST DISPLAY,
 quit; in Bowl also TOP BOWLERS and BOWLING OPTIONS. [M: from the labels and help texts]
 
-## 9. Motion, effects and sounds (`front_end`, format 14)
+## 9. Motion, effects and sounds (`front_end`, format 15)
 
 Worked out on 2026-11-19 from the code and checked against the game running in PCSX2 2.8.2 (screens captured at
 640 x 448 shown 4:3: a capture's y is the screen's times about 1.07). Draw modes (0x3CD868: TEST_2 / ALPHA_2 from
