@@ -103,11 +103,33 @@ row's scale applied), its brightness and quad size. Since format 13 stages.json
 has each arena's `dust`, and the dust's paths (not the guard's) are drawn at random. Not: the character effect
 (0x3A2BC0); what the hit code puts in at +0x10..+0x14 (OpenKumite turns the burst with the strike) [M].
 
-## 5. Arena effects [M]
+## 5. Arena effects
 
-0x3A2640 by arena (jump table 0x519770, arenas 4-20) starts the arena's effect tasks: 0x3A0A90, 0x3A0CE8,
-0x3A1510 (+ 0x3A1378), 0x3A1068 (two variants), 0x3A1B48 (twenty objects 0x3A16C0 and thirty 0x3A18F8; 0x3A1BC8
-draws file 9's discs, slot 5: a lens flare [L]), 0x3A1C78 for all. Not decoded further; not exported.
+0x3A2640 by arena (jump table 0x519770, arenas 4-20) starts the arena's effect tasks [H]: 4 Hwoarang and 15 Law-B
+0x3A0A90; 5 Lei 0x3A0CE8; 8 Jin-A 0x3A1068 (+0x1A 0), 17 Jin-B and 20 the bowl 0x3A1068 (+0x1A 1); 9, 18 Nina 0x3A1378;
+11 King 0x3A1510 and 0x3A1378; 14 Unknown 0x3A1B48 (twenty objects 0x3A16C0 and thirty 0x3A18F8); and 0x3A1C78 on
+every arena. Not read: 0x3A0A90, 0x3A0CE8, 0x3A1068, 0x3A1510, 0x3A1B48.
+
+**The lens flare** (0x3A1C78) [H]: on the arenas its jump table 0x519730 (by arena - 1, 16) names: 1 Law-A, 7
+School-A, 10 Eddy-A, 11 King, 12 Heihachi, 13 Eddy-B, 16 School-B, each with a sun (0x437A50 + 0x10 x row: x, y, z,
+1, mm, the arena's axes) and a strength (gp-0x7EB8 + 4 x row: 0.6, 0.3, 0.6, 0.6, 0.6, 0.7, 0.6). It makes nine
+screen-space objects 0x3A1BC8 (file 9's discs, slot 5, flag 0x80: placed in GS units, ALPHA (Cs - 0) x FIX + Cd,
+FIX the brightness) and each frame: the sun projected (0x34B2A0; none behind the eye); (dx, dy) the screen's centre
+(0x8000, 0x8000) less it, d = 1.5 x |(dx, dy)|; none when d > 8000; the level 1, or (8000 - d) / 2000 from 6000
+(gp-0x7E9C); the size x 1 + (2000 - |dy|) x 0.00025 (gp-0x7E98) within 2000 of the centre's height. Each fighter's
+two points (player +0x590, +0x11A0, not read) in the axes of a view from the eye towards the sun: the least x^2 + y^2
+below 250000 (500 mm, gp-0x7E90) dims the level by (it / 250000)^2 (gp-0x7E8C). Disc k (0x5196C0 + 12 k: u32
+picture, the word before its size; f32 size; f32 brightness: hexagon 0.1 192, hexagon 0.3 170, round 0.5 148, round
+1.3 100, hexagon 0.6 132, hexagon 0.5 148, round 1.8 96, hexagon 0.3 170, round 0.8 128) lies at the centre + (k - 4)
+x 0.1875 x (dx, dy), half 0x90 (0x400) x size GS units across (0x345A00: a sixteenth of a pixel), its FIX the
+brightness x the level x the arena's strength. Exported: stages.json `flare`, `pictures/effects/flare_0.png` (round),
+`flare_1.png` (hexagon), opaque.
+
+**The beacons** (0x3A1378) [H]: Nina's arenas (table 0x436B50) and King's (0x436EE0), 48 bytes a row up to one
+whose +0x20 < 0: u16 kind, +0x10 the place (m), +0x20 the period (frames), +0x24 the size. Each a 3D object 0x3A1298
+of texture slot 6 (kinds 0, 1: brightness 160) or 10 (kind 2: 240), cell 10, added; its fade (cos(phase) + 1) / 2,
+the phase growing 2 pi / period a frame from pi (kind 1) or at random (kind 0; a period of 0: always lit). Slots 6-10
+are filled outside files 4-9 (seen in memory on Eddy-A too): not found; not exported.
 The arenas' additive strips (ALPHA 0x48, Cs x As + Cd: lights, neon, floor gloss) and darkening strips (0x89,
 Cd x As: painted shadows, dirt) are in the stages since format 14, in materials named `additive` and `shade`
 (GAMEDATA.md).
@@ -131,7 +153,7 @@ its int / float parameters, +0x10 the turn (radians), +0x20 the place (mm), +0x3
 |---|---|---|---|
 | 0 Paul | 0x3D5798 | the train (0-3, four 18 m cars): from (0, 14000, 200000) turned 5-10 degrees, z negated (0x3D56F0), each frame headed along its circle and moved 278 mm; back to a new start after 1800-2400 frames | the middle start, 2100 frames [M: not seen on screen yet] |
 | 1 Law-A | 0x3D6FD8 | lights 4-13 in frames of their own x/z scale (0.77-0.96, y 1.1), 14-18 swayed on a curve (0x3D7C38); a flock of 40 copies of 0-3 on splines with their shadows (19) | 4-18 standing; not the sway nor the flock |
-| 3 Xiaoyu | 0x3D52B0 | the carousel 0 turning 0.25 degree a frame (0x3D54F8), its horses 1-8 rising and falling 300 mm (phase 0.03 a frame, the second four half a turn behind), lamps 9-12 turned to face the camera (0x3D5640), 13, 14 | all; the lamps not turned to the camera |
+| 3 Xiaoyu | 0x3D52B0 | the carousel 0 turning 0.25 degree a frame (0x3D54F8), its horses 1-8 rising and falling 300 mm (phase 0.03 a frame, the second four half a turn behind), lamps 9-12 turned to face the camera (0x3D5640), 13, 14 | all; the lamps facing the camera (since format 22) |
 | 9, 18 Nina | 0x3D5E80 | the helicopter 1 on its pad, 100 mm up and down (0.0316 a frame), its rotors (2: y, 3: x, 1.03 a frame); after 600 frames out of sight it takes off and comes back (states 2, 3); 40 copies of 0, 8, 9 in 10 lanes moving 15-30 mm a frame, wrapped about the camera | the helicopter waiting and its rotors; not the take-off nor the lanes |
 | 11 King | 0x3D4B18 | three helicopters (12, 15, 18 under frame 11) round an ellipse of 100 x 80 m, 0.1 degree a frame, the wingmen turned to their own bearing (0x3D5190), rotors 1.03 a frame; ten groups of four of objects 1-10 drifting with a fade (not read) | the helicopters from angle 0; not the groups |
 | 14 Unknown | 0x3D2168 | 0 and 1 standing | both |

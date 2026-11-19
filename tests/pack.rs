@@ -314,8 +314,9 @@ fn openkumite(pack: &Hashed) {
     assert_eq!((&m["game"], &m["format"], m["fingerprint"].as_str().unwrap().len()), (&"ttt".into(), &8.into(), 32));
     let written = pack.0.lock().unwrap().clone();
     let count = |dir: &str| written.keys().filter(|k| k.starts_with(&format!("assets/{dir}/"))).count();
-    // (and Tekken Bowl's 114 motions, its ball, pin and pin deck)
-    assert_eq!((count("characters"), count("motions"), count("stages")), (127, 4231 + 114, 23 + 1 + 3));
+    // (and Tekken Bowl's 114 motions, its ball, pin and pin deck; the arenas' background characters' 115 models and
+    // 294 motions)
+    assert_eq!((count("characters"), count("motions"), count("stages")), (127, 4231 + 114, 23 + 1 + 3 + 115 + 294));
     let roster = load("gamedata/roster.json");
     let entries = roster["selections"]["entries"].as_array().unwrap();
     assert_eq!((entries.len(), roster["characters"].as_array().unwrap().len()), (127, 34));
@@ -348,6 +349,24 @@ fn openkumite(pack: &Hashed) {
         (&stages["stages"][1]["lights"]["colour"][0], &stages["stages"][0]["lights"]["ambient"][0]),
         (&serde_json::json!([255.0, 255.0, 255.0]), &serde_json::json!(38.400001525878906))
     );
+    // Eddy-A's background characters: 33, each a model and motions of its own files
+    let people = stages["stages"][10]["people"].as_array().unwrap();
+    assert_eq!(people.len(), 33);
+    assert!(people.iter().filter(|p| p["model"] != 8).all(|p| {
+        written.contains_key(&format!("assets/stages/stage_10_p{}.glb", p["model"]))
+            && p["motions"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .all(|m| written.contains_key(&format!("assets/stages/stage_10_m{m}.glb")))
+    }));
+    // Eddy-A's lens flare: its sun 85.6 m ahead, strength 0.6, nine discs (the first a hexagon of 0.1 at 192)
+    let flare = &stages["stages"][10]["flare"];
+    assert_eq!(
+        (&flare["sun"][2], &flare["discs"][0]),
+        (&serde_json::json!(-85.60000000000001), &serde_json::json!([1, 0.10000000149011612, 192.0]))
+    );
+    assert!(stages["stages"][0]["flare"].is_null() && written.contains_key("assets/pictures/effects/flare_1.png"));
     let effects = load("pictures/effects/effects.json");
     assert_eq!((&effects["atlas"]["rows"], &effects["strips"]["spark"]["life"]), (&3.into(), &35.into()));
     sound(&load, count("audio/sfx"), count("audio/music"));

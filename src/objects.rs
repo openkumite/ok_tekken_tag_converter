@@ -37,6 +37,8 @@ pub struct Object {
     pub model: Vec<Batch>,
     pub parent: Option<usize>,
     pub poses: Vec<Pose>,
+    /// Turned about y to face the camera each frame (Xiaoyu's lamps, 0x3D5640: the camera's turn less its parent's).
+    pub face: bool,
 }
 
 /// The pose as a rotation quaternion (x, y, z, w).
@@ -171,6 +173,8 @@ pub fn objects(elf: &[u8], arena: usize, blocks: &[Vec<Batch>]) -> Result<Vec<Ob
                 model: if keep[k] && !hidden { model(k)? } else { vec![] },
                 parent: parent[k],
                 poses: vec![rest(k)?],
+                // Xiaoyu's lamps 9-12 (their routine 0x3D5640)
+                face: arena == 3 && (9..13).contains(&k),
             })
         })
         .collect::<Result<_>>()?;
@@ -220,6 +224,7 @@ pub fn objects(elf: &[u8], arena: usize, blocks: &[Vec<Batch>]) -> Result<Vec<Ob
                     model: vec![],
                     parent: None,
                     poses: vec![Pose { at: [0.0; 3], turn: [0.0; 3], xyz: false, scale: [s, y, s] }],
+                    face: false,
                 });
                 out[k].parent = Some(out.len() - 1);
             }
