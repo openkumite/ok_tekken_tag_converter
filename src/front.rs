@@ -2,7 +2,7 @@
 //! arcade ladder and unlocks read, as roster.json `front_end` (docs/GAMEDATA.md "front_end"). The pictures are the
 //! 2D files' images as `assets/pictures/FFF_NNN.png`, the names `textures/` has; `front_end` names them.
 
-use crate::moves::VADDR;
+use crate::moves::{self, VADDR};
 use crate::tex::{self, Upload};
 use crate::{u8_at, u16_at, u32_at};
 use anyhow::Result;
@@ -55,14 +55,16 @@ pub fn cursor_2p(ups: &[Upload]) -> Option<(String, Vec<u8>)> {
     Some(("003_057_p2.png".to_string(), tex::png(w, h, &px)))
 }
 
-/// The text colours (the printf `%c`: palette upload 9 + colour, 36 of them) of the chrome font (upload 2 of file 3):
-/// `003_001_cNN.png`, NN the colour, and their PNGs.
+/// The text colours (the printf `%c`: palette upload 9 + colour, 36 of them) of the chrome font (upload 2 of file 3) and
+/// the small one (upload 4): `003_001_cNN.png`, `003_002_cNN.png`, NN the colour, and their PNGs.
 pub fn font_colours(ups: &[Upload]) -> Vec<(String, Vec<u8>)> {
-    (0..FONT_COLOURS)
-        .filter_map(|c| {
-            let pair = [ups.get(2)?.clone(), ups.get(9 + c)?.clone()];
+    [(2, 1), (4, 2)]
+        .into_iter()
+        .flat_map(|(up, picture)| (0..FONT_COLOURS).map(move |c| (up, picture, c)))
+        .filter_map(|(up, picture, c)| {
+            let pair = [ups.get(up)?.clone(), ups.get(9 + c)?.clone()];
             let (w, h, px) = tex::pictures(&pair, &|_| Some(1)).into_iter().next()?;
-            Some((format!("003_001_c{c:02}.png"), tex::png(w, h, &px)))
+            Some((format!("003_{picture:03}_c{c:02}.png"), tex::png(w, h, &px)))
         })
         .collect()
 }
@@ -93,9 +95,26 @@ fn string(elf: &[u8], pointer: u32) -> String {
     out.trim().to_string()
 }
 
+/// The select's 3D characters (FRONTEND.md 9): per character id the clips of its moveset's aliases 0 (standing, looped)
+/// and 3 (the pick's pose), None where its set has none (Mokujin's and Unknown's stub). `clips`: each move's clip.
+fn select_motions(elf: &[u8], clips: &[Option<String>]) -> Result<Vec<Option<[String; 2]>>> {
+    let sets = moves::roster(elf)?;
+    let clip = |set: usize, alias: usize| -> Result<Option<String>> {
+        let v = u16_at(elf, moves::ALIASES + 2 * (set * moves::ALIAS_COUNT + alias), "the movesets")? as usize;
+        Ok(clips.get(v).cloned().flatten())
+    };
+    (0..moves::BODIES)
+        .map(|c| match sets.get(c).map(|s| s.1).filter(|&set| set < moves::MOVESETS) {
+            Some(set) => Ok(clip(set, 0)?.zip(clip(set, 3)?).map(|(a, b)| [a, b])),
+            None => Ok(None),
+        })
+        .collect()
+}
+
 /// roster.json `front_end` (docs/GAMEDATA.md "front_end"), from the executable's tables (FRONTEND.md 2-8); `ups`:
-/// file 3's uploads (the HUD and select atlas), which name its pictures.
-pub fn front_end(elf: &[u8], ups: &[Upload]) -> Result<Value> {
+/// file 3's uploads (the HUD and select atlas), which name its pictures; `clips`: each move's clip (the select's
+/// characters' motions).
+pub fn front_end(elf: &[u8], ups: &[Upload], clips: &[Option<String>]) -> Result<Value> {
     let sprite = |k: usize| sprite(ups, k);
     let a = |addr: usize| addr - VADDR;
     let what = "the front end's tables";
@@ -124,6 +143,10 @@ pub fn front_end(elf: &[u8], ups: &[Upload]) -> Result<Value> {
     }
     let set = |addr: usize| -> Result<Vec<usize>> {
         Ok(u8s(addr, 34)?.iter().enumerate().filter(|e| *e.1 != 0).map(|e| e.0).collect())
+    };
+    // {x, y, z, yaw} rows
+    let places = |addr: usize, n: usize| -> Result<Vec<Vec<i32>>> {
+        (0..n).map(|k| (0..4).map(|o| i32_at(addr + 16 * k + 4 * o)).collect()).collect()
     };
     let faces: Vec<String> =
         (0..BODIES).map(|b| i32_at(0x520508 + 4 * b).map(|id| sprite(id as usize))).collect::<Result<_>>()?;
@@ -186,12 +209,21 @@ pub fn front_end(elf: &[u8], ups: &[Upload]) -> Result<Value> {
         // 0x51EE68's, which a connected pad picks; 0x3C4930 the namco logo)
         "title": {"picture": "134_003.png", "press_start": string(elf, 0x51EE78),
             "copyright": [string(elf, 0x51EF40).replace('@', "©"), string(elf, 0x51EF70)], "copyright_y": [409, 429],
-            "press_y": 329, "blink_mask": 0x30, "from_white": 43, "namco": {"picture": "134_000.png", "x": 257, "y": 350}},
+            "press_y": 329, "blink_mask": 0x30, "from_white": 43, "namco": {"picture": "134_000.png", "x": 257, "y": 350},
+            // (the small font, from the left x, y the text's foot: the line at 336 - 16 less its width 0xD8 (0x3BC868),
+            // the copyright at 0x24 and 0x123 (0x3BCC0C); their colours as the PS2 shows them: the code's 5 and 11 are
+            // the font's palettes 31 and 0 [M])
+            "press_x": 120, "press_colour": 31, "copyright_x": [0x24, 0x123], "copyright_colour": 0},
         // the sound ids the front end plays (group 0: 3 cursor, 4 select 1, 5 select 2; FRONTEND.md 9)
         "sounds": {"cursor": 3, "start": 4, "decide": 5, "cancel": 3, "pick": 4, "last_pick": 5},
         // the chrome font: 12 glyphs of 52 x 42 a row (read off the picture, not the code)
         "fonts": {"big": {"picture": sprite(2), "glyph": [52, 42], "rows": ["0123456789AB", "CDEFGHIJKLMN", "OPQRSTUVWXYZ", "!?.-':\"%<&()"],
-            "colours": (0..FONT_COLOURS).map(|c| format!("003_001_c{c:02}.png")).collect::<Vec<_>>()}},
+            "colours": (0..FONT_COLOURS).map(|c| format!("003_001_c{c:02}.png")).collect::<Vec<_>>()},
+            // the small font: 21 glyphs of 16 x 17 a row, in ASCII order with gaps (read off the picture), 16 apart
+            // whatever their ink, the space too (as the PS2 spaces the title's line) [M]
+            "small": {"picture": sprite(4), "glyph": [16, 17], "rows": ["!\"#$%&'()*+-,.0123456", "789:;<=>?@ABCDEFGHIJK", "LMNOPQRSTUVWXYZ[\\]/_"],
+            "advance": 16,
+            "colours": (0..FONT_COLOURS).map(|c| format!("003_002_c{c:02}.png")).collect::<Vec<_>>()}},
         // (0x3BD2E0: five rows about the cursor, the band behind it, the fades, the arrows; FRONTEND.md 9)
         "menu": {"address": "0x51EFE0", "items": menu, "rows": 5, "y": 323, "row_h": 26, "scroll": 4, "clip": [315, 417],
             "fades": [[315, 354], [380, 419]], "band": {"y": [353, 380], "colour": [192, 192, 255], "alpha_step": 8},
@@ -207,9 +239,30 @@ pub fn front_end(elf: &[u8], ups: &[Upload]) -> Result<Value> {
             "timer": {"frames": 2400, "x": 320, "y": 260, "blink": {"below": 6, "period": 30, "off": 8}}, "done": 90,
             // (1P's cursor starts on Xiaoyu's slot, as the PS2 shows it; 2P's on Jin's, the other end of the row [L])
             "start_slots": [18, 27], "ordinal": {"text": string(elf, 0x5205C8), "x": [62, 480], "y": 350},
+            // (0x3CC4A4 -> 0x3BC828: the side nobody plays, while frame & 0x30: INSERT COIN (0x3BCA30, 0x51EE98), or
+            // the credits (0x3BC650, 0x51EF00, its leading space kept) while frame & 0x40; 0x3BC868: centred on 160 +
+            // 320 x side by a width of 12.8 a letter (16 x 4 / 5: size 4; the PS2 shows it there) [M], its foot
+            // at y 400, the small font; the code passes colour 0x11, the PS2 shows the green of palette 29 [M])
+            "insert": {"texts": [string(elf, 0x51EE98), format!(" {}", string(elf, 0x51EF00))], "x": [160, 480], "y": 400,
+                "colour": 29, "show_mask": 0x30, "second_mask": 0x40, "measure": 12.8},
             "faces": faces, "random_face": sprite(162), "locked_face": sprite(165), "cursor": sprite(174), "cursor_dxy": [-2, -2],
             "tags": [sprite(119), sprite(121), sprite(123), sprite(124), sprite(125), sprite(126), sprite(127)],
-            "selectable": set(0x51E850)?, "copy_pool": set(0x51E8A0)?, "portraits": portraits},
+            "selectable": set(0x51E850)?, "copy_pool": set(0x51E8A0)?, "portraits": portraits,
+            // (0x3AE6E0: the camera, the projection's entry 24 of table 0x507FE0; 0x3AEF88: each model's place {x, y, z,
+            // yaw} by slot (side + 2 * member) from 0x437D40, 1 ON 1's (mode 5) from 0x437D80; 0x3AE7C8: arena 22's light
+            // table (0x363630(0x16)); 0x3AEA40: alias 0 looped,
+            // a pick plays alias 3, then alias 0)
+            "models": {"camera": {"eye": [0, -1152, 4608], "pitch": -128, "yaw": -2048, "h": s16(0x507FE0 + 10 * 24)?},
+                "places": places(0x437D40, 4)?, "places_one_on_one": places(0x437D80, 2)?, "one_on_one_mode": 5, "light": 0x16,
+                "motions": select_motions(elf, clips)?}},
+        // the VS / loading screen (0x3C45B0's machine, drawn by 0x3C3FB8): the fire 142_000 (ids 0xF5 / 0xF6) over the
+        // screen; each side's portraits (0x3C3948: 188 x 256, their edges faded over `feather` by 0x3C3370, 2P's
+        // mirrored by 0x3C3648) at [x, dx, y, dy] + step x [dx, dy], the step 1 a frame to `steps` (state 3), then held
+        // while the fight loads; TEAM BATTLE's (mode 2) up by `team_dy`; the partner over its leader; "VS" 142_001
+        // (0xF7 / 0xF8) centred at y 340 in the VS modes (gp-0x7440 and -0x743E), else the stage's texts
+        "vs": {"background": "142_000.png", "logo": "142_001.png", "logo_y": 340, "steps": 10, "portrait": [188, 256],
+            "feather": 20, "places": [[[-257, 38, 20, 3], [-360, 38, 216, -3]], [[708, -38, 20, 3], [810, -38, 216, -3]]],
+            "team_dy": [-22, -90]},
         "hud": {"bars": {"x": [29, 370], "y": 30, "w": 240, "h": 28},
             "strips": (0..6).map(|i| sprite(45 + 2 * i)).collect::<Vec<_>>(),
             "angry_strips": (6..12).map(|i| format!("003_{i:03}_angry.png")).collect::<Vec<_>>(), "angry_at": 120, "angry_blink": 8,
@@ -256,6 +309,6 @@ mod tests {
         assert_eq!(PORTRAITS.iter().collect::<std::collections::BTreeSet<_>>().len(), BODIES);
         assert!(is_2d(3) && is_2d(182) && !is_2d(46) && !is_2d(129));
         // the executable's tables outside the data: an error, not a panic
-        assert!(front_end(&[0; 64], &ups).is_err());
+        assert!(front_end(&[0; 64], &ups, &[]).is_err());
     }
 }

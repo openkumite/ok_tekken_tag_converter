@@ -44,7 +44,7 @@ What the files hold (from the art and the draw calls):
 | 134 | title screen: logo `134_003`, namco logos, PAIR PLAY MODE `134_001`, `134_004` |
 | 136 | `136_000` a controller, "VS" pieces [L: the VS screen's] |
 | 141 | 45 blue lightning pictures (320 x 150), `141_045` the select grid's frame [L: the arcade-version select's] |
-| 142 | the boot logo `142_000`, controller `142_001` |
+| 142 | the VS / loading screen: its fire `142_000` (640 x 448) and "VS" `142_001` (section 9) |
 | 143-181 | one 188 x 256 portrait per body, in name order (ArmorKing, Alex, Angel, Anna, Baek, Bruce, Bryan, Devil, Eddy, Ganryu, Heihachi, Hwoarang, Jack-2, Gun Jack, Jin, Julia, Jun, Kazuya, King, Kuma, Kunimitsu, Law, Lee, Lei, Xiaoyu, Michelle, Mokujin, Nina, True Ogre, Ogre, Panda, Paul, P.Jack, Roger, Tetsujin, Tiger, Unknown, Wang, Yoshimitsu) |
 | 182 | two 292 x 391 pictures (ids 401-404): `182_000` Kuma, `182_001` a blue flame (403: drawn full-height and mirrored, 0x3C3A74) |
 
@@ -259,7 +259,7 @@ Life is fixed at 140. [H]
 Pause menu (0x51E710): resume, COMMAND LIST, SCREEN CAPTURE (once unlocked), CONTROLLER SETUP, ADJUST DISPLAY,
 quit; in Bowl also TOP BOWLERS and BOWLING OPTIONS. [M: from the labels and help texts]
 
-## 9. Motion, effects and sounds (`front_end`, format 15)
+## 9. Motion, effects and sounds (`front_end`, formats 15 and 16)
 
 Worked out on 2026-11-19 from the code and checked against the game running in PCSX2 2.8.2 (screens captured at
 640 x 448 shown 4:3: a capture's y is the screen's times about 1.07). Draw modes (0x3CD868: TEST_2 / ALPHA_2 from
@@ -301,6 +301,22 @@ Newly unlocked entries blink colour 9 every 4 frames. `front_end.menu`: `rows`, 
 | Timer | the HUD's digits (0x3C6738) at (320, 260) | seconds `(t + 59) / 60 - 1` from 2400 frames; in the last 6 seconds off 8 frames every 30 (gp-0x6224) |
 | Cursors | `003_057` in palette 0x74 (1P, blue) or 0x75 (2P, pink: `003_057_p2`), 55 x 53 at (x - 1, y - 1); tags `1P` / `2P` at x + 2 / x + 25, y + 40 (0x5205D8) | 2P's drawn first; a level up and down 6 a frame between 96 and 240 (gp-0x69E0 / -0x69D8); both on one slot: 1P's shaded off diagonally (0x3CE078) |
 
+**The 3D characters** (format 16; checked in PCSX2 through PINE memory reads of the running select). Set up by
+0x3AE7C8 (when the QUICK SELECT byte 0x43B800 is 0): the camera 0x3AE6E0 writes the view block 0x415808 (pitch -0x80,
+yaw -0x800, roll 0, eye (0, -1152, 4608)) and the projection entry 24 of table 0x507FE0 (H 850, gp-0x743A = 0x18);
+0x363630(0x16) the light table of arena 22 (EFFECTS.md). Four fighter structs (0x879640 + 0xB8A0 x slot, slot = side
++ 2 x member) and a request table 0x437E30 (12 bytes a slot: +0 frame, +2 state, +4 character, +6 costume, +8 picked,
++0xA alias): a cursor move (0x3C9E30 -> 0x3AEEF0) drops the slot's body and loads the one under the cursor (costume
+0); a pick (0x3CA6B8 -> 0x3AEC58, 0x3AE9D8) sets the alias to 3 with the pick's costume. 0x3AEF88 places a slot from
+table **0x437D40** (16 bytes `{x, y, z, yaw}`, 65536ths): 1P (400, 0) yaw 0xE800, 2P (-512, 0) yaw 0x1800, 1P's
+partner (896, 512) yaw 0xE000, 2P's (-960, 512) yaw 0x2000; mode 5 (1 ON 1 arcade) takes **0x437D80** (704, 128) and
+(-720, 128) for slots 0 and 1. The table's y is not what the struct holds after the load (2 and -40 were read for 112
+and 80): the body stands on the floor. 0x3AEA40 steps the motion: at its end alias 3 goes to alias 0 (0x363068(f, 5))
+and alias 0 starts again. Aliases 0 and 3 are each moveset's select stance and pick pose (Xiaoyu: moves 6459, 110
+frames, and 6490, 86). A side shows its picks and the character under its cursor, the last two; none while the cursor
+is on a character it took (seen). `select.models`: `camera`, `places`, `places_one_on_one`, `one_on_one_mode`,
+`light`, `motions` (by character id: the two clips).
+
 A cursor move: sound 3; a pick: sound 4, the last sound 5; cancel: sound 3. The PS2 starts 1P's cursor on Xiaoyu
 (seen; gp-0x6248). After the last pick 90 frames, the last 20 a fade (gp-0x71D0 = 20). No announcer call and no
 flash in the select's own code: a pick shows as the 3D model's pose. Also seen on the PS2: "INSERT COIN" and "CREDIT
@@ -308,10 +324,30 @@ flash in the select's own code: a pick shows as the 3D model's pose. Also seen o
 `frame`, `cursors`, `cursor_rect`, `cursor_pulse`, `tag_dx`, `tag_dy`, `random_roll`, `plates`, `ordinal`, `timer`,
 `done`, `start_slots` (2P's [L]).
 
-**VS (seen on the PS2, the code not read)**: a moving fire behind (no 2D file of the converted ones: a stream [L]),
-each team's leader high (its left at about x 140, y 56) and its partner low in front (x 26, y 196), mirrored for 2P,
-a ring and a glow between, "VS" (VS modes) or "STAGE n" (the arcade) in the chrome font at the foot; about 1
-second, then black.
+**VS / loading (0x3C45B0, drawn by 0x3C3FB8; format 16)**: the fire `142_000` (ids 0xF5 / 0xF6, still: the
+"moving" fire of the first pass was not seen again) over the screen; 0x3C3948 draws each side's portraits (188 x 256,
+their edges faded over 20 pixels: 0x3C3370 draws nine pieces with gouraud alpha 0x80 inside, 0 at the border; 2P's
+mirrored by 0x3C3648) at x = x0 + dx x step, y = y0 + dy x step: 1P's leader (-257 + 38 s, 20 + 3 s), its partner
+(-360 + 38 s, 216 - 3 s), 2P's (708 - 38 s, 20 + 3 s) and (810 - 38 s, 216 - 3 s), the partner over its leader;
+TEAM BATTLE's 22 and 90 higher. The step goes 0 to 10, one a frame (state 3), then holds while the fight loads
+(states 4-6: about 4 s in PCSX2 from the arcade's select, 3.5 s in the attract). "VS" `142_001` (0xF7 / 0xF8) centred
+at y 340 when gp-0x7440 and -0x743E are set (the VS modes, the attract); otherwise "STAGE" / "FINAL" and the number
+(0x51F6C0, 0x51F6F0) in the chrome font at y 350 and 385. Bodies 0x32 and 0x7B take another drawing over the blue
+flame `182_001` (not followed). `front_end.vs`: `background`, `logo`, `logo_y`, `steps`, `portrait`, `feather`,
+`places` [side][member] `[x0, dx, y0, dy]`, `team_dy`.
+
+**Small texts** (format 16): the small font `003_002` (upload 4 of file 3): 21 glyphs of 16 x 17 a row in ASCII
+order from `!` (`/` after `]`, `\` drawn as a yen sign, `@` as ©), each drawn 16 apart whatever its ink (the
+title's line measured in PCSX2). The printf (0x3C6C60) takes the left x and the text's foot y. Its colours are the
+palettes 9-44 of file 3 as for the chrome font (`003_002_cNN.png`), but the code's colour numbers do not pick them
+as for the chrome font: the PS2 shows the title's line (colour 5) in palette 31's yellow, the copyright (11) in
+palette 0's white, INSERT COIN (0x11) in palette 29's green [M]. The title (0x3BC998, 0x3BC868): the line at x 336 -
+16 - 0xD8 (its width) = 120, foot 329; the copyright (0x3BCC0C) at x 0x24 and 0x123, feet 409 and 429. The select's
+side nobody plays (0x3CC4A4 -> 0x3BC828): while frame & 0x30, INSERT COIN (0x3BCA30) or, while frame & 0x40, " CREDIT
+0" (0x3BC650), from x = 160 + 320 x side - 12.8 x letters (the code's measure "%T%F%S%s" at size 4; the place as seen),
+foot 400. `fonts.small` (`picture`, `glyph`, `rows`, `advance`, `colours`), `title.press_x`, `press_colour`,
+`copyright_x`, `copyright_colour`, `select.insert` (`texts`, `x`, `y`, `colour`, `show_mask`, `second_mask`,
+`measure`).
 
 **Options (screen 9, 0x3B4B20)**: over the logo dimmed to 0x40; ADJUST DISPLAY moves play entry 0x103F, its reset
 0x1040.
@@ -322,14 +358,14 @@ second, then black.
 
 Ranked by how much a player would notice:
 
-1. Which button gives which costume; the 3D models of the select (their place, camera 0x415808, motions).
-2. The VS / loading screen's code (file 136, "VS" `0x51F208`, the "%3d%%" loading percent) and its moving
-   background.
+1. Which button gives which costume (seen: × gives costume 1).
+2. The VS screen's STAGE / FINAL texts and its special portraits (0x3C3948's bodies 0x32, 0x7B); how the
+   printf's colour numbers map to the small font's palettes.
 3. The exact roles of the six health-bar strips and the timer and banner drawing (positions of the round / K.O.
    texts).
 4. Tekken Bowl's ball and pin physics.
 5. The ending scenes' scripts (descriptor `script*`), the staff roll, which cutscene files (41-128) they use.
-6. QUICK SELECT's select backdrop (0x3BBC40, 0x3BE8C0) and the small font's glyph order (the title's line).
+6. QUICK SELECT's select backdrop (0x3BBC40, 0x3BE8C0).
 7. The attract loop's code (0x3BCC88's steps 0-2) and PAIR PLAY MODE (0x3C4A28: shown with a multitap).
 8. What settings +8 means beyond the two grid slots; config +0x08 and +0x37.
 
