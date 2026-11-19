@@ -302,8 +302,12 @@ up to 0x60 at 40, out at 640); the help line = entry. **GAME OPTIONS (0x3B42A0)*
 DEFAULT and EXIT their label; the label colour 5 (the cursor's 11 over the pause's bar from x 0 to 40 to 170 past
 "LABEL:", 0x3B15F8), the value 16 at its default, else 12; on the cursor's row the arrows (+0x3C, +0x3E: a list's
 left one always, -1 none; a number's while above 0 / below 10); DEFAULT asks YES / NO at x 200 (the choice 11, the
-other 22, the arrow at 262 towards it). Help line 6 + row with the value's `\S` alternative. [H, not compared with
-the PS2: the emulator was busy]
+other 22, the arrow at 262 towards it). Help line 6 + row with the value's `\S` alternative. A list's values are printed as the
+executable has them, a longer list's with a leading space (" NORMAL", " 60", " INFINITY"). On the cursor's row
+(0x3B3F88) the main menu's entries ARCADE..PRACTICE (and TEKKEN BOWL once open) stand right-aligned at x 600 from foot
+250, 17 apart, size 4, each in its menu colour where the option applies (descriptor +0x38, a bit per mode: DIFFICULTY
+0x25 = ARCADE, TEAM BATTLE, 1 ON 1; GUARD DAMAGE 0x67; ...), else colour 22, over a box (template 0x43FF50: x 360 to
+608, y 226 to 16 above the next foot, black from alpha 0 to 0x80 rightwards). [H; checked in PCSX2 2.8.2]
 
 **RECORDS (0x3B2978; format 24, `records`)**: one screen of three pages, state gp-0x6362 (0, 2, 4 build the sorted
 list at 0x440D50 +0x124 / +0x126 by 0x3C84B8, 0x3C83A8, 0x3C80E8; 1, 3, 5 draw CHARACTER USAGE 0x3B2090, GREATEST
@@ -317,8 +321,33 @@ size 4, colour 11), "%3d.%1d%%" of the per-mille (410, 6 up, size 5, colour 14);
 +0x80: u16 wins at +2, the name at +4): "%3d" (260, 4 up, size 5) of at most 999, "WIN" and "S" from 2 (338, size
 4), the name (460, 6 up, size 5, colour 15); TIME ATTACK (10 entries of 12 bytes at +8: u32 time, the two characters
 +4 / +5, the name +6): the time (260, size 4, colour 11), the name (460, 6 up, size 5, colour 6). Help 24 + page. A
-name is 3 letters of "ABCDEFGHIJKLMNOPQRSTUVWXYZ-!?.0123456789<=" (0x520BE8, 42 round; 0x3D0450). [H; not compared
-with the PS2]
+name is 3 letters of "ABCDEFGHIJKLMNOPQRSTUVWXYZ-!?.0123456789<=" (0x520BE8, 42 round; 0x3D0450). The bar's 26
+spaces at size 4 take the '0' glyph's 48 x 0.4 each: it fades from x 40 to 40 + 499 + 170 = 709. "u" / "d" (the up and
+down marks, "%H%V%cu" at (40, 120) / (40, 152), blinking with the page's arrows) are the button icons' 16 x 16 cells 9
+and 8 of `003_003` in yellow. CHARACTER USAGE lists every selectable character, most picked first and by id among
+equals (0x3C84B8), "0.0%" with none picked. A new save's records (0x3C88A0): TIME ATTACK ten times 99'00"00 (356400
+frames) by the pairs of 0x520388 (Paul / Law, Law / Lei, ..., Tiger / Baek, Jin / Julia), SURVIVAL ten by the pairs of
+0x5203A0 with 5, 5, 4, 4, 3, 3, 2, 2, 1, 1 wins, each named by the first body's name's first 3 letters (0x3D01C0: PAU,
+LEI, ...). [H; checked in PCSX2 2.8.2: the pages, the bars, the defaults]
+
+**The options screens' backdrop** (0x3BF2F8 by screen: 9 OPTIONS, GAME OPTIONS and RECORDS take colour 11 of table
+0x440748, (0, 0, 255); 0xD and 0xF colour 9, 0x10 colour 10): two quads from black at x 0 and 640 to the colour at the
+middle (templates 0x43FDA0, 0x43FDE8), at alpha 0x40 over the logo dimmed to 0x40: the logo shows at a quarter, the
+middle's blue at 132 (measured). [H; checked in PCSX2]
+
+**Sound options**: BGM VOLUME n plays the music at table 0x518E58[n] of 128 (0, 32, 40, 48, 56, 64, 72, 80, 96, 112,
+128; 0x39A1A8); SE VOLUME scales an effect's volume by n / 10 (0x375044); SPEAKER OUT sends mono or stereo to the
+sound driver (0x39A208). [H]
+
+**After GAME OVER** (screen 7, 0x3C8A88 and the draw 0x3C75E8) the ranking is not the RECORDS page: over an arena in
+3D, a banner (CHARACTER USAGE / GREATEST SURVIVORS / TIME ATTACK with the TAG TOURNAMENT logo) and rows 75 apart with
+large ranks, faces, names, a usage bar and large shares, scrolling up from the last row to the first. A new TIME ATTACK
+or SURVIVAL record is named there (0x3C9144: 0x3D0350 each frame, 3000 frames to do it). Seen in PCSX2; the layout is
+not decoded. [M]
+
+**Name entry** (0x3D0350): right / down the next letter, left / up the one before (round in 42); a face button takes
+the letter under the cursor ("<" takes the last back, "=" ends); the third letter ends; the entry shows the current
+letter in its place as it changes; sound 3 a move, 4 a letter. [H]
 
 **Pause menu (0x3B7B98; format 24, `front_end.pause`)**, checked against PCSX2 captures of an arcade fight: the
 entries of table 0x51E7A8 (CANCEL, RESET, COMMAND LIST, SCREEN CAPTURE, TOP BOWLERS, BOWLING OPTIONS, ADJUST

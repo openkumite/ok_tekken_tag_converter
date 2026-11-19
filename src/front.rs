@@ -121,8 +121,13 @@ fn format(elf: &[u8], pointer: u32) -> String {
     out
 }
 
-/// A string of the executable as it is (codes like `%H%V` left out).
+/// A string of the executable as it is (codes like `%H%V` left out), trimmed.
 fn string(elf: &[u8], pointer: u32) -> String {
+    raw_string(elf, pointer).trim().to_string()
+}
+
+/// A string of the executable with its spaces (codes like `%H%V` left out).
+fn raw_string(elf: &[u8], pointer: u32) -> String {
     let at = (pointer as usize).wrapping_sub(VADDR);
     let raw: Vec<u8> = elf.get(at..).unwrap_or_default().iter().take(96).take_while(|&&c| c != 0).copied().collect();
     let s = String::from_utf8_lossy(&raw).to_string();
@@ -136,7 +141,7 @@ fn string(elf: &[u8], pointer: u32) -> String {
             out.push(c);
         }
     }
-    out.trim().to_string()
+    out
 }
 
 /// The select's 3D characters (FRONTEND.md 9): per character id the clips of its moveset's aliases 0 (standing, looped)
@@ -244,7 +249,9 @@ pub fn front_end(elf: &[u8], ups: &[Upload], clips: &[Option<String>]) -> Result
     }
     // the options 0x439CE0 (0x40 bytes: {config byte*, default, label*, kind, value names*[11], s16 arrow x[2]}), the
     // GAME OPTIONS page's 14 rows: kind 0 a list, 1 a number 0-10 (0 OFF), 2 DEFAULT and EXIT (no config); the arrows'
-    // x (-1 none: a two-value list has only the right one) by 0x3B4440
+    // x (-1 none: a two-value list has only the right one) by 0x3B4440; the values as printed, a list of more than two
+    // with its leading space (" NORMAL", " 60"); `modes` (+0x38): the main menu entries (bit = id) it applies to,
+    // shown on its row (0x3B3F88)
     let mut options = vec![];
     for i in 0..14 {
         let r = 0x439CE0 + 0x40 * i;
@@ -253,13 +260,30 @@ pub fn front_end(elf: &[u8], ups: &[Upload], clips: &[Option<String>]) -> Result
             .collect::<Result<Vec<u32>>>()?
             .into_iter()
             .filter(|&p| p != 0)
-            .map(|p| string(elf, p))
+            .map(|p| raw_string(elf, p))
             .collect();
         let config = (u32_at(elf, a(r), what)? as usize).checked_sub(0x439C60);
         options.push(json!({"label": string(elf, u32_at(elf, a(r) + 8, what)?), "config": config,
             "default": u32_at(elf, a(r) + 4, what)?, "values": values, "kind": u8_at(elf, a(r) + 12, what)?,
-            "arrows": [s16(r + 0x3C)?, s16(r + 0x3E)?]}));
+            "arrows": [s16(r + 0x3C)?, s16(r + 0x3E)?], "modes": u32_at(elf, a(r) + 0x38, what)?}));
     }
+    // the records' defaults (0x3C88A0, a reset): TIME ATTACK's 10 times 99'00"00 (356400 frames) by the pairs of
+    // 0x520388, SURVIVAL's 10 by the pairs of 0x5203A0 with (9 - n) / 2 + 1 wins, each named by its first body's
+    // name's first 3 letters (0x3D01C0: body -> 0x415CC0 -> its name)
+    let name3 = |body: u8| -> Result<String> {
+        let p = u32_at(elf, a(0x415CC0) + 4 * usize::from(body), what)?;
+        let p = u32_at(elf, (p as usize).wrapping_sub(VADDR), what)?;
+        Ok(string(elf, p).chars().take(3).collect())
+    };
+    let defaults = |addr: usize, score: &dyn Fn(usize) -> u32| -> Result<Vec<Value>> {
+        let b = u8s(addr, 20)?;
+        b.chunks(2)
+            .enumerate()
+            .map(|(n, m)| Ok(json!({"members": m, "score": score(n), "name": name3(m.first().copied().unwrap_or(0))?})))
+            .collect()
+    };
+    let default_times = defaults(0x520388, &|_| 356_400)?;
+    let default_survivors = defaults(0x5203A0, &|n| (9 - n as u32) / 2 + 1)?;
     Ok(json!({
         "screen": [640, 448],
         // (the fonts draw @ as ©)
@@ -273,6 +297,9 @@ pub fn front_end(elf: &[u8], ups: &[Upload], clips: &[Option<String>]) -> Result
             "press_x": 120, "press_colour": small_colour(5)?, "copyright_x": [0x24, 0x123], "copyright_colour": small_colour(11)?},
         // the sound ids the front end plays (group 0: 3 cursor, 4 select 1, 5 select 2; FRONTEND.md 9)
         "sounds": {"cursor": 3, "start": 4, "decide": 5, "cancel": 3, "pick": 4, "last_pick": 5},
+        // GAME OPTIONS' BGM VOLUME 0-10: the music's level of 128 (0x39A1A8: table 0x518E58); SE VOLUME: an effect's
+        // volume x n / 10 (0x375044); SPEAKER OUT MONO sent to the sound driver (0x39A208)
+        "volumes": {"bgm": (0..11).map(|k| u16_at(elf, a(0x518E58) + 2 * k, what)).collect::<Result<Vec<_>>>()?, "se": 10},
         // the chrome font: 12 glyphs of 52 x 42 a row (read off the picture, not the code)
         "fonts": {"big": {"picture": sprite(2), "glyph": [52, 42], "rows": ["0123456789AB", "CDEFGHIJKLMN", "OPQRSTUVWXYZ", "!?.-':\"%<&()"],
             "colours": (0..FONT_COLOURS).map(|c| format!("003_001_c{c:02}.png")).collect::<Vec<_>>(),
@@ -398,17 +425,26 @@ pub fn front_end(elf: &[u8], ups: &[Upload], clips: &[Option<String>]) -> Result
         // value in colour 16 (the default) or 12, a number 0 as OFF; the cursor's label 11 over the pause's bar
         // (0x3B15F8, x 0 to 40 to 170 past "%s:", colour table 0x43A148's first); the arrows on the cursor's row: a
         // list's left one always, a number's while above 0 and the right one while below 10; DEFAULT's YES / NO at x 200
-        // (the chosen 11, the other 22); help text 6 + row, its \S alternative the value
+        // (the chosen 11, the other 22); help text 6 + row, its \S alternative the value. On the cursor's row the main
+        // menu's entries ARCADE..TEKKEN BOWL (Bowl once open) right-aligned at x 600 from foot 250, 17 apart, size 4, in
+        // their colours where the option's `modes` bit is set, else 22, over a box 0x43FF50 (x 360 to 608, y 226 to 16
+        // above the next foot, black from alpha 0 to 0x80 rightwards). `backdrop`: the screen's blue (0x3BF2F8: table
+        // 0x440748's colour 11, (0, 0, 255), from black at x 0 and 640 to it in the middle, all at alpha 0x40 over the
+        // dimmed logo, as the PS2 shows it: the logo at a quarter, the middle 132 blue)
         // RECORDS (0x3B2978): "RECORDS" at (243, 40); left / right turn the pages (CHARACTER USAGE 0x3B2090, GREATEST
         // SURVIVORS 0x3B2358, TIME ATTACK 0x3B2670), their names at (x, 70) size 4 between the arrows at x 153 and 483
         // blinking every 24 frames (0x3B1F10); 6 rows from foot 130, 50 apart, each over a bar (0x3B15F8 with 26
-        // spaces: the colour table 0x43A148's entry 1, 2, 3); the rank (size 5 at x 70, 4 up) and its suffix (0x3B1EC8:
+        // spaces, 26 x 19.2 + 170 = 669 past x 40: the colour table 0x43A148's entry 1, 2, 3); the rank (size 5 at x 70, 4 up) and its suffix (0x3B1EC8:
         // ST, ND, RD, TH; size 4), the faces 40 x 42 at x 160 and 210, 46 up; then the columns {x, dy from the foot,
         // size, colour}: the name and "%3d.%1d%%" of the picks; the wins (999 at most), WIN / WINS, the name; the time,
-        // the name. Help text 24 + page. The name entry (0x3D0450): 3 letters of table 0x520BE8, round in 42
+        // the name. Help text 24 + page. `more`: "u" / "d" (0x3B1F78, "%H%V%cu" at (40, 120) / (40, 152), the feet,
+        // blinking with the page's arrows) where rows are above / below, the button icons' up and down (`003_003`'s 16 x 16
+        // cells 9 and 8) in yellow, as seen. `defaults`: the records a new save starts with. CHARACTER USAGE lists the
+        // selectable characters, most picked first (by id among equals), 0.0 % with none picked (0x3C84B8). The name entry (0x3D0450): 3 letters of table 0x520BE8, round in 42
         "records": {"title": "RECORDS", "title_xy": [243, 40], "page_y": 70, "page_size": 4, "arrows_x": [153, 483],
             "arrows_blink": 24, "row_y": 130, "row_dy": 50, "rank_x": 70, "suffixes": ["ST", "ND", "RD", "TH"],
-            "faces_x": [160, 210], "bar_w": 330, "help": 24,
+            "faces_x": [160, 210], "bar_w": 669, "help": 24, "defaults": {"times": default_times, "survivors": default_survivors},
+            "more": {"picture": "003_003.png", "cells": [9, 8], "cell": 16, "x": 40, "y": [120, 152], "tint": [255, 255, 0]},
             "pages": [
                 {"title": "CHARACTER USAGE", "x": 192, "colour": 14, "bar": [255, 0, 0, 0x60],
                     "columns": [{"x": 210, "dy": 0, "size": 4, "colour": 11}, {"x": 410, "dy": -6, "size": 5, "colour": 14}]},
@@ -426,7 +462,9 @@ pub fn front_end(elf: &[u8], ups: &[Upload], clips: &[Option<String>]) -> Result
             "band": {"x": [0, 40, 640], "y": [-24, 0], "colour": [0, 255, 128, 0x60]}, "help": 0,
             "game": {"title": format(elf, 0x51E4A0), "title_xy": [194, 40], "row_xy": [40, 90], "row_dy": 20,
                 "colours": {"label": 5, "cursor": 11, "value": 12, "default": 16, "off": 22}, "bar_past": 170,
-                "yes_no_x": 200, "help": 6}},
+                "yes_no_x": 200, "help": 6,
+                "modes": {"right": 600, "y": 250, "dy": 17, "size": 4, "off": 22, "box": {"x": [360, 608], "y": 226, "below": -16}}},
+            "backdrop": [0, 0, 255, 0x40]},
         // (0x3E5268 -> 0x3E06A0: help text n at (x, y) in the help font, 12 x 18 glyphs 16 a row (character - `first`;
         // the picture is uploaded 4 rows down, where the code counts its rows from), each advancing its byte of table 0x4572E0; a space 4 (0x3DF808: a line wider than `wrap` breaks and
         // spreads its spaces), `\n` a new line 20 lower, `\S[...]` the alternatives of which only the current value's is
