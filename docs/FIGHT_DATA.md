@@ -620,7 +620,13 @@ values: types 1-15 blend in over 35 frames, 16-30 cut; yaw offsets 0, +-341, +-6
 (0x394110). Slot 1 is framed at depth dist * 114 / 128.
 
 **Camera motions**: 485 in disc file 12 (`012.bin`, 506 656 bytes, the "not identified" file of FORMATS.md), u32
-offsets at 0x508130; streamed in 64-byte pieces (0x3923F0) and decoded with 2-bit delta codes per channel. As in
+offsets at 0x508130 (by motion - 1); streamed in 64-byte pieces (0x3923F0). A motion: a flag byte (returned to the
+director), then a frame each up to the next motion's offset (motions 1 and 2: 109 frames): a u16 of eight 2-bit
+codes (low bits first, channel 0 first) and the deltas they name: 0 none, 1 the channel's last delta again, 2 an s8,
+3 an s16 (little-endian). Each channel adds its delta to its total (0x8B92A0, s32, zeroed at the start): channels
+0-5 to the shot's s16 +2, +0xA, +0, +4, +8, +0xC (jump table 0x5088D0), 6 and 7 to its s32 +0x14 and +0x10 (the
+zoom, 128 on the first frame). Checked: 484 of 485 end exactly at the next's offset, the last one byte before the file's end:
+motion 1's first frame is (-395, -1155, 162, -5273, -678, -29, 703, 128), motion 2 its mirror in channel 3. As in
 Tekken 3: eye and target relative to the thrower's root, turned by the throw's facing, the zoom made a dolly when
 the arena's dolly flag is set (0x392B68), the weight channel sharing the shot with slot 0. The channel scale was not
 re-checked against Tekken 3's 20/32.
@@ -647,8 +653,12 @@ other than 1.
   (orbit 0x395D20, 0x395EE0, 0x396320, 0x396620; 0x3963C0 picks a preset of 0x509C10 by counter % 5) and plain fight
   framing. Only here (0x36D420 -> 0x393838 / 0x392E00, per frame 0x393550 in float) are the arena camera paths played:
   file id 0x40 + 4 * arena (the `190 + 7n` files), eye, target and H per frame, H clamp lifted to [1, 10000].
-- **Win pose** (modes 0xE / 0xF, 0x395718 -> 0x35BB58 / per frame 0x35BD20): eye at the winner's root + R (cos a,
-  sin a), R = H * 5200 / 955 + 1440 (4788 at H 615; Tekken 3 3978), a = 0x400 + rnd(+-113) - facing / 16, y =
+- **Win pose** (modes 0xE / 0xF, 0x395718 -> 0x35BB58 / per frame 0x35BD20; one camera, the A / B bit is stored but
+  not used): eye at the winner's root + R (cos a, sin a), R = H * 5200 / 955 + 1440 (H the live projection gp-0x7420;
+  4788 at H 615; Tekken 3 3978), a = 0x400 + rnd(+-113) - L / 16, where L (0x3D7DA8, 65536 a turn) is the angle of
+  light 0's direction (0x353C88: entry 0 of the light table 0x1FC42A0, turned in game state 4) by atan2(-x, -z),
+  negated: the winner is shot from beside the key light, not by its facing; per frame the eye closes 8 units a frame
+  while farther than H * 5200 / 955 and the view eases at >> 5 (0x35BA58, as Tekken 3's camera A); y =
   chest - 290 for the variant arena (the other height was not read). Its random number is the LCG gp-0x73FC: x = (x + 1) * 69069, r = (x >> 16) *
   0xE3 >> 16 - 0x71. Team lose (0x11 / 0x12) 0x395C90 -> 0x3959C8; 0x10 after mode 0xE / 0xF (0x395750).
 - **Tag**: no camera mode; the run-off and entrance moves carry ids 0x18 / 0x19, so the normal camera follows them
@@ -664,7 +674,8 @@ frame 16) checks for at least 150 frames, then starts at counter - 20 (state 2, 
 table 0x4FC630; pass counter gp-0x654C): passes 0-2 run at full speed, from the rewind point counter - 118 to
 counter - 85; the last pass at half speed to counter - 21; each pass sets camera mode 3 and a new shot (0x3D0748).
 Shots: one of 14 random sequences (0x520F88, 4 shot numbers, one per pass) of 42 shots (0x520C40, 20 bytes: target
-{0 other, 1 winner, 2 the midpoint at 0x1FAD3F0}, follow, pitch, yaw (+ facing / 16), roll, three random ranges,
+and follow {0 the winner's root +0x51C, 1 the loser's, 2 the loser's point +0x39C kept at the K.O. in 0x1FAD3F0
+(follow: none)} (the loser: player 1 while player 0's +0xB4 >= 0; after a throw both the loser's), pitch, yaw (+ facing / 16), roll, three random ranges,
 distance 3250 / 5000 / 7000 +- 100 / 500 scaled by H / 600); eye at least 1500 up, target at most 1800 up, pitch at
 most 568 (50 deg). Confidence: medium on the pass bounds, which are read from the end checks only.
 
