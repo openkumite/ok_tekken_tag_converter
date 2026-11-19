@@ -148,8 +148,9 @@ pub fn sound(elf: &[u8], banks: &[(usize, usize, usize)], characters: &[Value]) 
 }
 
 /// music.json: the BGM table (what the sound driver RSPU2DRV.IRX gets at boot, 0x397A00) and each arena's BGM.
-/// `files`: the music written, by its file in TEKKEN.BIN.
-pub fn music(elf: &[u8], files: &[usize]) -> Result<Value> {
+/// `files`: the music written, by its file in TEKKEN.BIN; `select_loop`: where the select's (kind 2, a bank's two
+/// samples written as one stream) loops from, in seconds.
+pub fn music(elf: &[u8], files: &[usize], select_loop: Option<f64>) -> Result<Value> {
     let what = "the BGM table";
     let mut bgm = Vec::with_capacity(BGM.1);
     for id in 0..BGM.1 {
@@ -157,11 +158,15 @@ pub fn music(elf: &[u8], files: &[usize]) -> Result<Value> {
         let s = |o| u16_at(e, o, what).map(|v| v as i16);
         let (kind, file, loop_sector) = (u8_at(e, 0, what)?, u16_at(e, 6, what)? as usize, s(8)?);
         let start = if id == ENDINGS_PIECE.0 { ENDINGS_PIECE.1 } else { 0 };
+        let looped = if kind == 2 {
+            select_loop
+        } else {
+            (kind == 1).then(|| (start + loop_sector.max(0) as i64) as f64 * SECTOR_SECONDS)
+        };
         // the driver reads a negative loop sector as 0
         let column = json!({"raw": [kind, u8_at(e, 1, what)? as i8, u16_at(e, 2, what)?, s(4)?, file, loop_sector],
             "kind": kind, "source_file": file, "file": files.contains(&file).then(|| format!("{file:02}.flac")),
-            "start_seconds": start as f64 * SECTOR_SECONDS, "loop": kind == 1,
-            "loop_seconds": (start + loop_sector.max(0) as i64) as f64 * SECTOR_SECONDS});
+            "start_seconds": start as f64 * SECTOR_SECONDS, "loop": looped.is_some(), "loop_seconds": looped.unwrap_or(0.0)});
         bgm.push(json!({"id": id, "columns": [column], "characters": []}));
     }
     let arenas = (0..BGM_BY_ARENA.1)
@@ -170,7 +175,7 @@ pub fn music(elf: &[u8], files: &[usize]) -> Result<Value> {
     Ok(json!({
         "dialect": "ttt",
         "bgm_table": "0x50CD00 (28 x 10 bytes: u8 kind, s8, u16, s16, u16 file of TEKKEN.BIN, s16 loop sector), sent to RSPU2DRV.IRX by 0x397A00; play: command 0x40 (0x39A0C0)",
-        "kinds": "1 a stream (loops from loop_seconds), 2 a sound bank (id 0: file 2, audio/sfx/002/, its left and right halves), 3 a stream played once",
+        "kinds": "1 a stream (loops from loop_seconds), 2 a sound bank (id 0: file 2, audio/sfx/002/, its left and right halves; also audio/music/02.flac, looping from the left half's loop start), 3 a stream played once",
         "names": "0 SELECT, 1 EMBU, 2 RESULT, 4 ENDING REPLAY, 5 NAME ENTRY, 6 STAFF ROLL, 8 CONTINUE?, 9-22 the arenas' themes (0x455D80); 23-27 jingles",
         "files_from": "audio/music/NN.flac: NN is the stream's file in TEKKEN.BIN; null for one that is not a stream",
         "bgm": bgm,
@@ -194,7 +199,7 @@ mod tests {
         put(&mut elf, BGM.0 + 10 * 9, &[0xea01, 9830, 0xffa3, 22, 93]); // Paul's: file 22, loop at sector 93
         put(&mut elf, BGM.0 + 10 * 7, &[1, 0, 0, 20, 0xac50]); // a negative loop sector
         put(&mut elf, BGM_BY_ARENA.0, &[9]);
-        let m = music(&elf, &[20, 22]).unwrap();
+        let m = music(&elf, &[20, 22], None).unwrap();
         let paul = &m["bgm"][9]["columns"][0];
         assert_eq!(
             (&paul["file"], &paul["loop"], &paul["raw"]),
@@ -210,6 +215,11 @@ mod tests {
             (&Value::Null, &json!(false))
         );
         assert_eq!(m["by_arena"]["bgm"][0], 9);
-        assert!(music(&elf[..BGM.0 + 100], &[]).is_err());
+        assert!(music(&elf[..BGM.0 + 100], &[], None).is_err());
+        // the select's bank: its stream and loop when written
+        elf[BGM.0] = 2;
+        put(&mut elf, BGM.0 + 6, &[2]);
+        let s = &music(&elf, &[2], Some(0.5)).unwrap()["bgm"][0]["columns"][0];
+        assert_eq!((&s["file"], &s["loop"], &s["loop_seconds"]), (&json!("02.flac"), &json!(true), &json!(0.5)));
     }
 }

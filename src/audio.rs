@@ -47,8 +47,9 @@ pub fn wav(rate: u32, channels: u16, pcm: &[i16]) -> Vec<u8> {
     w
 }
 
-/// A sound bank: "VAGp" files back to back. Returns (name, rate, samples).
-pub fn vag_bank(d: &[u8]) -> Vec<(String, u32, Vec<i16>)> {
+/// A sound bank: "VAGp" files back to back. Returns (name, rate, samples, the sample its loop starts at: the SPU
+/// goes back there from the frame flagged loop end, flag bit 4 marks the start).
+pub fn vag_bank(d: &[u8]) -> Vec<(String, u32, Vec<i16>, Option<usize>)> {
     let (mut o, mut out) = (0, Vec::new());
     while let Some((head, body)) = d.get(o..).and_then(|d| d.split_at_checked(0x30)) {
         if !head.starts_with(b"VAGp") {
@@ -59,7 +60,9 @@ pub fn vag_bank(d: &[u8]) -> Vec<(String, u32, Vec<i16>)> {
         let (size, rate) = ((be(12) as usize).min(body.len()), be(16));
         let name = head.get(0x20..).unwrap_or_default();
         let name: String = name.iter().take_while(|&&c| c != 0).map(|&c| c as char).collect();
-        out.push((name, rate, adpcm(body.get(..size).unwrap_or(body))));
+        let body = body.get(..size).unwrap_or(body);
+        let start = body.as_chunks::<16>().0.iter().position(|f| f[1] & 4 != 0).map(|k| k * 28);
+        out.push((name, rate, adpcm(body), start));
         o += 0x30 + size;
     }
     out
@@ -114,11 +117,12 @@ mod tests {
         vag[16..20].copy_from_slice(&22050u32.to_be_bytes());
         vag[0x20..0x24].copy_from_slice(b"kick");
         vag.resize(0x30 + 32, 0);
+        vag[0x30 + 17] = 6; // the second frame starts the loop
         let mut bank = vag.clone();
         bank.extend(&vag);
         let sounds = vag_bank(&bank);
         assert_eq!(sounds.len(), 2);
-        assert_eq!((sounds[1].0.as_str(), sounds[1].1, sounds[1].2.len()), ("kick", 22050, 56));
+        assert_eq!((sounds[1].0.as_str(), sounds[1].1, sounds[1].2.len(), sounds[1].3), ("kick", 22050, 56, Some(28)));
         // a size past the end takes what there is; a cut header is no sound
         vag[12..16].copy_from_slice(&u32::MAX.to_be_bytes());
         assert_eq!(vag_bank(&vag)[0].2.len(), 56);

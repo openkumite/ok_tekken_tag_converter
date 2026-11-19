@@ -121,6 +121,12 @@ pub fn front_end(elf: &[u8], ups: &[Upload], clips: &[Option<String>]) -> Result
     let u8s = |addr: usize, n: usize| -> Result<Vec<u8>> { (0..n).map(|i| u8_at(elf, a(addr) + i, what)).collect() };
     let i32_at = |addr: usize| -> Result<i32> { Ok(u32_at(elf, a(addr), what)? as i32) };
     let s16 = |addr: usize| -> Result<i16> { Ok(u16_at(elf, a(addr), what)? as i16) };
+    // the small font's printf colour n (%c) -> its palette (0x3C68A8: table 0x51FE98, a sprite id of file 3 a colour) as
+    // `fonts.small.colours`' index (palette uploads 9-44); one not among them (colour 11's upload 0, an image) shows
+    // white on the PS2: colour 0's
+    let small_colour = |n: usize| -> Result<usize> {
+        Ok((u32_at(elf, a(0x51FE98 + 4 * n), what)? as usize).checked_sub(9).filter(|&c| c < FONT_COLOURS).unwrap_or(0))
+    };
     // the main menu 0x51EFE0: {label*, id, locked, help, 0}
     let mut menu = vec![];
     for i in 0..12 {
@@ -211,9 +217,8 @@ pub fn front_end(elf: &[u8], ups: &[Upload], clips: &[Option<String>]) -> Result
             "copyright": [string(elf, 0x51EF40).replace('@', "©"), string(elf, 0x51EF70)], "copyright_y": [409, 429],
             "press_y": 329, "blink_mask": 0x30, "from_white": 43, "namco": {"picture": "134_000.png", "x": 257, "y": 350},
             // (the small font, from the left x, y the text's foot: the line at 336 - 16 less its width 0xD8 (0x3BC868),
-            // the copyright at 0x24 and 0x123 (0x3BCC0C); their colours as the PS2 shows them: the code's 5 and 11 are
-            // the font's palettes 31 and 0 [M])
-            "press_x": 120, "press_colour": 31, "copyright_x": [0x24, 0x123], "copyright_colour": 0},
+            // the copyright at 0x24 and 0x123 (0x3BCC0C); the code's colours 5 and 11)
+            "press_x": 120, "press_colour": small_colour(5)?, "copyright_x": [0x24, 0x123], "copyright_colour": small_colour(11)?},
         // the sound ids the front end plays (group 0: 3 cursor, 4 select 1, 5 select 2; FRONTEND.md 9)
         "sounds": {"cursor": 3, "start": 4, "decide": 5, "cancel": 3, "pick": 4, "last_pick": 5},
         // the chrome font: 12 glyphs of 52 x 42 a row (read off the picture, not the code)
@@ -238,13 +243,20 @@ pub fn front_end(elf: &[u8], ups: &[Upload], clips: &[Option<String>]) -> Result
             "random_roll": 3, "plates": [[[138, 264], [41, 238]], [[376, 264], [475, 238]]],
             "timer": {"frames": 2400, "x": 320, "y": 260, "blink": {"below": 6, "period": 30, "off": 8}}, "done": 90,
             // (1P's cursor starts on Xiaoyu's slot, as the PS2 shows it; 2P's on Jin's, the other end of the row [L])
-            "start_slots": [18, 27], "ordinal": {"text": string(elf, 0x5205C8), "x": [62, 480], "y": 350},
+            // (0x3CC660: "1ST" while the side has no pick, not in mode 5; 0x3CB4B4: "2ND" once it has, not in modes 5
+            // and 6, while its partner's place stands nobody (select +0x14 + 4 x side) and `second_after` frames after
+            // the pick (the side's +0x18, set by 0x3CA9B4))
+            "start_slots": [18, 27], "ordinal": {"text": string(elf, 0x5205C8), "x": [62, 480], "y": 350,
+                "second": string(elf, 0x5204B8), "second_after": 90},
+            // (BGM 0 from the select's frame 18, select +0x10; it stops as the select ends: the VS screen is silent, as
+            // the PS2 plays it)
+            "music": {"bgm": 0, "from": 18},
             // (0x3CC4A4 -> 0x3BC828: the side nobody plays, while frame & 0x30: INSERT COIN (0x3BCA30, 0x51EE98), or
             // the credits (0x3BC650, 0x51EF00, its leading space kept) while frame & 0x40; 0x3BC868: centred on 160 +
             // 320 x side by a width of 12.8 a letter (16 x 4 / 5: size 4; the PS2 shows it there) [M], its foot
-            // at y 400, the small font; the code passes colour 0x11, the PS2 shows the green of palette 29 [M])
+            // at y 400, the small font, colour 3 (0x3CC4A4's a3))
             "insert": {"texts": [string(elf, 0x51EE98), format!(" {}", string(elf, 0x51EF00))], "x": [160, 480], "y": 400,
-                "colour": 29, "show_mask": 0x30, "second_mask": 0x40, "measure": 12.8},
+                "colour": small_colour(3)?, "show_mask": 0x30, "second_mask": 0x40, "measure": 12.8},
             "faces": faces, "random_face": sprite(162), "locked_face": sprite(165), "cursor": sprite(174), "cursor_dxy": [-2, -2],
             "tags": [sprite(119), sprite(121), sprite(123), sprite(124), sprite(125), sprite(126), sprite(127)],
             "selectable": set(0x51E850)?, "copy_pool": set(0x51E8A0)?, "portraits": portraits,
@@ -262,7 +274,14 @@ pub fn front_end(elf: &[u8], ups: &[Upload], clips: &[Option<String>]) -> Result
         // (0xF7 / 0xF8) centred at y 340 in the VS modes (gp-0x7440 and -0x743E), else the stage's texts
         "vs": {"background": "142_000.png", "logo": "142_001.png", "logo_y": 340, "steps": 10, "portrait": [188, 256],
             "feather": 20, "places": [[[-257, 38, 20, 3], [-360, 38, 216, -3]], [[708, -38, 20, 3], [810, -38, 216, -3]]],
-            "team_dy": [-22, -90]},
+            "team_dy": [-22, -90],
+            // (0x3C410C, by mode, table 0x51F740: modes 0, 3, 5 "STAGE" and the fight's number, the eighth "FINAL" over
+            // "STAGE"; 2 and 4 "FIGHT" and the number; 7 "PRACTICE"; none in 1 and 6. The printf's size (7, 8, 10) as a
+            // scale of the chrome font's 42-pixel glyphs (size / 9.6), the lines' tops (from its y 350 and 385) and the colour
+            // (its %c 14: palette 14, silver edged in red) are as the PS2 shows them [M])
+            "texts": {"stage": string(elf, 0x51F6C0), "final": string(elf, 0x51F6F0), "fight": string(elf, 0x51F700),
+                "practice": string(elf, 0x51F710), "final_number": 8, "stage_modes": [0, 3, 5], "fight_modes": [2, 4],
+                "practice_modes": [7], "tops": [330, 366], "scales": {"text": 0.73, "final": 0.83, "number": 1.04}, "colour": 14}},
         "hud": {"bars": {"x": [29, 370], "y": 30, "w": 240, "h": 28},
             "strips": (0..6).map(|i| sprite(45 + 2 * i)).collect::<Vec<_>>(),
             "angry_strips": (6..12).map(|i| format!("003_{i:03}_angry.png")).collect::<Vec<_>>(), "angry_at": 120, "angry_blink": 8,
