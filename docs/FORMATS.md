@@ -58,7 +58,7 @@ Padding between parts is `0xAB`.
 | Files | Content | Status |
 |---|---|---|
 | 1, 2, 45, 187 + 7k, 344 + 3k | sound banks (`VAGp` files back to back) | exported |
-| 14, 15, 16 | movies: MPEG-2 video with stereo sound | exported |
+| 14, 15, 16 | movies: MPEG-2 video with stereo sound | decoded (Motion-JPEG AVI, FLAC) |
 | 17–40, 44 | music and jingles (stereo stream) | exported |
 | 3–9, 43, 46, 129–136, 141–182 | 2D art: fonts, name plates, portraits, menus, logos | exported |
 | 10, 133 | motion banks | exported |
@@ -74,8 +74,11 @@ Padding between parts is `0xAB`.
   data at +0x30) one after another. 2 350 sounds in 156 banks.
 - **Stream**: no header. 2048-byte sectors, left channel in the first 1024 bytes and right in the
   second, 16-byte PS-ADPCM frames, 44 100 Hz. A frame with flag byte 7 ends the sound.
-- **Movie**: 16 KiB MPEG-2 program-stream packs (`00 00 01 BA`, video stream `E0`, 640x448, 30 fps),
-  with sound sectors of the stream format between them (7 before the first pack).
+- **Movie**: 16 KiB MPEG-2 program-stream packs (`00 00 01 BA`, video stream `E0`, 640x448, 30 fps, progressive,
+  4:2:0), with sound sectors of the stream format between them: 7 sound sectors, then 16 packs, over and over (135
+  sectors). The layout must be taken by place: once a movie's sound has ended (its end-marker frame), the sound
+  sectors hold leftovers, some of them copies of packs, which taken as packs break the pictures. So split, all three
+  decode without an error (2034, 848 and 1350 pictures; the sound 67.7, 25.4 and 45.0 s).
 
 One stream file can hold several pieces: the endings' music is sectors 3319–4495 of file 20 (BGM id 7 starts
 there, a constant of 0x397AB8; FIGHT_DATA.md section 14). Each file is one WAV (and one FLAC under `assets/`).

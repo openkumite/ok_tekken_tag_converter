@@ -24,6 +24,9 @@ png = "0.18"
 libm = "=0.2.16"
 # the fingerprint of OpenKumite's files (the Tekken 3 converter's)
 sha2 = "0.11"
+# the movies: their MPEG-2 pictures decoded (pure Rust, no unsafe: it builds for the browser too), each made a JPEG
+filmcraft-mpeg2v = { version = "0.9", default-features = false }
+image = { version = "0.25", default-features = false, features = ["jpeg"] }
 
 [dev-dependencies]
 # the tests read the written glbs as OpenKumite does

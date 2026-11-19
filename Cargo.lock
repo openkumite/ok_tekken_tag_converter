@@ -274,6 +274,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "filmcraft-mpeg2v"
+version = "0.9.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2e014fdc8f78eff0f4280a829b78f04a561f0ea5caf4a9d3506adb4b00c7819e"
+dependencies = [
+ "thiserror",
+]
+
+[[package]]
 name = "flacenc"
 version = "0.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -614,7 +623,9 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "cargo-husky",
+ "filmcraft-mpeg2v",
  "gltf",
+ "image",
  "libm",
  "ok_converter_common",
  "png",
@@ -820,6 +831,26 @@ name = "text_io"
 version = "0.1.13"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4d8d3ca3b06292094e03841d8995e910712d2a10b5869c8f9725385b29761115"
+
+[[package]]
+name = "thiserror"
+version = "2.0.21"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "09e52cb86a36cede5cb101bf8908837b3e4c6e5e59fe7fd85c23fb56200d189e"
+dependencies = [
+ "thiserror-impl",
+]
+
+[[package]]
+name = "thiserror-impl"
+version = "2.0.21"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fe5197923287db20a58125f0bc85c062f7f2c892de97b18c356f9efb14b28524"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 3.0.10",
+]
 
 [[package]]
 name = "typed-path"

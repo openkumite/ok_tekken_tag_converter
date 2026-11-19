@@ -11,7 +11,7 @@
 //! stages/NNN.glb       the arenas; NNN_pK.glb their background characters, NNN_mK.glb those characters' motions
 //! textures/NNN_KKK.png the pictures
 //! audio/NNN_KKK.wav    the sounds; audio/NNN.wav the music, and the movies' sound
-//! video/NNN.pss        the movies' pictures as on the disc (MPEG-2 program stream): not converted yet
+//! video/NNN.pss        the movies' pictures as on the disc (MPEG-2 program stream)
 //! raw/NNN.bin          files and packs not (fully) decoded, as on the disc, unscrambled
 //! gamedata/*.json      the fight data: moves, cancels, hits, reactions, rules, movesets/ (docs/GAMEDATA.md)
 //! assets/              what OpenKumite reads, laid out as it reads Tekken 3's (`assets`, docs/GAMEDATA.md "assets/"):
@@ -30,6 +30,8 @@
 //!   gamedata/shadows.json, stages.json  the fighters' shadow meshes, each arena's shadow (docs/EFFECTS.md)
 //!   audio/sfx/NNN/KKK.wav     the sound banks' samples (NNN: the bank's file in TEKKEN.BIN); audio/music/NN.flac the
 //!                             music streams (NN: their file); audio/index.json
+//!   video/NN.avi, NN.flac     the movies (NN: their file, 14 the opening, 15 the arcade's, 16 Unknown's ending): their
+//!                             pictures as Motion-JPEG at their own size and rate, their sound (`movie`)
 //!   endings/ending_EE_*       ending EE's scene (gamedata/endings.json names the files): its camera path
 //!                             (`_camera.bin`), its actor slots' body tracks as clips `ending_EE_K` (`_K.glb`), its face
 //!                             and hand tracks (`_face.bin`, `_hands.bin`) as on the disc
@@ -39,7 +41,7 @@
 
 use crate::archive::{self, Archive};
 use crate::{
-    anim, assets, audio, bowl, effects, ending, fight, front, model, moves, objects, sound, stage, tex, u32le,
+    anim, assets, audio, bowl, effects, ending, fight, front, model, moves, movie, objects, sound, stage, tex, u32le,
 };
 use anyhow::{Context, Result, bail};
 use ok_converter_common::io::{Ctx, DiscFile, Sub, Vfs};
@@ -55,8 +57,9 @@ use std::collections::{BTreeSet, HashMap, HashSet};
 /// 14: the arenas' objects, placed and moved, and their added and multiplying strips, in their stages; 15: the front
 /// end's motion, its sounds per action, the font's colours; 16: the select's 3D characters; 17: the front end's
 /// sounds and music, the small font's colours; 18: the fight HUD as drawn, its round texts and the chrome font's advances;
-/// 19: ai.json `survival`).
-pub const FORMAT: i64 = 20;
+/// 19: ai.json `survival`; 20: Yoshimitsu's CPU handler in ai.json; 21: the movies, `assets/video/`, and the EMBU,
+/// endings.json `embu`).
+pub const FORMAT: i64 = 21;
 /// What a pack's manifest names it.
 pub const KIND: &str = "ttt";
 
@@ -130,7 +133,7 @@ pub fn convert(ctx: &Ctx, src: &dyn DiscFile, research: bool) -> Result<Value> {
     let (mut sounds, mut music, mut video, mut raw, mut models, mut textures, mut stages) =
         (vec![], vec![], vec![], vec![], vec![], vec![], vec![]);
     // OpenKumite's audio/index.json, and each bank's (file, bytes, samples) and each music stream's file
-    let (mut sfx, mut tracks, mut banks, mut streams) = (vec![], vec![], vec![], vec![]);
+    let (mut sfx, mut tracks, mut banks, mut streams, mut movies) = (vec![], vec![], vec![], vec![], vec![]);
     // where the select's music loops from (seconds)
     let mut select_loop = None;
     let roster = moves::roster(&a.elf)?;
@@ -197,12 +200,26 @@ pub fn convert(ctx: &Ctx, src: &dyn DiscFile, research: bool) -> Result<Value> {
                 tracks.push(json!({"name": format!("stream file {i}"), "file": flac, "seconds": seconds}));
                 streams.push(i);
             } else {
-                // not converted yet: the pictures as on the disc, the sound beside them
                 let file = format!("video/{i:03}.pss");
                 if research {
                     out.write(&file, &pss)?;
                 }
-                video.push(json!({"id": i, "file": file, "sound": wav, "seconds": seconds, "converted": false}));
+                video.push(json!({"id": i, "file": file, "sound": wav, "seconds": seconds}));
+                // OpenKumite's: video/NN.avi and NN.flac
+                let (avi, frames, fps, errors) = movie::avi(&pss).with_context(|| format!("movie {i}"))?;
+                if errors > 0 {
+                    ctx.log(&format!(
+                        "[ttt] movie {i}: {errors} damaged pictures (concealed): the image is not a good copy"
+                    ));
+                }
+                assets.write(&format!("video/{i:02}.avi"), &avi)?;
+                assets.write(
+                    &format!("video/{i:02}.flac"),
+                    &psx::flac(&psx::Pcm { rate: 44100, channels: 2, samples: pcm })?,
+                )?;
+                let name = ["opening", "arcade", "Unknown's ending"].get(i.wrapping_sub(14)).unwrap_or(&"movie");
+                movies.push(json!({"name": name, "file": format!("{i:02}.avi"), "audio_file": format!("{i:02}.flac"),
+                    "fps": fps, "frames": frames, "seconds": seconds}));
             }
         } else if let Some((m, ups)) = pack.as_ref().and_then(|p| {
             let m = p.iter().find_map(|c| model::parse(c))?;
@@ -371,7 +388,7 @@ pub fn convert(ctx: &Ctx, src: &dyn DiscFile, research: bool) -> Result<Value> {
         }
     }
     ctx.log(&format!(
-        "[ttt] {} fighters, {} arenas, {} files of pictures, {} sound banks, {} music tracks, {} movies (not converted: as on the disc), {} files kept raw",
+        "[ttt] {} fighters, {} arenas, {} files of pictures, {} sound banks, {} music tracks, {} movies, {} files kept raw",
         models.len(),
         stages.len(),
         textures.len(),
@@ -494,22 +511,31 @@ pub fn convert(ctx: &Ctx, src: &dyn DiscFile, research: bool) -> Result<Value> {
         }
         None => ctx.log("[ttt] the effect files' pictures are not as expected: no hit effects"),
     }
-    assets.write("audio/index.json", serde_json::to_string(&json!({"sfx": sfx, "music": tracks}))?.as_bytes())?;
-    // the endings: their tables, and each scene's files
-    assets.write("gamedata/endings.json", serde_json::to_string(&ending::endings(&a.elf)?)?.as_bytes())?;
-    for e in 0..ending::COUNT {
-        let (camera, pack) = ending::files(e);
+    assets.write(
+        "audio/index.json",
+        serde_json::to_string(&json!({"sfx": sfx, "music": tracks, "video": movies}))?.as_bytes(),
+    )?;
+    // the endings and the EMBU: their tables, and each scene's files (the EMBU's camera file holds its 22 paths)
+    let mut endings = ending::endings(&a.elf)?;
+    let scenes =
+        (0..ending::COUNT).map(|e| (format!("ending_{e:02}"), ending::files(e))).chain([("embu".into(), ending::EMBU)]);
+    for (name, (camera, pack)) in scenes {
         let (camera, pack) = (a.read(camera)?, a.read(pack)?);
-        assets.write(&format!("endings/ending_{e:02}_camera.bin"), &camera)?;
-        for (k, glb) in ending::body_clips(e, &pack).iter().enumerate() {
-            assets.write(&format!("endings/ending_{e:02}_{k}.glb"), glb)?;
+        assets.write(&format!("endings/{name}_camera.bin"), &camera)?;
+        let clips = ending::body_clips(&name, &pack);
+        for (k, glb) in clips.iter().enumerate() {
+            assets.write(&format!("endings/{name}_{k}.glb"), glb)?;
         }
-        for (k, name) in [(1, "face"), (2, "hands")] {
+        if let (true, Some(e)) = (name == "embu", endings.get_mut("embu").and_then(Value::as_object_mut)) {
+            e.insert("body".into(), json!((0..clips.len()).map(|k| format!("embu_{k}.glb")).collect::<Vec<_>>()));
+        }
+        for (k, part) in [(1, "face"), (2, "hands")] {
             if let Some(p) = ending::part(&pack, k) {
-                assets.write(&format!("endings/ending_{e:02}_{name}.bin"), p)?;
+                assets.write(&format!("endings/{name}_{part}.bin"), p)?;
             }
         }
     }
+    assets.write("gamedata/endings.json", serde_json::to_string(&endings)?.as_bytes())?;
     let mut roster = assets::roster(&roster, &characters);
     if let Some(r) = roster.as_object_mut() {
         r.insert("front_end".into(), front::front_end(&a.elf, &atlas, &clips)?);

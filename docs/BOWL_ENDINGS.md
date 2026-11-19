@@ -312,6 +312,32 @@ name (5), 2 blank, 3 centred final page, 4 last lines; flag 0x10000 = alternativ
 Tekken Bowl is unlocked, then "TEKKEN BOWL PROGRAMMER"); scroll 1.5 px a frame from y 480, a line every 32 px, up to
 64 on screen; ends "TM AND (C)1994 1995 1996 1999 / NAMCO LTD. / ALL RIGHTS RESERVED".
 
+### 7.6 The EMBU (scene 1, 0x3A97B0; state machine 0x3A9AB8, table 0x519B30) [H unless marked]
+
+Set-up 0x3A97B0: gp-0x6E94 counts the plays; once config +0x37 is set (0x3BFDC8) odd plays take cast 1, else cast
+0 (gp-0x6E98 = 0x437CE0 + 0x18 x cast); the arena gp-0x6E90 is 4 for cast 0, 13 for cast 1 (stored to gp-0x743A);
+scene 1: camera file 41 (0x392E00(0): `u32 count` 22, `u32 offsets[22]`, each an ending's path), motion pack file 42
+(30 body tracks, 30 face, 60 hands). States: 0 (0x3A9B34) clears the two slot records (0x8D78B0, 12 bytes: +0 state,
++6 track, +8 last frame, +0xA frame) and points the script gp-0x63D4 at **0x519B90**; 1-2 fade to white over 44
+frames; 3 (0x3A9E48) runs the script, then 0x3A9898; 4 the end (op -1, START, or 7200 frames).
+
+The script: 81 records `{s16 frame, op, a, b, c}`, ops by table 0x519B50:
+
+| Op | Does |
+|---|---|
+| 0 / 1 | cast member a (0-5; past it 0) into slot 0 / 1 (0x35C8D0), its record cleared (state 0: not drawn) |
+| 14 | the same for slot 0, its record kept (a member swapped in mid-track) |
+| 2 / 3 | slot 0 / 1 plays track a from frame b to c (state 2); 0x3A9898 shows frame +0xA, then +1, and past c the slot goes back to state 0 and is not drawn (+0x127 = 0) [M on +0x127] |
+| 4 | camera path a from frame b (c 999 unused); the path's frame +1 a frame (0x392F80) |
+| 5 / 6 | from / to white over a frames (0x3A67D0 / 0x3A6770) |
+| 7 | arena 4 only: 0x3A7FA8(a, b) [L: its lightning] |
+| 8, 9, 11, 12 | 0x363628(a); 0x3A6BC0(); 0x3A68D0(a, white); 0x3A88A0 / 0x3A8890 on slot a & 1 by b [L] |
+| 10 | an effect at slot a & 1's joint b (0x3A2BC0) [M] |
+| 13 | the music: 0x39A0C0(1), BGM 1 (EMBU) |
+
+It runs 2289 frames: white fades in over 128 while camera path 0 shows the empty arena (frames 0-487); then the
+two actors' katas on 22 camera paths; white out over 106 frames from 2184. Exported as endings.json `embu`.
+
 ## 8. Theater and Gallery
 
 **Theater** (screen 0xC, shown when config +0x10 != 0) [H]: one row per character 0-33, labels 0x455E50 (8 per row,

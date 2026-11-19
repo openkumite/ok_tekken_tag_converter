@@ -136,13 +136,7 @@ fn the_disc_converts_twice_the_same() {
     let sounds: usize = m["sounds"].as_array().unwrap().iter().map(|s| s["sounds"].as_array().unwrap().len()).sum();
     assert_eq!((count("models"), count("stages"), count("anims"), sounds), (133, 23, 4291, 2350));
     assert_eq!((count("music"), count("video"), count("movesets"), count("own")), (25, 3, 33, 33));
-    assert!(
-        m["video"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .all(|v| v["converted"] == false && v["file"].as_str().unwrap().ends_with(".pss"))
-    );
+    assert!(m["video"].as_array().unwrap().iter().all(|v| v["file"].as_str().unwrap().ends_with(".pss")));
     // every file the manifest names is in the pack, and no other
     const FOLDERS: [&str; 8] = ["models", "anims", "stages", "textures", "audio", "video", "raw", "gamedata"];
     fn files(v: &serde_json::Value, out: &mut Vec<String>) {
