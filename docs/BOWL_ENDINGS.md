@@ -302,7 +302,17 @@ tracks `u16 frames, u16 triples`, then frames x triples x 3 s16, uncompressed; t
 |---|---|---|---|
 | 0 (gp-0x657C) | 19 | the 57 motion channels of FORMATS 8 (root heading, height, distance, 18 joints x 3), replacing the motion decoder's output (0x3639F0 -> 0x3640B0) | [H] |
 | 1 (gp-0x6578) | 33 | the **face**: like fighter-pack part 5; a 3-frame dummy for masked actors (King, Armor King, Yoshimitsu, Kunimitsu, the Jacks, Kuma, Mokujin, Ogre); used when fighter +0x3088 >= 50 (track = id - 50) | [M] |
-| 2 (gp-0x6574) | 15 | two tracks per actor (2a, 2a + 1): the **hands**, 5 fingers x 3 joints (fighter +0x3074 / +0x3078 >= 50) | [M] |
+| 2 (gp-0x6574) | 15 | two tracks per actor (2a, 2a + 1): the **hands**, 5 fingers x 3 joints (fighter +0x3074 / +0x3078 >= 50; below) | [H] |
+
+**The hands** (0x3DE0D8, track by 0x364390): track 2a turns hand_A's 15 nodes 39-53 (the nodes under node 38),
+2a + 1 hand_B's 64-78. Each triple, 65536 a turn, makes a matrix as a joint's (0x349D70) that replaces the node's
+local turn, its bind position kept (0x34A180 blends the rows at weight +0x3080 / +0x307C, 1 in a scene (0x3634F4),
+then 0x34A710 squares them up). hand_A takes (-x, -y, z) as a motion's joints do (0x3DD788); hand_B mirrors by joint
+(table 0x522CC0): node 64 (x - pi, -y, -z), 65-66 (-x, -y, z), then per finger (x, -y, -z), (x, -y, -z), (-x, -y,
+-z). A fighter's own hands (+0x3074 = 0) come from its character's track (0x3672D0, frame +0x306C); 1-49 none.
+**The face** (0x3DD918, 0x364298): nodes 7-28 under the head, by table 0x522C60 a mix of turns, scales (0x3DD800,
+1/4096) and offsets (0x3DD890, x fighter +0x500 / 40960) from the 33 triples, over a per-character rest table
+(0x3B87F8, 12 bytes a node), the eyes aimed through VU0 code (nodes 13, 14) [M]: not exported further.
 
 Every track is sampled at the camera's frame (gp-0x63A0), clamped at its end: all frame-locked. Ending files are
 47-122. Scene 0 (file 41) is a set of 22 camera paths. **Scene 1** (files 41 / 42) is the **EMBU** exhibition
@@ -322,8 +332,11 @@ scene; hard cap 7200 frames. [H]
 | 4 | camera = path a from frame b (c = 1800, unused) | [H] |
 | 19 / 20 | fade in / out from / to black over a frames (0x3AC5D0) | [H] |
 | 5 / 6 | flash (alpha b to 0 over a frames) / fade to colour 10 | [M] |
-| 10, 17, 18 | effects at an actor's joint b (0x3A2BC0, 0x3A2758) | [L] |
-| 12, 16, 26-28, 31 | show / hide, position offset (0x378368), flags, clear objects, Kuma / Panda +0xB052, 0x34CB38 | [L] |
+| 17 | a burst 0x3A2758(kind (a >> 1) & 3, at, 0, 0) at actor a & 1's node b (its matrix +0x30, fighter 0x8796C0 + 0xB8A0 x side + 0xDB0 + 0xC0 x node; y, z negated), turned away from the other actor's node c (at +0x10: the difference); b = 0x4002: the matrix 0x444CD0 instead (0x3D2270) | [H] |
+| 18 | the dust 0x3A2758(3, at, flag 1, c x 2 pi / 4096) at actor a & 1's node b: spinning c x 2 pi / 4096 a frame (+0x84 into +0x74 each frame, 0x3A06F0); b = 0x62: the actor's place on the floor (fighter +0x510 x, z; y 0), flag 0; 0x4000: twenty objects 0x3ACCD0 (0x3ACEE0) instead; 0x4001: the point gp-struct 0x415808 +0x14 (y - 800), flag 0; 0x4002: as op 17's. With the flag, dust more than 500 mm up is 3 particles at the set's own size and colour 0x808080, not the arena's row | [H] |
+| 10 | the character effect 0x3A2BC0(side c & 1, 0, at) at actor c & 1's node b (0x4003: the point 0x5F6280 through the actor's +0x974 matrix, plus +0x988): particles of the side's own set (4 + side, the character's effect file by 0x35C970 -> table 0x519438) [M] | [M] |
+| 12 | actor a & 1's texture channel 0 (0x8D5E20, 4 players x 2 x 16 bytes) to frame 1 (b = 0) or 0 (0x3A86D8) [M: what the channel animates] | [M] |
+| 16, 26-28, 31 | position offset (0x378368), flags, clear objects, Kuma / Panda +0xB052, 0x34CB38 | [L] |
 | 21-25, 29, 30, 32 | spawn 2D / 3D effect objects (0x3AC7C0 ... 0x3AA410) | [L] |
 | 7-9, 11, 13, 14 | no-op | [H] |
 
@@ -339,11 +352,18 @@ ROLL), then the staff roll runs 4620 frames (77 s) first; START skips it, the mu
 sectors in), and the scene plays (START skips, 4-frame fade); the game then waits for the staff roll to end or
 START [M on credits over the scene].
 
-Staff roll 0x3AC018 (12 states, table 0x51DCB0): cards "TEKKEN TAG TOURNAMENT", "NAMCO PRODUCTION STAFF", logos
-0xAB / 0xAC (170 frames each), then list 0x51B880 (434 `{u32 kind, char *text, u32 font}`: 0 heading (font 7), 1
+Staff roll 0x3AC018 (12 states, table 0x51DCB0, record 0x8D7DE0): state 1 fades from black over 171 frames
+(0x3A67D0(0xAB, 0, 0, 0)); states 2-4 show the card "TEKKEN TAG TOURNAMENT" (0x3ABEC0), 5-7 "NAMCO PRODUCTION STAFF"
+(0x3ABF18), 171 frames a state (a 170 timer to -1): each card in the chrome font (`%F` 10) at size 5, colour 11,
+centred on 640, at y 200; state 3's end fades to black over 171 (0x3A6770(0xAB)), state 4's from black over 171,
+state 6's to black over 172 (0xAC). There are no logos: 0xAB / 0xAC are the fades' lengths. State 8 (frame 1027)
+starts list 0x51B880 (434 `{u32 kind, char *text, u32 font}`: 0 heading (font 7), 1
 name (5), 2 blank, 3 centred final page, 4 last lines; flag 0x10000 = alternative: "SECRET MODE PROGRAMMER" until
-Tekken Bowl is unlocked, then "TEKKEN BOWL PROGRAMMER"); scroll 1.5 px a frame from y 480, a line every 32 px, up to
-64 on screen; ends "TM AND (C)1994 1995 1996 1999 / NAMCO LTD. / ALL RIGHTS RESERVED".
+Tekken Bowl is unlocked, then "TEKKEN BOWL PROGRAMMER"); each line `%F%S%H%V%c%s` (0x51DC98) at size 4, its `font` the `%c` colour (7 headings, 5 names, 8 notes), x by kind
+(0x3ABF70: 0 at 48, 1 at 304, 2 ending at 608, 3 and 4 centred; so kind 2 is a right-aligned line, often empty);
+scroll 1.5 px a frame (y << 8 less 0x180) from y 480, freed above 0, up to 64 on screen; a new line when a timer of
+0x180 a frame passes 32 px, then from 0 (22 frames: 33 px apart); a negative `font` is the end mark: 139 frames more
+(state 10, to 0xD000), then the lines stand for 210 frames (state 11) and gp-0x6E56 = 1. It ends "TM AND (C)1994 1995 1996 1999 / NAMCO LTD. / ALL RIGHTS RESERVED".
 
 ### 7.6 The EMBU (scene 1, 0x3A97B0; state machine 0x3A9AB8, table 0x519B30) [H unless marked]
 
@@ -401,9 +421,9 @@ Ranked by how much a player would notice:
    and inertia, the exact down test. A port needs a rigid-body step with the constants of section 3; it will not
    match pin for pin without decoding these.
 2. Ending effect ops (10, 17, 18, 21-25, 29, 30, 32): the visible flourishes in many endings.
-3. The face part's joint mapping (33 triples).
+3. The face part's joint mapping (33 triples; section 7.3's outline).
 4. The results' and the records' screen layouts (0x3F1570, 0x3F2D98) and the name entry (0x3F2EB8).
-5. Whether the staff roll draws over the ending scene; the flash / fade colours (table 0x43FD10, 9 and 10).
+5. Whether the staff roll draws over the ending scene (its texts are 7.5's); the flash / fade colours (table 0x43FD10, 9 and 10).
 6. The HUD layout (0x3E4BC0) and the bowl gauges' sprite ids.
 7. The BOWL STYLE menu's other entries; HELP MESSAGES / SPECIAL EFFECTS behaviour (FE 6).
 8. File 128 parts 1-2 and file 127 (the bowl's camera path, 600 frames) use.

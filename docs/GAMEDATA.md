@@ -347,7 +347,7 @@ bodies 0-38 (34-38 Tiger, Panda, Tetsujin, Alex, Angel).
 | `gamedata/sound.json`, `music.json`, `rounds.json` | the sound, music and round-flow tables (below; written by `src/sound.rs` and `fight::rounds`) |
 | `audio/sfx/NNN/KKK.wav` | sample KKK of the sound bank in file NNN of TEKKEN.BIN (all 156 banks, 2 350 samples, 16-bit mono, at the rate of its `VAGp` header; 45 MB) |
 | `audio/music/NN.flac` | the music stream in file NN (25, 16-bit stereo 44 100 Hz; 197 MB, 291 MB as WAV) |
-| `endings/ending_EE_*` | ending EE's scene (EE 00-37, `gamedata/endings.json` names the files; BOWL_ENDINGS.md 7.3): `_camera.bin` its camera path as on the disc (file 2EE + 47: `u32 frames`, then eye xyz, target xyz, H as f32 a frame, game units, y down), `_0.glb` / `_1.glb` the body tracks of actor slots 0 and 1 (file 2EE + 48 part 0) as clips `ending_EE_0` / `ending_EE_1` in `anim::clip_glb`'s shape (the root's track places the actor in the arena), `_face.bin` / `_hands.bin` parts 1 and 2 as on the disc (packs of tracks `u16 frames, u16 triples`, then s16 triples) |
+| `endings/ending_EE_*` | ending EE's scene (EE 00-37, `gamedata/endings.json` names the files; BOWL_ENDINGS.md 7.3): `_camera.bin` its camera path as on the disc (file 2EE + 47: `u32 frames`, then eye xyz, target xyz, H as f32 a frame, game units, y down), `_0.glb` / `_1.glb` the body tracks of actor slots 0 and 1 (file 2EE + 48 part 0) as clips `ending_EE_0` / `ending_EE_1` in `anim::clip_glb`'s shape (the root's track places the actor in the arena), **new** (format 26) with hand tracks 2K and 2K + 1 (part 2) as rotations of the finger nodes `node_39`-`node_53` and `node_64`-`node_78` (BOWL_ENDINGS.md 7.3), `_face.bin` / `_hands.bin` parts 1 and 2 as on the disc (packs of tracks `u16 frames, u16 triples`, then s16 triples) |
 | `audio/index.json` | Tekken 3's shape: `sfx` (a bank each: `bank` its file, `samples`: `file` = `NNN/KKK.wav`, `rate`, `seconds`, `name` from the `VAGp` header; no `tones`: Tekken Tag has no VAB programs), `music` (`name`, `file` = `NN.flac`, `seconds`) |
 
 **A character** is every section of the model (the fight draws them all: FORMATS.md section 7) in one mesh, skinned
@@ -443,7 +443,7 @@ EXIT, 254), `extras` (the movies and the EMBU entries after the rows). The const
 BOWL_ENDINGS.md 7.5, not tables. **New** (format 21) `embu` (BOWL_ENDINGS.md 7.6): `casts` (0x437CE0: two of six
 `[character, costume]`), `arenas` (4 and 13, one per cast), `script` (0x519B90, the EMBU's dialect), `bgm` 1,
 `camera` (`endings/embu_camera.bin`: file 41 as on the disc, `u32` paths, their `u32` offsets, then each path as an
-ending's), `body` (`embu_K.glb`, clip `embu_K`, K the track the script names: file 42 part 0's 30), `face`, `hands`,
+ending's), `body` (`embu_K.glb`, clip `embu_K`, K the track the script names: file 42 part 0's 30, with the fingers as an ending's), `face`, `hands`,
 `camera_file`, `pack_file`.
 
 ### `gamedata/bowl.json` (**new**)

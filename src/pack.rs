@@ -60,8 +60,9 @@ use std::collections::{BTreeSet, HashMap, HashSet};
 /// 19: ai.json `survival`; 20: Yoshimitsu's CPU handler in ai.json; 21: the movies, `assets/video/`, and the EMBU,
 /// endings.json `embu`; 22: the arenas' background people, the lens flare, faces to the camera; 23: bowl.json `replay`,
 /// `strike`, `records`, `texts`; 24: the help line's font and texts, the pause menu; 25: camera.json `team_intro`,
-/// `replay_shots`, the fly-in's offset negated, `intro.ease_frames` from the start).
-pub const FORMAT: i64 = 25;
+/// `replay_shots`, the fly-in's offset negated, `intro.ease_frames` from the start; 26: the endings' and the EMBU's
+/// clips turn the fingers).
+pub const FORMAT: i64 = 26;
 /// What a pack's manifest names it.
 pub const KIND: &str = "ttt";
 

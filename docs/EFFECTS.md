@@ -90,9 +90,12 @@ slot (0x343F08). Effect objects are tasks (0x3464F8 / 0x345780 spawn, 0x3465C8 e
   instead on paths drawn at random (rand() % count), as many as the arena's row of table **0x437AC0** says (12
   bytes: u32 particles, f32 scale, the size's divisor 400 / scale at +0x48, RGB at +0x50, 128 = 1; 3 particles, and
   the row's colour only below 500 mm, when flag is set). Each particle's +0x74 is atan2(at +0x10, -(at +0x14)), the
-  strike's heading, growing by f12 a frame (0x3A05F8); the draw (0x345A00) turns the particle's path offset (+0x60)
+  strike's heading, growing by f12 a frame (0x3A05F8); the draw (0x345A00; the task's defaults 0x3456B0: +0x44 128, +0x48 400, colour 0x80) turns the particle's path offset (+0x60)
   about y by it (0x34ACB8: rows (cos, 0, -sin), (0, 1, 0), (sin, 0, cos)) before placing it: the path's +z runs along
   the strike. The ending scripts' op (0x3AB504) passes the bone's position and the vector from the other bone.
+  The blend (0x345D3C, ALPHA at 0x70000308): +0x40 = 1 Cs x FIX + Cd, FIX (1 - fade) x +0x44 (128 = 1), added;
+  another non-zero value Cd - Cs x FIX; 0 (the dust's) (Cs - Cd) x As + Cd, As the texture's alpha times the vertex
+  alpha (1 - fade) x +0x44; the colour +0x50.
 - The **SPECIAL EFFECTS** option (OFF: "Cancels Explosion Effects") [L: gates the 0x3A6110 explosions].
 - **Ogre's fire** and the other projectile attacks (0x3A6390 each frame from 0x36D99C): attack bone 0x18 with body
   20 (True Ogre) in the active frames -> 0x3A4EE8; bone 0x19 -> 0x3A5810 [M, not read].
