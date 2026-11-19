@@ -53,8 +53,8 @@ use std::collections::{BTreeSet, HashMap, HashSet};
 /// 2D files' palettes as drawn; 10: the endings, `assets/endings/` and gamedata/endings.json; 11: Tekken Bowl, `bowl.json`,
 /// its motions, ball, pin and deck; 12: the shadows and effects, `shadows.json`, `stages.json`, `pictures/effects/`;
 /// 14: the arenas' objects, placed and moved, and their added and multiplying strips, in their stages; 15: the front
-/// end's motion, its sounds per action, the font's colours).
-pub const FORMAT: i64 = 15;
+/// end's motion, its sounds per action, the font's colours; 16: the select's 3D characters).
+pub const FORMAT: i64 = 16;
 /// What a pack's manifest names it.
 pub const KIND: &str = "ttt";
 
@@ -494,7 +494,7 @@ pub fn convert(ctx: &Ctx, src: &dyn DiscFile, research: bool) -> Result<Value> {
     }
     let mut roster = assets::roster(&roster, &characters);
     if let Some(r) = roster.as_object_mut() {
-        r.insert("front_end".into(), front::front_end(&a.elf, &atlas)?);
+        r.insert("front_end".into(), front::front_end(&a.elf, &atlas, &clips)?);
     }
     assets.write("gamedata/roster.json", serde_json::to_string(&roster)?.as_bytes())?;
     assets.write("stages/index.json", serde_json::to_string(&arenas)?.as_bytes())?;

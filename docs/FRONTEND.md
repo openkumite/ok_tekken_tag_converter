@@ -259,7 +259,7 @@ Life is fixed at 140. [H]
 Pause menu (0x51E710): resume, COMMAND LIST, SCREEN CAPTURE (once unlocked), CONTROLLER SETUP, ADJUST DISPLAY,
 quit; in Bowl also TOP BOWLERS and BOWLING OPTIONS. [M: from the labels and help texts]
 
-## 9. Motion, effects and sounds (`front_end`, format 15)
+## 9. Motion, effects and sounds (`front_end`, formats 15 and 16)
 
 Worked out on 2026-11-19 from the code and checked against the game running in PCSX2 2.8.2 (screens captured at
 640 x 448 shown 4:3: a capture's y is the screen's times about 1.07). Draw modes (0x3CD868: TEST_2 / ALPHA_2 from
@@ -301,6 +301,22 @@ Newly unlocked entries blink colour 9 every 4 frames. `front_end.menu`: `rows`, 
 | Timer | the HUD's digits (0x3C6738) at (320, 260) | seconds `(t + 59) / 60 - 1` from 2400 frames; in the last 6 seconds off 8 frames every 30 (gp-0x6224) |
 | Cursors | `003_057` in palette 0x74 (1P, blue) or 0x75 (2P, pink: `003_057_p2`), 55 x 53 at (x - 1, y - 1); tags `1P` / `2P` at x + 2 / x + 25, y + 40 (0x5205D8) | 2P's drawn first; a level up and down 6 a frame between 96 and 240 (gp-0x69E0 / -0x69D8); both on one slot: 1P's shaded off diagonally (0x3CE078) |
 
+**The 3D characters** (format 16; checked in PCSX2 through PINE memory reads of the running select). Set up by
+0x3AE7C8 (when the QUICK SELECT byte 0x43B800 is 0): the camera 0x3AE6E0 writes the view block 0x415808 (pitch -0x80,
+yaw -0x800, roll 0, eye (0, -1152, 4608)) and the projection entry 24 of table 0x507FE0 (H 850, gp-0x743A = 0x18);
+0x363630(0x16) the light table of arena 22 (EFFECTS.md). Four fighter structs (0x879640 + 0xB8A0 x slot, slot = side
++ 2 x member) and a request table 0x437E30 (12 bytes a slot: +0 frame, +2 state, +4 character, +6 costume, +8 picked,
++0xA alias): a cursor move (0x3C9E30 -> 0x3AEEF0) drops the slot's body and loads the one under the cursor (costume
+0); a pick (0x3CA6B8 -> 0x3AEC58, 0x3AE9D8) sets the alias to 3 with the pick's costume. 0x3AEF88 places a slot from
+table **0x437D40** (16 bytes `{x, y, z, yaw}`, 65536ths): 1P (400, 0) yaw 0xE800, 2P (-512, 0) yaw 0x1800, 1P's
+partner (896, 512) yaw 0xE000, 2P's (-960, 512) yaw 0x2000; mode 5 (1 ON 1 arcade) takes **0x437D80** (704, 128) and
+(-720, 128) for slots 0 and 1. The table's y is not what the struct holds after the load (2 and -40 were read for 112
+and 80): the body stands on the floor. 0x3AEA40 steps the motion: at its end alias 3 goes to alias 0 (0x363068(f, 5))
+and alias 0 starts again. Aliases 0 and 3 are each moveset's select stance and pick pose (Xiaoyu: moves 6459, 110
+frames, and 6490, 86). A side shows its picks and the character under its cursor, the last two; none while the cursor
+is on a character it took (seen). `select.models`: `camera`, `places`, `places_one_on_one`, `one_on_one_mode`,
+`light`, `motions` (by character id: the two clips).
+
 A cursor move: sound 3; a pick: sound 4, the last sound 5; cancel: sound 3. The PS2 starts 1P's cursor on Xiaoyu
 (seen; gp-0x6248). After the last pick 90 frames, the last 20 a fade (gp-0x71D0 = 20). No announcer call and no
 flash in the select's own code: a pick shows as the 3D model's pose. Also seen on the PS2: "INSERT COIN" and "CREDIT
@@ -322,7 +338,7 @@ second, then black.
 
 Ranked by how much a player would notice:
 
-1. Which button gives which costume; the 3D models of the select (their place, camera 0x415808, motions).
+1. Which button gives which costume (seen: × gives costume 1).
 2. The VS / loading screen's code (file 136, "VS" `0x51F208`, the "%3d%%" loading percent) and its moving
    background.
 3. The exact roles of the six health-bar strips and the timer and banner drawing (positions of the round / K.O.

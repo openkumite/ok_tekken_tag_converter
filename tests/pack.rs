@@ -504,6 +504,15 @@ fn front_end(pack: &Hashed) {
         (&select["tag_dx"], &select["ordinal"]["text"], &fe["title"]["press_start"]),
         (&serde_json::json!([2, 25]), &"1ST".into(), &"PRESS P1 AND/OR P2 BUTTON".into())
     );
+    // the 3D characters (FRONTEND.md 9): H 850, 1P's place, Xiaoyu's stance and pick pose, their files there
+    let models = &select["models"];
+    assert_eq!(
+        (&models["camera"]["h"], &models["places"][0], &models["motions"][7]),
+        (&850.into(), &serde_json::json!([400, 112, 0, 0xE800]), &serde_json::json!(["motion_6459", "motion_6490"]))
+    );
+    for m in models["motions"].as_array().unwrap().iter().flat_map(|m| m.as_array().unwrap()) {
+        assert!(pack.exists(&format!("assets/motions/{}.glb", m.as_str().unwrap())), "{m}");
+    }
     fn pictures<'a>(v: &'a serde_json::Value, out: &mut Vec<&'a str>) {
         match v {
             serde_json::Value::String(s) if s.ends_with(".png") => out.push(s),
