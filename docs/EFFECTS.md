@@ -111,7 +111,51 @@ has each arena's `dust`, and the dust's paths (not the guard's) are drawn at ran
 0x3A2640 by arena (jump table 0x519770, arenas 4-20) starts the arena's effect tasks [H]: 4 Hwoarang and 15 Law-B
 0x3A0A90; 5 Lei 0x3A0CE8; 8 Jin-A 0x3A1068 (+0x1A 0), 17 Jin-B and 20 the bowl 0x3A1068 (+0x1A 1); 9, 18 Nina 0x3A1378;
 11 King 0x3A1510 and 0x3A1378; 14 Unknown 0x3A1B48 (twenty objects 0x3A16C0 and thirty 0x3A18F8); and 0x3A1C78 on
-every arena. Not read: 0x3A0A90, 0x3A0CE8, 0x3A1068, 0x3A1510, 0x3A1B48.
+every arena.
+
+**Their pictures and paths** [H]: the arena's geometry pack part 1 (0x367938 keeps it at 0x8795E4; empty on most
+arenas) is a pack of up to three entries, each a pack of a texture pack and a pack of particle paths (as files 4-7's
+part 1); 0x345070 (from the arena's load, 0x367BD4) puts entry k's picture in texture slot 6 + 2k (table 0x8BF3A0 +
+0x18 x slot) and its paths in set 6 + k (0x8BF350 + 8 x set). Hwoarang and Law-B: a grey puff, 16 paths of 300
+frames; Lei: a faint grey haze (alpha 0), 16 of 800; Jin-A, Jin-B, the bowl: a grey puff, 16 of 400; Nina: a red
+glow; King: the red glow, a puff with 19 paths of 800 (entry 1), a white light (entry 2); Unknown: a grey puff.
+Eddy's and Yoshimitsu's entries (a picture, no paths) are not used by these tasks.
+
+**The tasks** [H; a particle's fields: 0x3456B0 makes it, 0x345A00 draws it (EFFECTS.md 3), +0x40 the blend: 0
+ALPHA 0x44 with the vertex alpha the brightness x (1 - the fade), 1 Cs x FIX + Cd with FIX that; the vertex colour
++0x50..0x52]. Each counts its frames (not while paused) from its start; its first frame starts nothing:
+- **0x3A0A90** (Hwoarang, Law-B: smoke): six rows (0x5194E0 / 0x5195A0, 32 bytes: `{x, y, z, 1, u32 every}`), each
+  every so many frames a particle 0x3A08D8 on a path of set 6 drawn at random (at most 15), the path 4 times its
+  size, 0x48 450, colour (160, 160, 170), blended; 0x3A08D8 moves it by the path's step and then by the wind at it
+  (0x3D3D08) times rand01 x 6 (arena 4) or 25 (+0x120).
+- **The wind** [H] (0x3D3630 at the arena's load from table 0x447EC0, 12 bytes an arena: `u32 waves, *waves, u32`;
+  0x3D37E0 each frame): up to three waves (32 bytes: `i32 step, f32 speed, f32 strength, u32, f32 direction[4]`),
+  each a Lorenz series (0x3D42F8: Euler, dt gp-0x7D30 0.01, sigma 10, rho 28, beta gp-0x7D2C 8/3, from (1, 1, 1);
+  the value (x + 40) / 80) kept 1024 frames back (0x3D4178: `step` values a frame, or one every -step frames and the
+  others drawn on from the last two; 1024 run at the start). A point (0x3D3F48) takes the value d / speed frames on
+  from the oldest, d its distance along the wave from the line across it through (sqrt(g / (x^2 / z^2 + 1)), 0, z /
+  x of that), g gp-0x7D4C (1e8): the wind blows the series across the arena at its speed; times the strength along
+  the direction. (Every arena has waves; only these particles read them here. 0x3D3B80's four impulses, 0x450000 -
+  0x4F00, are not read.)
+- **0x3A0CE8** (Lei: steam): three rows (0x519660, 32 bytes: `{x, y, z, 1, heading}`), every 34 frames a particle
+  0x3A04B8 from each, the path turned by the heading (+0x74) and 1.2 times as long along x (gp-0x7F44), 0x48 400 x
+  1.43 (gp-0x7F40), added; on its first frame each row's stream as it would stand a path's length on (path 0's
+  frames / 34 particles, k 34 x k frames along).
+- **0x3A1068** (Jin-A; Jin-B and the bowl with +0x1A 1): every 32 frames a particle 0x3A04B8 from each of three rows
+  (0x436A30 / 0x436AC0, 48 bytes: `{x, y, z, 1}`, the scale, colour u8 x 4, brightness, 0x48), turned pi / 2,
+  blended (Jin-A's blue (106, 118, 255) at 128 and 246; Jin-B's grey at 230).
+- **0x3A1510** (King: smoke): every 32 frames one particle of set 7 (slot 8) from (-2680, -4240, -20240) mm
+  (gp-0x7F24..), scaled (20, 7.29, 12.79), 0x48 140, blended.
+- **0x3A1B48** (Unknown: wisps): twenty particles 0x3A16C0 and thirty 0x3A18F8 (slot 6, colour (64, 64, 128),
+  blended): particle k from angle k x 2pi / 20 (30) at radius 12000 + rand x 5000 (6800 + rand x 2000) mm, x sin, z
+  cos of its angle, turning (2 rand - 1) x 0.002 +- 0.001 a frame; height rand x 3500 (1340 + rand x 500) + sin(f) x
+  3000 (500), f from rand x 2pi growing rand x 0.01 a frame; fade (sin(g) + 1) / 2, g from rand x pi growing a
+  constant rand x 0.01; size 10 + 8 fade (5 + 3 fade).
+- 0x3A04B8 places its particle at the row + the path's frame (turned by +0x74, scaled) and steps through the slot's
+  cells while its path's +0x34 is set (none here); gone at the path's end.
+
+Exported (format 28): stages.json `weather` (GAMEDATA.md), the pictures in the effects' atlas from cell 24. Not:
+the particles' depth bias (+0x4C), the offscreen count that ends one (+0x96), the paused frames.
 
 **The lens flare** (0x3A1C78) [H]: on the arenas its jump table 0x519730 (by arena - 1, 16) names: 1 Law-A, 7
 School-A, 10 Eddy-A, 11 King, 12 Heihachi, 13 Eddy-B, 16 School-B, each with a sun (0x437A50 + 0x10 x row: x, y, z,
@@ -129,10 +173,11 @@ brightness x the level x the arena's strength. Exported: stages.json `flare`, `p
 `flare_1.png` (hexagon), opaque.
 
 **The beacons** (0x3A1378) [H]: Nina's arenas (table 0x436B50) and King's (0x436EE0), 48 bytes a row up to one
-whose +0x20 < 0: u16 kind, +0x10 the place (m), +0x20 the period (frames), +0x24 the size. Each a 3D object 0x3A1298
-of texture slot 6 (kinds 0, 1: brightness 160) or 10 (kind 2: 240), cell 10, added; its fade (cos(phase) + 1) / 2,
-the phase growing 2 pi / period a frame from pi (kind 1) or at random (kind 0; a period of 0: always lit). Slots 6-10
-are filled outside files 4-9 (seen in memory on Eddy-A too): not found; not exported.
+whose +0x20 < 0 (Nina 18, King 60): u16 kind, +0x10 the place (m), +0x20 the period (frames), +0x24 the size. Each a
+3D object 0x3A1298 of texture slot 6 (kinds 0, 1: brightness 160) or 10 (kind 2: 240), added, +0x4C 10 (a depth bias,
+not a cell); its fade (cos(phase) + 1) / 2, the phase growing 2 pi / period a frame from pi (kind 1, and a period of
+0: always lit) or rand x pi (kind 0). Slots 6 and 10: the arena's entries 0 and 2 (above). Exported (format 28):
+stages.json `weather.beacons`.
 The arenas' additive strips (ALPHA 0x48, Cs x As + Cd: lights, neon, floor gloss) and darkening strips (0x89,
 Cd x As: painted shadows, dirt) are in the stages since format 14, in materials named `additive` and `shade`
 (GAMEDATA.md).
@@ -155,10 +200,10 @@ its int / float parameters, +0x10 the turn (radians), +0x20 the place (mm), +0x3
 | Arena | Update | Drawn and how it moves | Exported |
 |---|---|---|---|
 | 0 Paul | 0x3D5798 | the train (0-3, four 18 m cars): from (0, 14000, 200000) turned 5-10 degrees, z negated (0x3D56F0), each frame headed along its circle and moved 278 mm; back to a new start after 1800-2400 frames | the middle start, 2100 frames [M: not seen on screen yet] |
-| 1 Law-A | 0x3D6FD8 | lights 4-13 in frames of their own x/z scale (0.77-0.96, y 1.1), 14-18 swayed on a curve (0x3D7C38); a flock of 40 copies of 0-3 on splines with their shadows (19) | 4-18 standing; not the sway nor the flock |
+| 1 Law-A | 0x3D6FD8 | lights 4-13 in frames of their own x/z scale (0.77-0.96, y 1.1), 14-18 swayed: 0x3D7AA8 shears an object's matrix by the arena's wind at it (0x3D3D08, EFFECTS.md 5) times gp-0x7B68, 0x3D7378 by the fighters' impacts (0x3D3B80's four, 0x450000 - 0x4F00) too; a flock of 40 copies of 0-3 (0x444CD8) with their shadows (19, flattened along light 0: 0x3D7110) | 4-18 standing; not the sway (a shear, not a glTF node's turn) nor the flock |
 | 3 Xiaoyu | 0x3D52B0 | the carousel 0 turning 0.25 degree a frame (0x3D54F8), its horses 1-8 rising and falling 300 mm (phase 0.03 a frame, the second four half a turn behind), lamps 9-12 turned to face the camera (0x3D5640), 13, 14 | all; the lamps facing the camera (since format 22) |
-| 9, 18 Nina | 0x3D5E80 | the helicopter 1 on its pad, 100 mm up and down (0.0316 a frame), its rotors (2: y, 3: x, 1.03 a frame); after 600 frames out of sight it takes off and comes back (states 2, 3); 40 copies of 0, 8, 9 in 10 lanes moving 15-30 mm a frame, wrapped about the camera | the helicopter waiting and its rotors; not the take-off nor the lanes |
-| 11 King | 0x3D4B18 | three helicopters (12, 15, 18 under frame 11) round an ellipse of 100 x 80 m, 0.1 degree a frame, the wingmen turned to their own bearing (0x3D5190), rotors 1.03 a frame; ten groups of four of objects 1-10 drifting with a fade (not read) | the helicopters from angle 0; not the groups |
+| 9, 18 Nina | 0x3D5E80 | the helicopter 1 on its pad, 100 mm up and down (0.0316 a frame), its rotors (2: y, 3: x, 1.03 a frame); state 0 counts only the frames its centre is off the screen (projected outside 0x6C0-0x940, 0x720-0x8E0, or behind) and after 600 of them, in a fight (gp-0x74D0 4, gp-0x7434 0, or 0x11), takes off (state 2: rising t / 450 x 20 mm more each frame, its nose swung by a cosine, to 50 m) and comes back elsewhere at random (state 3); 0x3D5B58 makes 40 copies (0x3D1A80) of 0, 9 and 8 (by k & 7: 0-3, 4-6, 7) at y -2000 in 10 lanes (0x444CD0, 0x5C bytes each: x = k x 4000 - 17500, its speed (rand + 1) x 15 mm a frame either way, at most 20 cars at least 4 m apart), each frame moved along z and x and z kept within 20 m of the camera (gp-0x7C6C, a period of 40 m) | the helicopter waiting and its rotors; not the take-off nor the lanes |
+| 11 King | 0x3D4B18 | three helicopters (12, 15, 18 under frame 11) round an ellipse of 100 x 80 m, 0.1 degree a frame, the wingmen turned to their own bearing (0x3D5190), rotors 1.03 a frame; ten groups (0x444D20, 0xC0 bytes each) moving along z by their speed (+0x18) to an end (+0x48) where 0x3D47A8 puts them back at a random start, drawn (0x3D1160) with a fade within gp-0x7D0C of either end and turned to the camera (0x366EC8 less a turn of the frame counter 0x41580C & 0xFFF), their four objects 1-10 each drifting on its own random walk of two angles (+0, +4, by rand x +8, +0xC a frame; x and z sin of them times +0x10, +0x14) | the helicopters from angle 0; not the groups |
 | 14 Unknown | 0x3D2168 | 0 and 1 standing | both |
 | 5, 7, 8 | 0x3D2160 (nothing) | none drawn | none |
 | 20 Tekken Bowl | 0x3D21B8 | object 10 (the bowl draws the rest) | the bowl's own files |

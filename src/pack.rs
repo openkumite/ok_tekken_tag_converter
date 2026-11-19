@@ -47,7 +47,7 @@ use anyhow::{Context, Result, bail};
 use ok_converter_common::io::{Ctx, DiscFile, Sub, Vfs};
 use ok_converter_common::psx;
 use serde_json::{Value, json};
-use std::collections::{BTreeSet, HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
 /// The pack's layout and contents; another one is converted again (3: `assets/`; 4: every section of a fighter; 5:
 /// the air reactions, the default life, the damage constants; 6: `assets/audio/`, sound, music and rounds; 7: the
@@ -61,8 +61,9 @@ use std::collections::{BTreeSet, HashMap, HashSet};
 /// endings.json `embu`; 22: the arenas' background people, the lens flare, faces to the camera; 23: bowl.json `replay`,
 /// `strike`, `records`, `texts`; 24: the help line's font and texts, the pause menu; 25: camera.json `team_intro`,
 /// `replay_shots`, the fly-in's offset negated, `intro.ease_frames` from the start; 26: the endings' and the EMBU's
-/// clips turn the fingers; 27: camera.json `win_pose`, the camera motions decoded, slot 1's centre drop and lift).
-pub const FORMAT: i64 = 27;
+/// clips turn the fingers; 27: camera.json `win_pose`, the camera motions decoded, slot 1's centre drop and lift; 28:
+/// stages.json `weather`, the arenas' pictures in the effects' atlas, the people's scripts and `walk`).
+pub const FORMAT: i64 = 28;
 /// What a pack's manifest names it.
 pub const KIND: &str = "ttt";
 
@@ -144,6 +145,8 @@ pub fn convert(ctx: &Ctx, src: &dyn DiscFile, research: bool) -> Result<Value> {
     let mut atlas = vec![];
     // the fighters' shadow meshes, and the effect files' pictures (files 4-8)
     let (mut shadows, mut effect_pics, mut effect_paths) = (vec![], vec![vec![]; 5], vec![vec![]; 4]);
+    // each arena's effect entries (geometry part 1: its weather's pictures and paths)
+    let mut weather = BTreeMap::new();
     ctx.log(&format!("[ttt] {}: the {} files of TEKKEN.BIN", src.name(), archive::FILES));
     // (the first and the last file are random filler)
     for i in 1..archive::FILES - 1 {
@@ -336,7 +339,7 @@ pub fn convert(ctx: &Ctx, src: &dyn DiscFile, research: bool) -> Result<Value> {
                 None => vec![],
             };
             let cast: Vec<Value> = (cast.iter())
-                .map(|p| json!({"model": p.model, "pos": p.pos.map(|v| (v as f64 * model::SCALE) as f32), "heading": p.heading, "motions": p.motions, "start": p.start}))
+                .map(|p| json!({"model": p.model, "pos": p.pos.map(|v| (v as f64 * model::SCALE) as f32), "heading": p.heading, "motions": p.motions, "start": p.start[0]}))
                 .collect();
             // OpenKumite's stage, by the arena's number
             if let Some(n) = listed {
@@ -350,6 +353,7 @@ pub fn convert(ctx: &Ctx, src: &dyn DiscFile, research: bool) -> Result<Value> {
                     .map(|m| m.into_iter().map(|b| stage::Batch { bank, ..b }).collect())
                     .collect();
                 let things = if i == BOWL { vec![] } else { objects::objects(&a.elf, n, &blocks)? };
+                weather.insert(n, effects::entries(raw.get(1).copied().unwrap_or_default()));
                 assets.write(&format!("stages/{file}"), &stage::game_glb(&name, &bare, &floors, &things, &banks))?;
                 arenas.push(json!({"id": n, "name": name, "file": file}));
             }
@@ -527,8 +531,26 @@ pub fn convert(ctx: &Ctx, src: &dyn DiscFile, research: bool) -> Result<Value> {
         assets.write(&format!("gamedata/{name}.json"), serde_json::to_string(&v)?.as_bytes())?;
     }
     assets.write("gamedata/shadows.json", serde_json::to_string(&json!({"meshes": shadows}))?.as_bytes())?;
-    assets.write("gamedata/stages.json", serde_json::to_string(&effects::stages(&a.elf))?.as_bytes())?;
-    match effects::atlas(&effect_pics, &effect_paths) {
+    // (the pictures of the arenas with weather in the effects' atlas from cell 24, each once)
+    let mut arena_pics: Vec<(usize, usize, Vec<u8>)> = vec![];
+    let fx: BTreeMap<usize, (Vec<effects::Entry>, Vec<Option<usize>>)> = (weather.into_iter())
+        .filter(|(n, entries)| effects::weather(&a.elf, *n, entries, &[]).is_some())
+        .map(|(n, entries): (usize, Vec<effects::Entry>)| {
+            let cells = (entries.iter())
+                .map(|(pic, _)| {
+                    let pic = pic.as_ref()?;
+                    let k = arena_pics.iter().position(|p| p == pic).unwrap_or_else(|| {
+                        arena_pics.push(pic.clone());
+                        arena_pics.len() - 1
+                    });
+                    Some(24 + k)
+                })
+                .collect();
+            (n, (entries, cells))
+        })
+        .collect();
+    assets.write("gamedata/stages.json", serde_json::to_string(&effects::stages(&a.elf, &fx))?.as_bytes())?;
+    match effects::atlas(&effect_pics, &effect_paths, &arena_pics) {
         Some((png, json)) => {
             assets.write("pictures/effects/atlas.png", &png)?;
             assets.write("pictures/effects/effects.json", serde_json::to_string(&json)?.as_bytes())?;

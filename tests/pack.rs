@@ -368,6 +368,17 @@ fn openkumite(pack: &Hashed) {
                 .iter()
                 .all(|m| written.contains_key(&format!("assets/stages/stage_10_m{m}.glb")))
     }));
+    // Paul's scripted spectators: motions 10 and 11, the first step's twice (its repeat 2), the script round again
+    let paul = &stages["stages"][0]["people"];
+    let scripted = paul.as_array().unwrap().iter().find(|p| !p["script"].as_array().unwrap().is_empty()).unwrap();
+    assert_eq!(
+        (&scripted["motions"], &scripted["script"][0], &scripted["stop"]),
+        (
+            &serde_json::json!([10, 11]),
+            &serde_json::json!({"motions": [10], "model": 0, "repeat": 2, "back": 0, "wait": -1, "start": -1, "frames": -1}),
+            &false.into()
+        )
+    );
     // Eddy-A's lens flare: its sun 85.6 m ahead, strength 0.6, nine discs (the first a hexagon of 0.1 at 192)
     let flare = &stages["stages"][10]["flare"];
     assert_eq!(
@@ -375,8 +386,28 @@ fn openkumite(pack: &Hashed) {
         (&serde_json::json!(-85.60000000000001), &serde_json::json!([1, 0.10000000149011612, 192.0]))
     );
     assert!(stages["stages"][0]["flare"].is_null() && written.contains_key("assets/pictures/effects/flare_1.png"));
+    // the arenas' weather: Hwoarang's six smoke streams (every 18 frames from (11.56, 1.1, 4.54) m) on 16 paths of its
+    // own picture (atlas cell 24) blown by three wind waves; Lei's steam added; King's 60 beacons; none on Paul's
+    let (hw, king) = (&stages["stages"][4]["weather"], &stages["stages"][11]["weather"]);
+    assert_eq!(
+        (
+            &hw["streams"][0]["every"],
+            &hw["streams"][0]["at"],
+            &hw["sets"][0]["cell"],
+            hw["sets"][0]["paths"].as_array().map(Vec::len)
+        ),
+        (&18.into(), &serde_json::json!([11.56, 1.1, 4.54]), &24.into(), Some(16))
+    );
+    assert_eq!(
+        (hw["wind"]["waves"].as_array().map(Vec::len), &stages["stages"][5]["weather"]["streams"][0]["add"]),
+        (Some(3), &true.into())
+    );
+    assert_eq!(
+        (king["beacons"].as_array().map(Vec::len), &stages["stages"][0]["weather"]),
+        (Some(60), &serde_json::Value::Null)
+    );
     let effects = load("pictures/effects/effects.json");
-    assert_eq!((&effects["atlas"]["rows"], &effects["strips"]["spark"]["life"]), (&3.into(), &35.into()));
+    assert_eq!((&effects["atlas"]["rows"], &effects["strips"]["spark"]["life"]), (&4.into(), &35.into()));
     sound(&load, count("audio/sfx"), count("audio/music"));
     let rules = load("gamedata/rules.json");
     assert_eq!((&rules["dialect"], &rules["hurt_spheres"]["layout"][8]["gltf_joint"]), (&"ttt".into(), &"head".into()));
