@@ -184,9 +184,20 @@ and `attract` are not written (not decoded).
   `distance_per_h` [1900, 256] (the depth is H x 1900 / 256), `fit_px` 392, `dead_zone_px` 68, `vertical_keep_px`
   156, **new** `centre_drop` 140 (the drop is 140 - 450 x H / distance; Tekken 3 100), `initial_eye` [0, -1200,
   -8000], `yaw.move_caps` by camera id 0x13-0x16 (Tekken 3 0x27-0x2A); the rest as Tekken 3's.
-- `intro`: the round-start fly-in (0x3954E8): one offset (0x509C20, eye z -3700), `frames_first_round` 120,
-  `frames_other` 90, **new** `ease_frames` 90 (the offset eases over the last 90 frames; round 1 holds it for the
-  first 30), `blend_frames` 13 (the hand-off to the fight camera).
+- `intro`: the round-start fly-in (0x3954E8): one offset (0x509C20, eye z -3700, which 0x3954E8 subtracts:
+  written negated (format 25), 3700, for the engine adds it as Tekken 3 does: the eye starts 3700 nearer),
+  `frames_first_round` 120, `frames_other` 90, **new** `ease_frames` 90 (the offset eases off over the first 90
+  frames, format 25; round 1 then holds the fight camera's place for the last 30), `blend_frames` 13 (the hand-off to
+  the fight camera).
+- **New** (format 25) `team_intro` (0x3B5328): before round 1 of a tag battle each team on the stage on its shot
+  (against the CPU the CPU's alone), a set-up frame and `frames` (90) + 1 more: `place` (x 500, z 1500), two
+  `shots` (0x521140: `turn_from` / `turn_to`, `target_from` / `target_to`, `eye_from` / `eye_to`, eased by sine over
+  `frames`), `pair_scale`, and `pairs` (0x43A180: two members `character`, `costume` (-1 any), `alias`, `x`, `z`,
+  `facing`) that stand in their own places and motions.
+- **New** (format 25) `replay_shots` (0x3D0748, per frame 0x3D0A38): the K.O. replay's 42 `shots` (0x520C40:
+  `target` 0 the winner's root / 1 the loser's / 2 the loser's point at the K.O., `follow` 0 / 1 / 3 none, `turn`,
+  `turn_range`, `distance`, `distance_range`), 14 `sequences` of 4 shot numbers (0x520F88: one a pass, picked by the
+  AI's random), `eye_y`, `target_y`, `pitch_max`, `follow_easing`, `distance_per_h`.
 - `situation_presets` (0x508908): the 30 situation types, Tekken 3's shape (`field_1` is the hold).
 - **New** `move_camera_lists` (0x434C78; Tekken 3's `script_selectors`): `lists` by camera id (move flags >> 23)
   with an entry: `id`, `split`, `first_mirrored`, `entries` (`flags`, `weight` out of the list's sum, `type` 1 a
