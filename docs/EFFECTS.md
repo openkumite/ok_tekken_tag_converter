@@ -184,8 +184,19 @@ Cd x As: painted shadows, dirt) are in the stages since format 14, in materials 
 
 ## 6. Not found or not read
 
-Fog / depth cue, screen flashes and the K.O. look, the tag-in / tag-out effects, ki-charge glow, motion blur:
-not located. The ending scripts' effect ops (BOWL_ENDINGS.md 7.4) use the same tasks.
+Fog / depth cue, the tag-in / tag-out effects, ki-charge glow, motion blur: not located. The ending scripts' effect
+ops (BOWL_ENDINGS.md 7.4) use the same tasks.
+
+Searched again (format 32) [H]:
+- **Screen flashes**: the one full-screen fade (0x3A67D0: from a colour over n frames) is called only by the
+  ending / attract script ops (0x3A9AB8's white flash), the transitions 0x3AC018 and 0x3BB310 and the title
+  (0x3BCC88); nothing in a fight (rounds, K.O.) calls it, and the K.O. path has no slow motion (FIGHT_DATA.md).
+- **Animated textures**: every arena object routine (the rows' +0x30 / +0x34 of table 0x520FC0, all arenas) is
+  listed in section 7 and moves matrices only (Lei's 0x3D21F8 keeps one); the arena's own draw (0x3DE6C0) sends
+  fixed packets; the texture slots change only at load (0x345070, 0x345410). No UV scroll or palette cycling in a
+  fight. Paul's train's routine 0x3D5998 only sets the pad's rumble and the train's sound by its distance (0x3758F0).
+- **The particles' depth**: arena effects (flag 4) are drawn only behind the farther fighter (0x346830 passes
+  max(player +0x620) to 0x345A00, which skips a nearer particle; +0x620, 0x347DF0, a fighter's depth in view).
 
 ## 7. Arena objects (0x3D0E18, table 0x520FC0) [H unless marked]
 
