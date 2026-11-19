@@ -256,12 +256,14 @@ impl Model {
     /// fewer nodes, a skeleton node hangs from one past it, or its textures do not fit one picture.
     pub fn fighter_glb(&self, ups: &[tex::Upload]) -> Option<Vec<u8>> {
         let n = self.nodes.len();
-        if n < SKELETON || (0..SKELETON).any(|i| self.parent(i).is_some_and(|p| p >= SKELETON)) {
+        // (an arena's background character: the 18 joints of `RIG` alone)
+        let skeleton = if n == RIG.len() { n } else { SKELETON };
+        if n < skeleton || (0..skeleton).any(|i| self.parent(i).is_some_and(|p| p >= skeleton)) {
             return None;
         }
         let world = self.world();
         let up: Vec<u16> = (0..n)
-            .map(|i| std::iter::successors(Some(i), |&a| self.parent(a)).take(n).find(|&a| a < SKELETON).unwrap_or(0))
+            .map(|i| std::iter::successors(Some(i), |&a| self.parent(a)).take(n).find(|&a| a < skeleton).unwrap_or(0))
             .map(|a| a as u16)
             .collect();
         let strips: Vec<&Strip> = self.sections.iter().flatten().collect();
@@ -327,7 +329,7 @@ impl Model {
             idx.extend(strip_faces(pos, nrm, base));
         }
         let mut g = Glb::default();
-        let (mut nodes, mut roots, ibm) = self.skeleton(&mut g, &world, SKELETON);
+        let (mut nodes, mut roots, ibm) = self.skeleton(&mut g, &world, skeleton);
         let mut prims = vec![];
         for (mat, (pos, nrm, uv, jn, wt, idx)) in parts.iter().enumerate().filter(|p| !p.1.5.is_empty()) {
             let n = pos.len();
@@ -348,7 +350,7 @@ impl Model {
             "meshes": [{"name": "part_0", "primitives": prims}],
             "materials": [{"name": "opaque", "pbrMetallicRoughness": pbr, "doubleSided": true, "alphaMode": "MASK", "alphaCutoff": 0.5},
                           {"name": "blend", "pbrMetallicRoughness": pbr, "doubleSided": true, "alphaMode": "BLEND"}],
-            "skins": [{"joints": (0..SKELETON).collect::<Vec<_>>(), "inverseBindMatrices": ibm}],
+            "skins": [{"joints": (0..skeleton).collect::<Vec<_>>(), "inverseBindMatrices": ibm}],
             "images": [{"bufferView": png, "mimeType": "image/png"}], "textures": [{"source": 0, "sampler": 0}],
             "samplers": [{"magFilter": 9729, "minFilter": 9729, "wrapS": 33071, "wrapT": 33071}]});
         Some(g.finish(doc))

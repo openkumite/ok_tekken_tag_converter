@@ -317,7 +317,7 @@ people and a table of motion data. A list is 32-byte records up to one at the or
 u8 motion (255 = scripted), u8, u32 script`. A script is 16-byte steps up to a null pointer, with
 the motion number in byte 6 (255 = none; a few name a motion one past the arena's last, meaning
 unknown). Not decoded: the script's conditions, the other record fields, and
-Law's junks (stored as characters, but they come out wrongly posed).
+Law's junks (stored as characters, but they come out wrongly posed). OpenKumite's: GAMEDATA.md (format 20).
 
 The four small files after an arena's geometry (`190 + 7n` ...) are camera paths:
 `u32 count`, then `f32 eye x, y, z, target x, y, z, field of view` per frame (y is down).

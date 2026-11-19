@@ -58,8 +58,8 @@ use std::collections::{BTreeSet, HashMap, HashSet};
 /// end's motion, its sounds per action, the font's colours; 16: the select's 3D characters; 17: the front end's
 /// sounds and music, the small font's colours; 18: the fight HUD as drawn, its round texts and the chrome font's advances;
 /// 19: ai.json `survival`; 20: Yoshimitsu's CPU handler in ai.json; 21: the movies, `assets/video/`, and the EMBU,
-/// endings.json `embu`).
-pub const FORMAT: i64 = 21;
+/// endings.json `embu`; 22: the arenas' background people, the lens flare, faces to the camera).
+pub const FORMAT: i64 = 22;
 /// What a pack's manifest names it.
 pub const KIND: &str = "ttt";
 
@@ -279,16 +279,25 @@ pub fn convert(ctx: &Ctx, src: &dyn DiscFile, research: bool) -> Result<Value> {
             if research {
                 out.write(&file, &stage::glb(&b, &objects, &banks))?;
             }
-            // the arena's background characters: part 0 is a pack of their motions and their models
+            // an arena of the stage list, by its number there
+            let listed = i.checked_sub(ARENAS).filter(|k| k % 7 == 0).map(|k| k / 7);
+            // the arena's background characters: part 0 is a pack of their motions and their models (OpenKumite's:
+            // `stages/stage_NN_pK.glb`, K the model, as characters; their motions `stage_NN_mK.glb`, clips of that name)
             let (mut people, mut motions) = (vec![], vec![]);
-            let cast = pack.as_ref().filter(|_| research).and_then(|p| archive::pack(p.first()?)).unwrap_or_default();
+            let cast = pack.as_ref().filter(|_| research || listed.is_some()).and_then(|p| archive::pack(p.first()?));
+            let cast = cast.unwrap_or_default();
             for (k, c) in cast.iter().enumerate().skip(1) {
                 let Some(m) = model::parse_low(c) else { continue };
                 let file = format!("stages/{i:03}_p{k}.glb");
                 // model k's textures are the k-th load of texture part 0 (every load uses the same addresses)
                 let own: Vec<tex::Upload> =
                     banks.iter().flatten().filter(|u| u.set >> 16 == k as u64 - 1).cloned().collect();
-                out.write(&file, &m.glb(&own))?;
+                if research {
+                    out.write(&file, &m.glb(&own))?;
+                }
+                if let (Some(n), Some(glb)) = (listed, m.fighter_glb(&own)) {
+                    assets.write(&format!("stages/stage_{n:02}_p{}.glb", k - 1), &glb)?;
+                }
                 people.push(json!({"id": k - 1, "file": file}));
             }
             if let Some(index) = cast.first().filter(|_| !people.is_empty()) {
@@ -304,12 +313,16 @@ pub fn convert(ctx: &Ctx, src: &dyn DiscFile, research: bool) -> Result<Value> {
                     };
                     let Some(frames) = frames else { continue };
                     let file = format!("stages/{i:03}_m{k}.glb");
-                    out.write(&file, &anim::glb(&frames))?;
+                    if research {
+                        out.write(&file, &anim::glb(&frames))?;
+                    }
+                    if let Some(n) = listed {
+                        let name = format!("stage_{n:02}_m{k}");
+                        assets.write(&format!("stages/{name}.glb"), &anim::clip_glb(&name, &frames))?;
+                    }
                     motions.push(json!({"id": k, "file": file, "frames": frames.len()}));
                 }
             }
-            // an arena of the stage list, by its number there
-            let listed = i.checked_sub(ARENAS).filter(|k| k % 7 == 0).map(|k| k / 7);
             let name = match listed.map(|n| moves::arena(&a.elf, n)).transpose()?.flatten() {
                 Some(name) => name,
                 None if i == BOWL => "Tekken Bowl".into(),
