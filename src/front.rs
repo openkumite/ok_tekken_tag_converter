@@ -90,7 +90,7 @@ pub fn help_font(elf: &[u8]) -> Option<(String, Vec<u8>)> {
 /// past ASCII (the font's button glyphs) as the characters of the same number.
 /// Practice's four menus (FREESTYLE, VS CPU, CHAIN TRAINING, COMBO TRAINING) as the PS2 shows them: their rows,
 /// values, defaults and help texts (a mode's help is its two lines; TRAINING DUMMY's and CPU LEVEL's values have one
-/// each, `value_help` + value).
+/// each, `value_help` + value, for the first `value_helps`).
 fn practice_modes() -> Value {
     let on_off = |label: &str, y: i32, default: usize, help: usize| json!({"label": label, "y": y, "kind": "list", "values": ["OFF", "ON"], "default": default, "help": help});
     let row =
@@ -113,12 +113,12 @@ fn practice_modes() -> Value {
     json!([
         {"title": "FREESTYLE", "rows": [row("MODE SELECT", 138, "mode", 135), row("CANCEL", 168, "close", 137),
             row("COMMAND LIST", 189, "commands", 138),
-            {"label": "TRAINING DUMMY", "y": 210, "kind": "list", "values": dummy, "default": 0, "value_y": 231, "help": 139, "value_help": 145},
+            {"label": "TRAINING DUMMY", "y": 210, "kind": "list", "values": dummy, "default": 0, "value_y": 231, "help": 139, "value_help": 145, "value_helps": 11},
             on_off("COUNTER ATTACKS", 252, 0, 140), on_off("ATTACK DATA", 273, 1, 141), on_off("HIT ANALYSIS", 294, 0, 142),
             row("CHARACTER SELECT", 325, "select", 143), row("RESET", 346, "reset", 144)]},
         {"title": "VS CPU", "rows": [row("MODE SELECT", 138, "mode", 156), row("CANCEL", 168, "close", 158),
             row("COMMAND LIST", 189, "commands", 159),
-            {"label": "CPU LEVEL", "y": 210, "kind": "list", "values": levels, "default": 1, "help": 160, "value_help": 185},
+            {"label": "CPU LEVEL", "y": 210, "kind": "list", "values": levels, "default": 1, "help": 160, "value_help": 185, "value_helps": 5},
             on_off("ATTACK DATA", 231, 1, 161), on_off("HIT ANALYSIS", 252, 0, 162),
             row("CHARACTER SELECT", 283, "select", 163), row("RESET", 304, "reset", 164)]},
         {"title": "CHAIN TRAINING", "rows": [row("MODE SELECT", 138, "mode", 165), row("CANCEL", 168, "close", 167),
@@ -564,14 +564,15 @@ pub fn front_end(elf: &[u8], ups: &[Upload], clips: &[Option<String>]) -> Result
             "help": 31, "reset": {"window": [240, 206, 160, 40], "text": format(elf, 0x51E800), "xy": [270, 230], "colour": 19,
                 "yes_no": ["YES", "NO"], "yes_no_xy": [258, 250], "arrow_xy": [320, 250], "help": 40}},
         // practice's menu (START in practice; its texts 0x506528-0x507200, help texts 135-190), placed as the PS2
-        // shows it (PCSX2 captures): the pause's window from (30, 72), 420 wide, to 22 below the last row; the mode's
+        // shows it (PCSX2 captures): a window from (38, 82), 404 wide, to 12 below the last row (its frame 10 out), its blue from `colour`
+        // [0] at the top to [1] at the foot (measured), in the pause's frame; the mode's
         // name at (67, 106) size 5; rows from x 48, size 4, by their feet; the cursor's bar from the window's left
         // edge; values right-aligned at 426 (on the row's foot, or `value_y`); ON / OFF in the GAME OPTIONS'
         // default / off colours, a list's value in its value colour. MODE SELECT's left / right turn the modes; each
         // row `{label, y, values, default, help (and per value: help + value)}`, `kind` "mode", "close", "list",
         // "select" (CHARACTER SELECT), "reset", "retry", "commands"
-        "practice": {"window": [30, 72, 420], "title_xy": [67, 106], "title_size": 5, "title_colour": 9, "x": 48,
-            "value_right": 426, "below": 22, "size": 4, "colours": {"item": 5, "cursor": 11, "on": 16, "off": 22, "value": 12},
+        "practice": {"window": [38, 82, 404], "colour": [[0, 32, 60, 0x70], [8, 66, 112, 0x70]], "title_xy": [67, 106], "title_size": 5, "title_colour": 7, "x": 48,
+            "value_right": 426, "below": 12, "size": 4, "colours": {"item": 5, "cursor": 11, "on": 16, "off": 22, "value": 12},
             "modes": practice_modes()},
     }))
 }
