@@ -336,7 +336,10 @@ pub fn front_end(elf: &[u8], ups: &[Upload], clips: &[Option<String>]) -> Result
             "top": {"y": 24, "stage_x": [15, 370], "stage": format(elf, 0x51ED10), "final": format(elf, 0x51ED28),
                 "stage_colour": small_colour(0)?, "time_dx": 130, "time": format(elf, 0x51ED40), "time_colour": small_colour(5)?,
                 "insert_x": [160, 480], "insert_colour": small_colour(3)?, "time_attack": format(elf, 0x51EDE0),
-                "label_x": [56, 408], "label_colour": small_colour(6)?},
+                "label_x": [56, 408], "label_colour": small_colour(6)?,
+                // (under CONTINUE?, the player's side: PRESS Pn START, then the credits, as INSERT COIN alternates, seen
+                // in PCSX2; 0x51EED0 / 0x51EEC0, 0x51EEF0)
+                "press": [string(elf, 0x51EED0), string(elf, 0x51EEC0)], "free_play": format(elf, 0x51EEF0)},
             // (0x36EA88's table 0x500440 by round state: 0 the call (0x36EDE0: ROUND n on the first round's frames 66-104,
             // the others' 6-44, READY! from 106 / 46; TAG BATTLE for ROUND in a one-round match of pairs), 2 the end
             // (0x36EF58 by the result flags: TIME UP, PERFECT!, DOUBLE K.O., else K.O. at size 12), 4 the pose (0x36F0D8:
@@ -348,7 +351,12 @@ pub fn front_end(elf: &[u8], ups: &[Upload], clips: &[Option<String>]) -> Result
                 "you_win": banner(0x500520, 0x9D, 0x168, 2, 10), "you_lose": banner(0x500558, 0x98, 0x168, 12, 10)}},
         "arcade": {"fights": 8, "rivals": rivals, "fallback": fallback, "pairs": pairs, "rival_arena": 6,
             "boss": 33, "boss_arena": 14, "boss_rounds": 1, "early_fights": 3, "early_excluded": [14, 15, 20, 29],
-            "continue": {"frames": 898, "digit_frames": 100}, "time_format": string(elf, 0x51ED40)},
+            // (0x3BA560: CONTINUE? and the digit at (86, 360) in the chrome font's own colour, over the fight's scene and
+            // HUD; at 0, 0x35B0E4: GAME OVER at (123, 360) colour 1 for 150 frames, voice 0x1056, then the CHARACTER
+            // USAGE ranking (screen 7) and the title)
+            "continue": {"frames": 898, "digit_frames": 100, "text": format(elf, 0x51E9F8), "x": 86, "y": 360,
+                "game_over": {"text": format(elf, 0x4FB9F8), "x": 123, "y": 360, "colour": 1, "frames": 150, "voice": 0x1056}},
+            "time_format": string(elf, 0x51ED40)},
         "team_battle": {"members": [1, 8], "refill_percent": 15},
         "unlocks": {"address": "0x440818", "schedule": schedule, "kinds": {"0": "cpu_pool", "1": "selectable", "3": "reset",
             "4": "gallery", "5": "tekken_bowl", "6": "last"}, "points_per_stage": 50},
