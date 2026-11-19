@@ -509,6 +509,9 @@ pub fn game_glb(
         if let Some(m) = mesh(&format!("object_{k}")) {
             glb::set(&mut node, "mesh", json!(m));
         }
+        if o.face {
+            glb::set(&mut node, "extras", json!({"face": "camera"}));
+        }
         let children: Vec<usize> =
             objects.iter().enumerate().filter(|c| c.1.parent == Some(k)).map(|(c, _)| first + c).collect();
         if !children.is_empty() {
