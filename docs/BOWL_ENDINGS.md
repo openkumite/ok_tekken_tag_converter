@@ -16,7 +16,7 @@ was read with `docs/re/vdis.py`. Sections 1-6 are exported for OpenKumite as `as
 |---|---|
 | 0x1FC51B0 | camera `{f32 x, y, z, .., +0x14 yaw, +0x20, +0x24 mode}` |
 | 0x1FC51E0 | ball, 0x80 bytes: +0x00 position, +0x10 velocity, +0x20 spin vector, +0x30 / +0x40 previous position / velocity, +0x50 roll angles, +0x60 roll speeds (vec4 each), +0x70 rolling, +0x74 shown, +0x78 has landed |
-| 0x1FC5260 | 10 pins x 0x180: +0x00 position, +0x10 velocity, +0x40 angles, +0x50 angular velocity, +0xC0-0xF0 four contact points, +0x100-0x130 their velocities, +0x150 base anchor, +0x170 standing, +0x174 on the deck (not yet swept), +0x178 moving (0 = at rest), +0x17C hit this frame, +0x17E clatter timer |
+| 0x1FC5260 | 10 pins x 0x180: +0x00 centre, +0x10 velocity (a frame), +0x20 the frame's start, +0x30 the frame's move, +0x40 angles (x tilt, y heading, +0x4C twist), +0x50 their speeds, +0x60 / +0x70 at the frame's start / the frame's change, +0x80-0xB0 the four spheres' centres, +0xC0-0xF0 at the frame's start, +0x100-0x130 their moves, +0x140 / +0x150 / +0x160 the base's centre, at the start, its move, +0x170 standing on its base, +0x174 on the deck (not yet swept), +0x178 not touched yet, +0x17C touched this frame, +0x17E clatter timer |
 | 0x1FC61E0 | 2 players x 0x5E: the score card (section 5) |
 | 0x1FC62A0 | throw state: +0 phase, +2 prompt, +4 spin meter, +8 spin meter speed, +0xC power, +0x10 power speed, +0x14 stat S |
 | 0x1FC6350 | bowler: +0 / +4 / +8 three hand-joint matrices (ball attach), +0xC-0x11 motion slots, +0x12 left-handed |
@@ -130,13 +130,52 @@ centre y -250.66, an equilateral triangle of side 455):
 | x | 0 | -227.5 | 227.5 | -455 | 0 | 455 | -682.5 | -227.5 | 227.5 | 682.5 |
 | z | 7211.9 | 7606 | 7606 | 8000 | 8000 | 8000 | 8394 | 8394 | 8394 | 8394 |
 
-Step 0x3EED88 per frame: ball (or the charging bowler, 0x3EEBF8) against each pin on the deck (0x3EDC90), each pin
-integrated (0x3EC9A0), every pin pair (0x3EDF88), each pin against the lane (0x3ED338) and the deck walls
-(0x3EE598). A pin has four contact points (heights 0x523570: 80, 60, 100, 75); the ground step solves each point's
-time of impact under gravity 9.8 (frame fractions), damps spin by 0.0008 / 0.005 terms and bounces with 0.4-0.8
-(gp-0x7600-0x75D8). A pin **counts as down** (+0x170 = 0) when it touches the lane with anything but its base point,
-or with its base more than ~71 units (sqrt 5000) from where it stood [M]. There is no random element in the physics:
-the randomness is all in the release (section 2) [H].
+Step 0x3EED88 per frame: the ball's frame (0x3EC768) or the runner's (0x3EBB80); for each pin on the deck (+0x174)
+its frame (0x3EC9A0) and the ball against it (0x3EDC90; the runner: 0x3EEBF8), then the ball's walls (0x3EE2F8); then
+for each pin on the deck, each later pin against it (0x3EDF88), the lane (0x3ED338) and the masking (0x3EE598). [H]
+
+The pin's body [H]: four spheres along its axis (0x46BC20: y -249.34, -99.34, 100.66, 225.66 from the centre; radii
+0x523570: 80, 60, 100, 75; their shares of the mass 0x523580: 1, 0.6, 1.5, 0.7) and the base's centre (0x46BC60: y
+250.66); mass 3.8 (gp-0x7668), turning 6.258e-6 (gp-0x765C). Its matrix (0x3E9120 from the identity 0x1FC61A0) turns
+the tilt about x, then the heading about y: the axis (centre to base) is (sin y sin x, cos x, cos y sin x). Its frame
+(0x3EC9A0): the start kept, centre += velocity, the angles turned by their speeds (0x3EC388: heading += w.y; the tilt
+by asin(sin w.x cos y - sin w.z sin y), plus asin(sin x cos x a^2) with a = sin w.z cos y + sin w.x sin y; the
+heading by -atan2(a cos x, sin x') (x' the new tilt within +-pi; +atan2(a cos x, -sin x') below 0) unless cos x or a
+is 0), then 0x3ECAD8 places the spheres and the base and their moves. Every touch is found within the frame:
+0x3EDB98 gives the first time t in [0, 1) two spheres moving apart by d from a gap g meet: 0 if they already overlap,
+else (-b - sqrt(b^2 - |d|^2 (|g|^2 - r^2))) / |d|^2 with b = d.g < 0. Both bodies go back to t (0x3ECA38: start +
+t x move), take the push, then go on for 1 - t at their velocities (0x3ECA80).
+
+- **Ball and pin** (0x3EDC90): the first of the four spheres to meet the ball (radius 150); the touch point on the
+  sphere's side (r / (r + 150) of the way to the ball's centre n); the relative move v = the sphere's (0x3ECBF0: its
+  own move plus the centre's move along the axis a by (a.move) (3.8 - w) / (|a|^2 w)) less the ball's; if v.n > 0:
+  j = 2 (v.n) w / ((w + 30) |n|^2), the ball's velocity = its move + j n with y 0, the pin pushed by -30 j n
+  (+0x178 = 0, +0x17C = 1; a vibration 5).
+- **Pin and pin** (0x3EDF88): the first pair of spheres of the sixteen; the touch point r_q / (r_p + r_q) of the way
+  from q's; if (v_q - v_p).n > 0: j = 2 (v.n) w_p w_q / ((w_p + w_q) |n|^2), p pushed by j n and q by -j n.
+- **A push** (0x3ECDE8) J at a point r from the centre: its part along r, J (J.r)^2 / (|J|^2 |r|^2), sets the
+  velocity to the frame's move plus that / 3.8; the rest x 6.258e-6 turns it: speeds += r x rest.
+- **The lane** (0x3ED338, y 0 the floor): the first sphere to reach it under gravity (t = (sqrt(d^2 - 9.8 y) - d) / 4.9
+  for a sphere y below at the start moving d; 0 when it already touches; the last of equal times). The belly (2) on a
+  pin tilted past pi / 2 + asin(0.05714) - 0.005 either way is its whole body (4). The base sphere (3) touching within
+  sqrt 5000 of the base's centre is the base: its rim's lowest point (sqrt(5000 / |axis|^2) of the axis' length out)
+  meets the floor at its own time, else the pin falls freely. Back to t with gravity (y += 2.45 t^2, velocity +4.9 t);
+  moving down: an upward push of the move's y x -(mass at that point) x 1.8 (0x3ECD00: w + (3.8 - w) |a.y| / |a|),
+  the body's -6.84; still in the floor after the rest of the frame (0x3ED268): another, 4.9 x mass x rest x 0.8 (the
+  body's 18.62 x rest x 0.8), the y velocity 0, and friction: lying (0x3ED118: the belly past the angle, or the head
+  short of upside down) the slide slows by 0.25 x rest a frame and the turn by 0.0008 x rest (to a stop: all speeds 0),
+  standing on its base within 0.005 of upright by 0.75 and 0.0008 (a stop sets the tilt 0). Then on for the rest with
+  gravity, out of the floor by the deepest sphere (0x3ECF70; the base by its rim's lowest point), and a pin not on its
+  base this frame no longer stands (+0x170 = 0). No touch: y += 2.45, velocity +4.9.
+- **The masking and the pit** (0x3EE598, pins past z 9255.66): the first sphere to cross the masking's front (z 9585,
+  y -3528 to -1176), its underside (y -1176, z 9585-12585) or the pit's sides (x +-2700, y -1176 to 0, z 9585-12585),
+  within 0.707 r of their edges, is put back on it and bounces at 0.4. The pins have no other walls.
+- **The runner** (0x3EEBF8): each of its 14 body spheres (+0x1F0: x, y, z, s16 radius; 0x14 each) overlapping a pin's
+  sphere pushes the pin out of it and by 150 away from its centre.
+
+A pin **counts as down** once off its base (+0x170 = 0): the lane clears it, and 0x3EF3A8 (the end of the roll's test)
+clears it for a pin still moving farther than 3000 from (0, 8000). Moving: any of its velocity or angle speeds not 0.
+There is no random element in the physics: the randomness is all in the release (section 2) [H].
 
 **Pin sounds** (0x3EC200): each hit sets a 5-frame timer; the sum over pins picks 0x10AE (< 15, then 8 frames
 quiet), 0x10AD (< 30, 14), 0x10AC (heavier, 30). [H]
@@ -291,6 +330,16 @@ at (135, 172, 370, 88); HELP MESSAGES:, SPECIAL EFFECTS: (155, 200 / 220; size 4
 bar to x 291 / 322 + 185 (0x3F1898), else 5; the value ON 16 / OFF 12 after it; the arrow at 450 / 483); JUKEBOX:
 and its track (0x455D80) once a 200 game unlocked it, else BONUS AT 200 PTS (colour 17) at 240; EXIT at 260; the
 cursor row's help text 106 + row. Both switches are ON at first (0x3F20E8), kept at save block +0x1FE / +0x200.
+SPECIAL EFFECTS (0x3E9808, each frame of the roll): the first frame every pin has been touched (+0x178 all 0,
+gp-0x6028), with the switch on (0x3F1EE8): the sound 0x10A8, the burst 0x3A2298 at 300 along the direction from (0,
+-225, -8000) to the eye (x, -y, 8000 - z) (one object a sprite of the arena's effect group 7, 0x343F20 / 0x3A9488,
+driven by 0x3A04B8: 30 frames, scales 180 / 75), and 0x3E97C8(1, player): the shake 0x35C2F8(1) (pattern 0x4FBB38,
+added to the view's pitch +0 by 0x35C320 after the camera each frame: 3, 2, 0, -2, -3, 0, 3, 2, 0, -3, -2, 0, 2, 1, 0,
+-2, -1, 0, 1, 0, 0, -1, 0, 0 in 4096ths of a turn) and a vibration (0x3BB218). The pause's TOP BOWLERS (0x3F3118,
+the cursor reset by 0x3F3108): over the hall as it stands (no shade of its own; 0x3CD868 sets the blend), the
+cursor's row lit by the band 0x3F2A38 (the screen's width, 63 above the row's y, grey 128 at alpha 0x40), then 0x3F2D00
+and THE KING OF IRONBOWL (112, 40); up / down move it round the five, a button on a row opens that record's card
+(0x3F25D8; a 300 game's sound 0x1058, else 4), START leaves; the help line 109 or EXIT:START (72, 440).
 
 **TOP 5 BOWLERS** (0x3F2D00 / 0x3F2AC0): the title (183, 64; size 5, colour 10); a record every 71 from y 135: its
 place `%2d` (16, y - 27; size 10) and ST / ND / RD / TH (y - 7; size 5); the team's faces (`003_110` frames, 51 x 52
@@ -503,15 +552,13 @@ to convert.
 
 Ranked by how much a player would notice:
 
-1. The pin simulation's inner details: ball-pin and pin-pin impulse response (0x3EDC90, 0x3EDF88), the pin's mass
-   and inertia, the exact down test. A port needs a rigid-body step with the constants of section 3; it will not
-   match pin for pin without decoding these.
+1. The pin's twist about its own axis (+0x4C, 0x3EC388's second half), drawn only.
 2. Ending effect ops 10, 12, 16, 25, 28-30, 32 (the props, the character effects, Kuma's face), op 15's fire.
 3. The face part's joint mapping (33 triples; section 7.3's outline).
 4. What a spectator the ball hits plays (0x3DB860).
 5. Whether the staff roll draws over the ending scene (its texts are 7.5's); the flash / fade colours (table 0x43FD10, 9 and 10).
-6. What 0x3E4BC0 draws in the throw (a panel by the bowler's motion); what SPECIAL EFFECTS switches off ("Explosion
-   Effects"); the JUKEBOX's list and its music; the backgrounds behind the results and TOP 5 BOWLERS.
+6. What 0x3E4BC0 draws in the throw (a panel by the bowler's motion); the burst's sprites (the arena's effect group
+   7: the effect banks 0x8BF350 are not converted).
 7. The black band behind the pin deck: the object part's models 0 and 9 are empty blocks (0x130 bytes, no batch),
    no fill; how the PS2 shows that place is to be compared.
 8. File 128 parts 1-2 and file 127 (the bowl's camera path, 600 frames) use.
