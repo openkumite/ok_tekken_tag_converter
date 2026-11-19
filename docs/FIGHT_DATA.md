@@ -391,7 +391,9 @@ Call at frame 1 of state 2 (0x36EEE0): time up 0x54, perfect 0x58, double K.O. n
 - K.O. (0x36F920): frame 16 sets settings +0x39 = 1, camera mode 3 (replay camera) and prepares the replay
   (0x364698); frame 17 holds while the replay runs (gp-0x72A8 != 5) and restarts it while +0x39 < 3, so the K.O.
   replay plays twice; frame 50: if the match is over, 0x3D2B88; frame 110: 0x3660A8 / 0x3D4718 (the replay ends);
-  frame 135: done. In one mode (gp-0x7434 set, 0x3ABCC0 false) there is no replay: done at frame 120.
+  frame 135: done. Seen in PCSX2 (the counter read each frame through PINE): it holds at 16 / 17 for 64 frames while
+  the replay shows three shots of 21-22 frames at full speed, each the ring's last 20 frames (`replay_frames`,
+  `replay_passes` in rounds.json); the last shot then stays on the live fight, the round's text shown again, to 135. In one mode (gp-0x7434 set, 0x3ABCC0 false) there is no replay: done at frame 120.
 - Time up: frame 50 as above, done at frame 160.
 - Otherwise done at frame 600.
 - No slow motion was found in the K.O. path itself; the replay's speed is in 0x364B50 (not read).
@@ -402,7 +404,10 @@ x 0x400, z -0xC00 from the winner; in a solo match the loser is hidden (+0x127 =
 frame-counter parity) picks the pose from the winner's pad: 0x80 -> 0, 0x10 -> 1, 0x40 -> 2, 0x20 -> 3, nothing ->
 gp-0x74D8 & 1. Both play `alias 0x12A2 + pose` (4770-4773) of their own moveset (0x3685B8), so a tag team poses as
 a pair. Body 33 never uses pose 0: it takes 0x12A3 + gp-0x74D8 % 3. Camera mode 0xE (side 0 won) or 0xF.
-State 4 then lasts 300 frames, or until START (pad bit 0x800, from frame 2).
+State 4 then lasts 300 frames (gp-0x725C), or until START (pad bit 0x800, from frame 2), or until gp-0x7258 is set
+(0x36E888): with camera mode 0xD at frame 75, 0x11 / 0x12 (the team lose) at 60, 0x10 as soon as a winning player
+(+0xB4 > 0; the winner and the partner posing beside it) reaches its motion's last frame (+0xC4 >= the length - 1).
+Seen in PCSX2: 188 frames, the first pose to end.
 
 **Team lose** (0x36E6C8; the arcade flag settings +0x1F set, the match over and the human side lost): 0x3B5DB0(...,
 1) puts the loser's partner in the winner's player, both play alias 0x12AC (4780, 130-255 frames), camera 0x11 / 0x12,
