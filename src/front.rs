@@ -233,6 +233,9 @@ pub fn front_end(elf: &[u8], ups: &[Upload], clips: &[Option<String>]) -> Result
     }
     let titles: Vec<String> =
         (0..9).map(|m| u32_at(elf, a(0x51EC18 + 12 * m), what).map(|p| string(elf, p))).collect::<Result<_>>()?;
+    let quick: Vec<[u32; 2]> = (0..9)
+        .map(|m| Ok([u32_at(elf, a(0x51EC18 + 12 * m) + 4, what)?, u32_at(elf, a(0x51EC18 + 12 * m) + 8, what)?]))
+        .collect::<Result<_>>()?;
     // the select grid 0x440A68 {slot, up, down, left, right, visible, body, x, y} and slot -> character 0x520460
     // (55: RANDOM)
     let mut slots = vec![];
@@ -373,6 +376,16 @@ pub fn front_end(elf: &[u8], ups: &[Upload], clips: &[Option<String>]) -> Result
             // (0x3CC660: "1ST" while the side has no pick, not in mode 5; 0x3CB4B4: "2ND" once it has, not in modes 5
             // and 6, while its partner's place stands nobody (select +0x14 + 4 x side) and `second_after` frames after
             // the pick (the side's +0x18, set by 0x3CA9B4))
+            // QUICK SELECT (0x3CCCB8 with settings +8 set): no lightning, frame, 3D characters (0x3AE7C8 is not run) or
+            // timer; the mode's title (0x3BBC40: table 0x51EC18 by mode {text, width, colour}; `titles` the texts,
+            // `quick.titles` [width, colour]) centred by its width at
+            // foot 40 size 5, and under the plates white lines 4 high fading out 164 long (0x3BE8C0: 0x3BB680 with the
+            // templates 0x4400B8 / 0x440070: from 6 to 2 above the point, the even ones from 4 right of it leftwards, the
+            // odd ones from 4 left of it rightwards), at the points of 0x440708 (TEAM BATTLE 0x440728; 1 ON 1 the first
+            // two 10 higher)
+            "quick": {"titles": quick, "title_y": 40, "title_size": 5,
+                "lines": [[230, 318], [410, 318], [200, 298], [440, 298]], "team_lines": [[160, 298], [160, 298], [480, 298], [480, 298]],
+                "one_on_one_dy": -10, "line": {"y": [-6, -2], "near": 4, "far": 160, "alpha": 0x80}, "face_dy": 52},
             "start_slots": [18, 27], "ordinal": {"text": string(elf, 0x5205C8), "x": [62, 480], "y": 350,
                 "second": string(elf, 0x5204B8), "second_after": 90},
             // (BGM 0 from the select's frame 18, select +0x10; it stops as the select ends: the VS screen is silent, as
@@ -512,7 +525,12 @@ pub fn front_end(elf: &[u8], ups: &[Upload], clips: &[Option<String>]) -> Result
         // (255, 2t + 1, 2t + 1), t 5 to 113 and back by 5 a frame), the seconds left "%d" size 5 colour 0 at (480,
         // -54) of the `frames` the entry may take (0x3C9124: 3000, then the name is taken as it is)
         "ranking": {"banners": ["132_001.png", "132_003.png", "132_002.png"], "banner_xy": [0, 20], "clip": [20, 446],
-            "rows": [{"dy": 93, "first": 153, "shown": 4}, {"dy": 93, "first": 153, "shown": 4}, {"dy": 75, "first": 135, "shown": 5}],
+            "rows": [{"dy": 93, "first": 153, "shown": 4, "hold": 150}, {"dy": 93, "first": 153, "shown": 4, "hold": 150},
+                {"dy": 75, "first": 135, "shown": 5, "hold": 130}],
+            // the list's pace without an entry (0x3C8A88's steps 4-10): in from black (+8 of 256 a frame), the last
+            // page's rows from above it down `scroll` a frame to their places, each page held `hold` frames (0x3C80E8
+            // / 0x3C83A8 / 0x3C84B8), the page before likewise, the first held `after` more, out to black
+            "pace": {"fade": 8, "scroll": 12, "after": 60},
             "separator": "132_000.png", "rank": {"x": 16, "dy": -27, "suffix_dy": -7, "suffix_size": 5},
             "colours": {"row": 13, "entry": 11, "time": 10, "wins": 12}, "faces": [[160, -74], [210, -57]],
             "face_frame": sprite(0xAE), "face_size": 51, "plates": [[220, -78], [270, -60]],
@@ -576,9 +594,15 @@ pub fn front_end(elf: &[u8], ups: &[Upload], clips: &[Option<String>]) -> Result
             "modes": practice_modes(),
             // the practice fight (PCSX2 captures): with ATTACK DATA on "TOTAL DMG: n" per side at x 32 / 352, foot 38,
             // size 4, colour 17; "DMG: n (nnn%)" (the last hit on the dummy and its share of the move's damage) at
-            // (32, 58) colour 0; the mode's name at (18, 427) colour 0; no health bars or timer
+            // (32, 58) colour 0; the mode's name at (18, 427) colour 0; no health bars or timer. FREESTYLE's COMMAND
+            // CAPTURE (0x37FE58, state 0 with nothing recorded): "COMMAND CAPTURE" (0x5072B0) at (360, 410) size 4
+            // colour 23, under it from (400, 430) "SELECT" size 4 colour 7, then in the small font (size 10) "+" colour
+            // 6, the circle button (its "o") colour 8 and "=REC" colour 6 (0x5072D0)
             "hud": {"total": {"x": [32, 352], "y": 38, "size": 4, "colour": 17},
-                "damage": {"xy": [32, 58], "size": 4, "colour": 0}, "mode": {"xy": [18, 427], "size": 4, "colour": 0}}},
+                "damage": {"xy": [32, 58], "size": 4, "colour": 0}, "mode": {"xy": [18, 427], "size": 4, "colour": 0},
+                "capture": {"text": string(elf, 0x5072B0), "xy": [360, 410], "size": 4, "colour": 23,
+                    "keys": {"xy": [400, 430], "select": "SELECT", "size": 4, "colour": 7,
+                        "small": [["+", 6], ["o", 8], ["=REC", 6]], "button": 3}}}},
     }))
 }
 

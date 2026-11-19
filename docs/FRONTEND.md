@@ -348,7 +348,18 @@ or SURVIVAL record is named there (0x3C9144: 0x3D0350 each frame, 3000 frames to
 0x3C7AB0) `132_000` at the foot, the rank (0x3C7278) and suffix, both faces with their frames and name plates, the
 time or "WINS n" (0x3C7428), the name at (488, -28) size 10; the entry's row over a grey band, its place underlined in
 a red-to-white pulse, the seconds left at (480, -54). Read in code; the CHARACTER USAGE frames seen in PCSX2 agree; the
-rows' slide in (0x3C8F3C-0x3C9110) and the arena behind (screen 7's camera) not decoded. [H on the rows, M on the rest]
+arena behind (screen 7's camera: step 2 loads file 5 and 0x3CF0E0(5, ..., 15000)) not decoded. [H on the rows, M on
+the rest]
+
+**The ranking's pace** (0x3C8A88, step gp-0x74CE by table 0x5203C0; the list at 0x440D50: +0x11A the first row's foot,
++0x16C the page's first row, +0x11E / +0x120 the hold's count and length) [H]: steps 0-3 build the list (rows apart
+gp-0x6264 = 93 / 93 / 75, gp-0x6260 = 4 / 4 / 5 a page, the first foot gp-0x625C = 153 / 153 / 135; the hold +0x120 150
+/ 150 / 130 by 0x3C80E8 / 0x3C83A8 / 0x3C84B8) and load the arena; 4 in from black (gp-0x6BE0 up 8 a frame to 256);
+without an entry 5: the last page's first row (count less count % per, or a whole page), the foot at first less
+count rows; 6 down 12 a frame to it; 7 held +0x120 frames, then the page before (6 again) until the first; 8 60 frames;
+9-10 out to black (256 down 8 a frame); 15 three frames, the next screen. With an entry, 0xB places it third (0x3C9034)
+and 0xC eases to it ((target - foot + 15) / 16 a frame, 1 to 16). The rows are drawn first, the banner over them
+(0x3C93A0).
 
 **Name entry** (0x3D0350): right / down the next letter, left / up the one before (round in 42); a face button takes
 the letter under the cursor ("<" takes the last back, "=" ends); the third letter ends; the entry shows the current
@@ -375,7 +386,57 @@ then the mode's rows (FREESTYLE: COMMAND LIST, TRAINING DUMMY with its value und
 HIT ANALYSIS; VS CPU: COMMAND LIST, CPU LEVEL, ATTACK DATA, HIT ANALYSIS; CHAIN TRAINING: RETRY, ATTACK DATA, TIME
 DISPLAY; COMBO TRAINING: COMBO DISPLAY (the character, "(YOU)", TYPE 1), ATTACK DATA, HIT ANALYSIS), CHARACTER SELECT,
 RESET; help texts 135-190. In the fight: TOTAL DMG per side, DMG: n (nnn%), the mode's name at the foot, COMMAND
-CAPTURE / SELECT + O = REC. The menus' code (0x506528-0x507200's users) is not decoded; the layout is as seen. [M]
+CAPTURE / SELECT + O = REC. The menus' layout is as seen [M]; their code (0x379000-0x37FB70, the texts
+0x506528-0x507200) [H]:
+
+- **The dummy** (0x37A258 each frame; 0x37AF30 by TRAINING DUMMY's value v): v 11 CONTROLLER: +0x420 = 1 (the pad),
+  +0x12C = 1; else +0x420 = 4 and 0x37DC98 writes the dummy's pad word +0x430 (+0x12C = 0, the guard input flag).
+  For v 6-10 while +0xF7 (set at a move's start from +0x131, the hit) only 0x37E0E8: in a move of posture class
+  ((+4 >> 11) & 0x1F) 9 or 10, the input 0x60 (v 6, buttons 3+4: QUICK ROLL into the foreground), 0x90 (7, 1+2: into
+  the background), 4 (8, tag: QUICK TAG OUT), 0x2000 (9, forward: SPRING FORWARD), 0x8000 (10, back: QUICK ROLL BACK),
+  but only on a frame 0x37E1D8 finds it taken (the input pushed into the history, the move's list walked, or within
+  the END look-ahead's window the END destination's at frame 1). Otherwise first 0x37DDE0: a lying move (+4 & 0x204)
+  holds up (0x1000) and nothing else; then by v (table 0x506D60): 1 STAND GUARD back (0x8000) while the player's move
+  has mask bit 0x10 and its frame is not past its last active frame (0x37E010); 2 CROUCH down (0x4000, 0x37DFF0); 3
+  CROUCH GUARD down, down-back (0xC000) the same against bit 0x08 (0x37E180); 4 GUARD ALL in the attack's time
+  down-back against 0x08, else back against 0x10 (0x37E090); 5 AUTO GUARD no input, +0x12C = 1 (the stance's guard
+  counts). VS CPU: +0x420 = 2, the CPU. The options' getter 0x3794A0(k).
+- **The training data**: section 3 of the body's file (TEKKEN.BIN 0x159 + 3 x body; 0x3672B0 -> 0x37D0F8 into
+  0x897B90 + 0x40D8 x slot): u16 n, u16 m; n entries of 0x42 bytes (+0 steps, +2 the first step, +6 a chain
+  training entry, +8 a combo training entry (the 19-step 10-hit combos), +0xE a time, +0x12 eight entries shown before
+  it, +0x22 sixteen aliases that count as done); m steps of 8 bytes (the command list's tokens, drawn by 0x3DD188).
+  The chain entries are listed at +0x3ED8 (up to 128), the combo entries at +0x3E94 (16).
+- **CHAIN TRAINING** (0x37EB04, state 0x8B8010): 0 the first entry (+4 = 0), its aliases, the count; 1 "READY!"
+  (0x506DD8) at (192, 220) size 10 colour 2 for 90 frames, voice 0x105A at its start, 0x105B at its end; 2 the
+  entry's commands with those before it (0x37B8D8: from y 100, 60 apart, at x 320), the time running (to 216000,
+  "%02d'%02d\"%02d" at (240, 60) size 4 colour 19 with TIME DISPLAY), "COMBO n:m" at (400, 80) size 4 colour 10;
+  the player's move (+0x10C) among the 16 aliases: sound 0x103D, the next entry; after the last, state 3: 180
+  frames, voice 0x1058 at 120; START or a face button after them starts again. COMBO TRAINING (0x37CDA0, state
+  gp-0x7070) places both sides (0x37D8C8) and plays the combo entries; not followed further.
+- **COMMAND CAPTURE** (FREESTYLE only, 0x37FA30; 0x37FB70 on the player's side, state 0x4318C8: +0 state, +2 loop,
+  +4 count, +6 / +0xA the pad held / new): 0 shows "COMMAND CAPTURE" (0x5072B0) at (360, 410), or (360, 390) once
+  something is recorded, size 4 colour 23, and under it at x 400 "SELECT" (size 4 colour 7) "+" "o" "=REC" (small
+  font; colours 6, 8, 6; 0x5072D0) and, recorded, "SELECT + x = PLAY" (0x507300) 20 lower; SELECT + circle: 1 READY
+  (0x507330 at (196, 430) colour 16, blinking with frame & 0x10) until any input (0xF4FE), then 2-3 REC (0x507340)
+  recording the side's pad (0x37C650, 0x37C8A0) until SELECT or full: 4 REC LIMIT (0x507370, sound 0x103D at 180,
+  160, 140 frames), "SELECT=STOP" (0x507350) at (400, 430) while recording or playing; SELECT + cross plays it once,
+  SELECT + square in a loop: 6-7 PLAY (0x507388), the dummy's pad +0x430 from the recording (0x37C970, +0x420 = 4)
+  until SELECT or its end (5 waits between loops).
+
+**GAME OPTIONS' select options** [H]: CHARACTER SELECT CURSOR (settings +0xA, HOLD 1): each pick of a side writes its
+slot to 0x4157F8 + 8 x side + the pick's number (0x3CAB18); a played side's cursor starts on byte 0 (0x3C993C; at first
+18 and 27, 0x3AE798), after its first pick goes to byte 1 when set (0x3CAB8C); 0x3C94C0 clears byte 1 (a pick taken
+back); the bytes go to the config's +0x38 / +0x39 at the select's end (0x3CB6CC; 1 ON 1 only +0x38) and back at boot
+(0x3AE760). QUICK SELECT (settings +8): 0x3CCCB8 draws no lightning or frame and 0x3AE7C8 no 3D characters, no timer
+(0x3CC190); instead the mode's title (0x3BBC40: table 0x51EC18 by mode {text, width, colour}: "PLAYER SELECT" ...,
+centred by the width at foot 40, size 5) and white lines (0x3BE8C0: 4 high, 6 to 2 above the points of 0x440708,
+TEAM BATTLE 0x440728, 1 ON 1 the first two 10 higher; the even ones fading leftwards from 4 right of the point to 160
+left of it, the odd ones rightwards), the grid 52 lower (0x3CC6D4, 0x3CCA28) with a panel per slot (0x3BE038, not
+followed). CHICKEN MARKING (settings +0xE, with settings +0x1A = 2): 0x3D2B88, called from the round's end (0x36E4CC,
+0x36FAE0), compares the team's per-member counters (+0x5C / +0x60 of the side's 0x60 bytes at 0x440940) with table
+0x521190's percentages (25, 33, 50, 75, 83 / 17, 22, 33, 50, 55 by settings +0xB) scaled by the rounds played; a side
+marked gets gp-0x7428 = 1 and voice 0x1046, and the HUD (0x3C21DC) draws sprites 0x47 / 0x48 for it; what the counters
+count is not followed. [M]
 
 **The help line** (0x3E5268 -> 0x3E06A0, when HELP MESSAGES is on: 0x3B1468): a band (0, 389, 640 x 48) RGBA
 0x18181860 (0x3DBCF0), the text at (30, 390) (its top) in the help font of the executable's archive 0x457380 entry 0
@@ -522,9 +583,8 @@ Ranked by how much a player would notice:
 2. What sets gp-0x6230 (Xiaoyu's costume 5).
 3. Tekken Bowl's ball and pin physics.
 4. The ending scenes' scripts (descriptor `script*`), the staff roll, which cutscene files (41-128) they use.
-5. QUICK SELECT's select backdrop (0x3BBC40, 0x3BE8C0).
-6. The attract loop's code (0x3BCC88's steps 0-2) and PAIR PLAY MODE (0x3C4A28: shown with a multitap).
-7. What settings +8 means beyond the two grid slots; config +0x08 and +0x37.
+5. The attract loop's code (0x3BCC88's steps 0-2) and PAIR PLAY MODE (0x3C4A28: shown with a multitap).
+6. What settings +8 means beyond the two grid slots; config +0x08 and +0x37.
 
 ## Scripts (`docs/re/`)
 
