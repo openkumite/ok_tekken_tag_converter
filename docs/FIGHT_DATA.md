@@ -671,8 +671,20 @@ throw latch +0x44 (the thrower's side) freed when that side's +0xE0 is 0; the st
   and to o's op 0x0D (frame - move frame +0xC4, -1 without): at the later one's 0 (not while t's +0x17A is 0x20).
 - A chain throw (the thrower's new move with camera id 0x71, 0xA1-0xA3, in a situation; 0x38D3D0) picks anew: a
   motion starts at once with yaw 0x400 - f/16 from the victim's root; a situation is held (state 2, w1 = 1).
-- 7-15: the per-fighter situation cameras of 0x38DEA0 (ids 0x1C-0x66 by 0x3943A8; hold, cut, blend back), also
-  checked in states 1, 2 and 6.
+- 7-15: the per-fighter situation cameras (0x38DEA0, checked in states 1, 2 and 6; once a move, +0x7C / +0x80
+  holding the move that set one): 0x3943A8 looks at each fighter's move: when the other's +0x131 is clear, camera
+  ids 0x23-0x66 (35 moves; alias 5459 in every set has id 0x29), else also 0x1C-0x20 and the rows by character and
+  +0x10C (0x509820); the list (`fighter_cameras`) picks a script by rand & 0xFFF; the camera looks at the other
+  fighter (its root; +0x39C for kinds 9 / 17). By the script's kind: 3 / 6 state 10, 11 / 14 state 13 (16 frames'
+  delay, an id-3 move ends it), 10 state 14 / 15 (the fight camera blended into the view frozen at the delay's end),
+  12-17 state 12 (from the frozen slot 4), 4-9 and the rest state 7 (from the fight camera): blended over the
+  script's blend in (+4), held (8) to its blend out (+6) frames before its count (+2) ends, then back (9; 15 to the
+  S-curve). Slot 1 (0x394648) by kind: 0 a situation's angle from the script's four pitches and yaw offsets (<< 6;
+  pitch 0 on variant arenas), 1 an orbit of the point at that angle, the distance easing from +0xC to +8 (x H /
+  955); 3-5 / 11-13 the point + Ry Rx Rz (pitch, yaw + the other's facing kept within 90 degrees) of (0, 0,
+  distance), 6-8 / 14-16 an orbit at pitch and yaw (off the fighters' axis, taken on its first two frames) easing
+  from / to over the count; both ease the point halfway to the other's root a frame, keep it and the eye at heights
+  -1400..-900, lift the eye by +0x14, and freeze the view once the other's move has flags bits 20-21 = 2.
 
 Slot 1's framing (0x38FD90 with slot 1): pitched up (pitch < 0) its centre drop is 180 (slot 0 140); pitched down
 it is lifted by (y + 1000) x 512 / 640, y the top fighter's sample height x cos pitch >> 12 when >= -1000, eased 28

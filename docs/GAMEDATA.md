@@ -196,7 +196,10 @@ and `attract` are not written (not decoded).
   (against the CPU the CPU's alone), a set-up frame and `frames` (90) + 1 more: `place` (x 500, z 1500), two
   `shots` (0x521140: `turn_from` / `turn_to`, `target_from` / `target_to`, `eye_from` / `eye_to`, eased by sine over
   `frames`), `pair_scale`, and `pairs` (0x43A180: two members `character`, `costume` (-1 any), `alias`, `x`, `z`,
-  `facing`) that stand in their own places and motions.
+  `facing`) that stand in their own places and motions; **new** (format 33) `start_frames` by character (0x447480):
+  [alias, frame] its intro motion starts at in the team intro (0x368398 while gp-0x6334 is set: that frame, or the
+  motion's frames - 90 when shorter than it + 90; frame 1 for an alias not listed): 255 for aliases 4 and 6, so the
+  150-frame intros play their last 90 frames.
 - **New** (format 25) `replay_shots` (0x3D0748, per frame 0x3D0A38): the K.O. replay's 42 `shots` (0x520C40:
   `target` 0 the winner's root / 1 the loser's / 2 the loser's point at the K.O., `follow` 0 / 1 / 3 none, `turn`,
   `turn_range`, `distance`, `distance_range`), 14 `sequences` of 4 shot numbers (0x520F88: one a pass, picked by the
@@ -206,6 +209,11 @@ and `attract` are not written (not decoded).
   arena, 0x3D7DA8), R = H x `distance_per_h` + `radius_add`, at `eye_y` (on a variant arena the chest - 290); each
   frame 8 nearer while farther than H x `distance_per_h`, the view eased >> 5 (Tekken 3's camera A after, without
   its 5800 minimum).
+- **New** (format 33) `fighter_cameras` (0x38DEA0 / 0x3943A8 / 0x394648): the per-fighter situation cameras:
+  `ids` ([camera id, list]: ids 0x1C-0x20 from 0x509700, 0x23-0x66 from 0x5096E8, 12-byte rows, the list at +8) and
+  `lists` 0x12C-0x177 (0x5095C0): entries `{weight, scripts}` (weights made cumulative of 4096 at boot by
+  0x3941F0; three scripts of 16 s16, the first for a move's id: kind, frames, blend in, blend out, s32 distance from /
+  to, then by kind four pitches and four yaw offsets, or pitch from / to, the eye's lift, yaw from / to, the delay).
 - `situation_presets` (0x508908): the 30 situation types, Tekken 3's shape (`field_1` is the hold).
 - **New** `move_camera_lists` (0x434C78; Tekken 3's `script_selectors`): `lists` by camera id (move flags >> 23)
   with an entry: `id`, `split`, `first_mirrored`, `entries` (`flags`, `weight` out of the list's sum, `type` 1 a
