@@ -379,6 +379,13 @@ fn openkumite(pack: &Hashed) {
             &false.into()
         )
     );
+    // Nina's helicopter and lanes, King's clouds (objects 21-120), Law-A's people's models' scales (1.2, ...)
+    let (nina, king) = (&stages["stages"][9]["objects"], &stages["stages"][11]["objects"]);
+    assert_eq!(
+        (&nina["helicopter"]["object"], &nina["lanes"]["first"], &nina["lanes"]["y"], &king["clouds"]["first"]),
+        (&1.into(), &10.into(), &serde_json::json!(-2000.0), &21.into())
+    );
+    assert_eq!(&stages["stages"][1]["scales"][0], &serde_json::json!(1.2));
     // Eddy-A's lens flare: its sun 85.6 m ahead, strength 0.6, nine discs (the first a hexagon of 0.1 at 192)
     let flare = &stages["stages"][10]["flare"];
     assert_eq!(
