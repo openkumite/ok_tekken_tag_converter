@@ -293,7 +293,12 @@ fn fight_data(pack: &Hashed) {
     let h: Vec<[i64; 2]> = rows.iter().map(|r| [r["h"].as_i64().unwrap(), r["h_min"].as_i64().unwrap()]).collect();
     assert_eq!((h.len(), h[0], h[5], h[11], h[24]), (25, [615, 600], [615, 500], [615, 500], [850, 600]));
     assert_eq!(camera["camera_motions"]["count"], 485);
-    assert_eq!(camera["intro"]["offsets"], serde_json::json!([[0, 0, -3700]]));
+    assert_eq!(camera["intro"]["offsets"], serde_json::json!([[0, 0, 3700]]));
+    // the team intro's two shots and 97 pairs, the replay's 42 shots in 14 sequences of 4
+    assert_eq!(camera["team_intro"]["shots"][1]["eye_from"], serde_json::json!([0, 100, 6500]));
+    assert_eq!(camera["team_intro"]["pairs"].as_array().unwrap().len(), 97);
+    assert_eq!(camera["replay_shots"]["shots"][32]["follow"], 3);
+    assert_eq!(camera["replay_shots"]["sequences"][13], serde_json::json!([33, 7, 26, 39]));
     let list = camera["move_camera_lists"]["lists"].as_array().unwrap().iter().find(|l| l["id"] == 0x69).unwrap();
     let picks: Vec<[i64; 4]> = list["entries"]
         .as_array()

@@ -33,6 +33,10 @@ const SITUATIONS: (usize, usize) = (0x508908 - VADDR, 30); // {in frames, hold, 
 const CAMERA_LISTS: (usize, usize) = (0x434c78 - VADDR, 0x134); // {u32 list, s16 count, total, split, first mirrored}
 const CAMERA_MOTIONS: usize = 0x508130 - VADDR; // u32 offsets of the camera motions in disc file 12, rising
 const INTRO_OFFSET: usize = 0x509c20 - VADDR; // s16 eye x, y, z
+const TEAM_SHOTS: (usize, usize) = (0x521140 - VADDR, 2); // 18 x s16: two turns, then four points (0x3D2330)
+const TEAM_PAIRS: usize = 0x43a180 - VADDR; // 28 bytes: two {character, costume, alias, x, z, facing}, 2 x s16; -1 ends
+const REPLAY_SHOTS: (usize, usize) = (0x520c40 - VADDR, 42); // 10 x s16 (0x3D0748)
+const REPLAY_SEQUENCES: (usize, usize) = (0x520f88 - VADDR, 14); // 4 x s8 shot numbers, one a pass
 /// The life option every match uses (0x3B1488, the only writer of the option, sets 3).
 const LIFE_OPTION: usize = 3;
 
@@ -709,7 +713,39 @@ pub fn camera(elf: &[u8]) -> Result<Value> {
     while let Some(o) = crate::u32le(elf, CAMERA_MOTIONS + 4 * motions).filter(|&o| motions == 0 || o > last) {
         (last, motions) = (o, motions + 1);
     }
-    let intro: [i16; 3] = s16s(elf, INTRO_OFFSET, "the round-start offset")?;
+    // (0x3954E8 subtracts the eye's offset; Tekken 3's adds it, as OpenKumite does: written negated)
+    let intro = s16s::<3>(elf, INTRO_OFFSET, "the round-start offset")?.map(|v| -i32::from(v));
+    let mut team_shots = Vec::new();
+    for i in 0..TEAM_SHOTS.1 {
+        let v: [i16; 18] = s16s(elf, TEAM_SHOTS.0 + 36 * i, "the team intro's shots")?;
+        let t: Vec<&[i16]> = v.chunks(3).collect();
+        team_shots.push(json!({"turn_from": t.first(), "turn_to": t.get(1), "target_from": t.get(2), "target_to": t.get(3), "eye_from": t.get(4), "eye_to": t.get(5)}));
+    }
+    let mut pairs = Vec::new();
+    for i in 0.. {
+        let v: [i16; 14] = s16s(elf, TEAM_PAIRS + 28 * i, "the team intro's pairs")?;
+        let m = |m: &[i16]| match *m {
+            [character, costume, alias, x, z, facing, ..] if character != -1 => Some(
+                json!({"character": character, "costume": costume, "alias": alias, "x": x, "z": z, "facing": facing}),
+            ),
+            _ => None,
+        };
+        let (Some(a), Some(b)) = (m(&v), m(v.get(6..).unwrap_or_default())) else { break };
+        pairs.push(json!([a, b]));
+    }
+    let mut replay_shots = Vec::new();
+    for i in 0..REPLAY_SHOTS.1 {
+        let [target, follow, p, y, r, pr, yr, rr, d, dr] = s16s(elf, REPLAY_SHOTS.0 + 20 * i, "the replay's shots")?;
+        replay_shots.push(json!({"target": target, "follow": follow, "turn": [p, y, r], "turn_range": [pr, yr, rr], "distance": d, "distance_range": dr}));
+    }
+    let sequences = (0..REPLAY_SEQUENCES.1)
+        .map(|i| {
+            Ok(bytes(elf, REPLAY_SEQUENCES.0 + 4 * i, 4, "the replay's shot sequences")?
+                .iter()
+                .map(|&b| b as i8)
+                .collect::<Vec<_>>())
+        })
+        .collect::<Result<Vec<_>>>()?;
     let h0 = arenas.first().map_or(json!(0), |a| a["h"].clone());
     Ok(json!({
         "angle_units": "4096 per turn (camera module keeps pitch/yaw << 6)",
@@ -735,7 +771,28 @@ pub fn camera(elf: &[u8]) -> Result<Value> {
         },
         "intro": {"address": "0x509C20", "routine": "0x3954E8", "frames_first_round": 120, "frames_other": 90,
                   "ease_frames": 90, "blend_frames": 13, "offsets": [intro],
-                  "formula": "eye = base.eye + off*(1 + sin(0xC00 + min(t, 90)*1024/90)), t counts T..0; hand-off weight min(t*4096/13, 4096)"},
+                  "formula": "eye = base.eye + off*(1 + sin(0xC00 + max(t - T + 90, 1)*1024/90)), t counts T..0 (the move over the first 90 frames); hand-off weight min(t*4096/13, 4096)"},
+        // Before round 1 of a match of teams (screen 4 step 7, 0x3B5328: not 1 ON 1 nor the attract demo), each team on
+        // the stage for a set-up frame and `frames` + 1 more (START skips), camera mode 2: side 0's first when side 1's
+        // pad is in (gp-0x7440), else side 1's; against the CPU (settings mode 8, +0x1A 1) the CPU's alone. The team's member in its slot stays, its partner takes the other slot. Normally (0x3B5150)
+        // player 0 at x -500, player 1 at x 500, facing each other, both in their round-1 intro (0x368398); then player 0
+        // moved z + `place.z` when side 0's team shows (shot 0 on player 0's chest, +0x708), else z - `place.z` (shot 1
+        // on player 1's). A pair in `pairs` (0x3B4F88: by character, and costume unless -1; not in Tekken Bowl) stands
+        // at its x, z, facing (65536 a turn) playing its alias, the shot (0 for side 0's team) on the chests' midpoint,
+        // `pair_scale` / 4096 on its target's from y and its eyes' z. A shot (0x3D2330, per frame 0x3D2818): each
+        // point's x, y, z scaled H / 600, turned by Ry * Rx * Rz of its `turn_*` (4096 a turn; each product's terms
+        // truncated) and put on the base; then each frame from + (to - from) * sin(t * 1024 / frames) / 4096, t from 0
+        "team_intro": {"routine": "0x3B5328", "frames": 90, "place": {"x": 500, "z": 1500}, "shots": team_shots,
+            "pair_scale": 0x1333, "pairs": pairs},
+        // The K.O. replay's shots (0x3D0660 at its start: a sequence by the AI's random of 14; each pass 0x3D0748 takes
+        // the sequence's next; the loser: player 1 while player 0's +0xB4 >= 0): `target` 0 the winner's root (+0x51C),
+        // 1 the loser's, 2 the loser's point +0x39C as kept at the K.O.; the loser's root when a fighter was in a throw
+        // (0x3D0660's tests). The eye: the target + Ry * Rx * Rz of `turn` +- `turn_range` (the yaw plus the winner's
+        // +0x3C / 16, the loser's after a throw) on (0, 0, distance +- range) * H / 600, at least 1500 up (`eye_y`, y
+        // down); the target at most 1800 up (`target_y`). Each frame (0x3D0A38) the target moves `follow_easing` of
+        // the way to `follow` (0 the winner's root, 1 the loser's, else none); the pitch (mod 4096) at most `pitch_max`
+        "replay_shots": {"routine": "0x3D0748", "per_frame": "0x3D0A38", "sequences": sequences, "shots": replay_shots,
+            "eye_y": -1500, "target_y": -1800, "pitch_max": 568, "follow_easing": [6, 128], "distance_per_h": 600},
         "situation_presets": {"address": "0x508908", "entries": situations},
         "move_camera_lists": {"address": "0x434C78", "note": "by camera id (move flags >> 23); weights out of the list's sum; type 1 = situation type, 2 = camera motion (not decoded), 0 = none; the mirrored value when the orientation is set", "lists": lists},
         "camera_motions": {"address": "0x508130", "file": 12, "count": motions, "decoded": false},
