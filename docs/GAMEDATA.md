@@ -446,5 +446,13 @@ the 25 beside the lane, of the arena's cast), `speed` (the MPH display), `sounds
 the pin clatter by level, the strike announcer by run), `callouts` (the texts: STRIKE! .. !!GREAT!!, PUNCH OUT, PERFECT,
 MISS, FOUL, SPARE, NICE COVER from the executable; SPLIT, K.O., OVER CHARGED), `split_gap`, `camera` (the decoded
 bases of modes 0-2), `models` (the ball's, pin's and deck's glbs, the pin's centre above its base). The code-read
-rules are written as read (strings where they are formulas); the tables are read from the executable.
+rules are written as read (strings where they are formulas); the tables are read from the executable. **New**
+(format 23, BOWL_ENDINGS.md 1, 5, 6): `replay` (0x3EFB00: taken at `from_z`, a strike before frame `quick` replays
+at once `count` times, the camera's `pivot` and `distance`), `strike` (state 5: the bowler's and the partner's `z`,
+the partner's `side`, the reaction slot, the camera), `records` (TOP 5 BOWLERS, save block `save`: `size`,
+`defaults` from 0x523C00 / 0x523C10, each `name` (the first body's name's three letters), `bodies` (the team's two),
+`score`; `bonus`: the scores that keep JUKEBOX and the 300 flag), `texts` (the results', records' and pause menu's
+words without their printf control codes: `replay`, `king`, `top`, `new`, `record`, `thanks`, `draw`, `losers`,
+`winners`, `score_sheet`, `your_score`, `rank`, `summary`, `bonus`, `jukebox`, `top_bowlers`, `exit`,
+`summary_rows`, `ordinals`).
 

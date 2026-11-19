@@ -22,6 +22,34 @@ const VOICES: usize = 0x52_36A0;
 const CHARACTERS: usize = 34;
 /// The strike pose by moveset (33 x s16).
 const POSES: usize = 0x52_37D8;
+/// TOP 5 BOWLERS' defaults (0x3F1F58): the teams' two bodies (u8 x 2 each) and their score cards (0x5E bytes, the
+/// total at +0x56); the name is the first body's name's first three letters (0x3D01C0 through 0x415CC0).
+const RECORDS: usize = 0x52_3C00;
+const CARDS: usize = 0x52_3C10;
+const BODY_NAMES: usize = 0x41_5CC0;
+/// The texts of the results, the records and the pause menu (printf formats: their control codes left out).
+const TEXTS: [(&str, usize); 17] = [
+    ("replay", 0x52_3990),
+    ("king", 0x52_3F68),
+    ("top", 0x52_3F40),
+    ("new", 0x52_3AC8),
+    ("record", 0x52_3AD8),
+    ("thanks", 0x52_3A80),
+    ("draw", 0x52_3B00),
+    ("losers", 0x52_3B08),
+    ("winners", 0x52_3B10),
+    ("score_sheet", 0x52_3E70),
+    ("your_score", 0x52_3E80),
+    ("rank", 0x52_3EA0),
+    ("summary", 0x5F_6AC8),
+    ("bonus", 0x52_3BD0),
+    ("jukebox", 0x52_3BB8),
+    ("top_bowlers", 0x51_E760),
+    ("exit", 0x52_3BF0),
+];
+const SUMMARY: usize = 0x5F_6A70;
+const ORDINALS: usize = 0x5F_6AA0;
+
 /// The callouts' string pointers: the strikes' six, MISS / FOUL, SPARE / NICE COVER.
 const STRIKES: usize = 0x52_3A18;
 const MISS: usize = 0x5F_69D8;
@@ -30,8 +58,17 @@ const SPARE: usize = 0x5F_6A00;
 /// A string of the executable at a pointer.
 fn text(elf: &[u8], pointer: u32) -> String {
     let at = (pointer as usize).wrapping_sub(VADDR);
-    let raw: Vec<u8> = elf.get(at..).unwrap_or_default().iter().take(32).take_while(|&&c| c != 0).copied().collect();
+    let raw: Vec<u8> = elf.get(at..).unwrap_or_default().iter().take(64).take_while(|&&c| c != 0).copied().collect();
     String::from_utf8_lossy(&raw).to_string()
+}
+
+/// A printf format of the bowl's without its leading control codes (%H %V %F %S %T and a colour's %c).
+fn plain(s: &str) -> String {
+    let mut t = s;
+    while let Some(rest) = ["%H", "%V", "%F", "%S", "%T", "%c"].iter().find_map(|c| t.strip_prefix(c)) {
+        t = rest;
+    }
+    t.to_string()
 }
 
 /// `gamedata/bowl.json` from the executable; `motions`: the bowler's motions' frame counts (file 128 part 0).
@@ -74,6 +111,29 @@ pub fn bowl(elf: &[u8], motions: &[usize]) -> Result<Value> {
     let [strike, double, turkey, great, punch_out, perfect]: [String; 6] =
         strings(STRIKES, 6)?.try_into().unwrap_or_default();
     let (miss, spare) = (strings(MISS, 2)?, strings(SPARE, 2)?);
+    // TOP 5 BOWLERS' defaults
+    let records: Vec<Value> = (0..5)
+        .map(|k| {
+            let bodies = [u8_at(elf, a(RECORDS) + 2 * k, what)?, u8_at(elf, a(RECORDS) + 2 * k + 1, what)?];
+            let score = u16_at(elf, a(CARDS) + 0x5E * k + 0x56, what)? as i16;
+            let name = u32_at(elf, a(BODY_NAMES) + 4 * bodies[0] as usize, what)?;
+            let name: String =
+                text(elf, u32_at(elf, (name as usize).wrapping_sub(VADDR), what)?).chars().take(3).collect();
+            Ok(json!({"name": name, "bodies": bodies, "score": score}))
+        })
+        .collect::<Result<_>>()?;
+    let mut texts = serde_json::Map::new();
+    for (key, at) in TEXTS {
+        texts.insert(key.into(), plain(&text(elf, at as u32)).into());
+    }
+    let words = |at: usize, n: usize| (0..n).map(|k| text(elf, (at + 8 * k) as u32)).collect::<Vec<_>>();
+    texts.insert(
+        "summary_rows".into(),
+        json!(
+            [words(SUMMARY, 3), vec![text(elf, (SUMMARY + 0x20) as u32), text(elf, (SUMMARY + 0x28) as u32)]].concat()
+        ),
+    );
+    texts.insert("ordinals".into(), json!(words(ORDINALS, 5)));
     Ok(json!({
         "routine": "0x3F0008", "arena": ARENA,
         "motions": {"file": MOTIONS, "clip": "bowl_NNN", "frames": motions,
@@ -107,6 +167,10 @@ pub fn bowl(elf: &[u8], motions: &[usize]) -> Result<Value> {
         "split_gap": 500,
         "camera": {"routine": "0x3EBC98", "fixed": [0, -2300, -12000], "bowler_y": -2350, "ball_to": [0, -1500, 4000], "ball_until_z": 4000},
         "models": {"ball": "stages/bowl_ball.glb", "pin": "stages/bowl_pin.glb", "deck": "stages/bowl_deck.glb", "pin_base": 250.66},
+        "replay": {"routine": "0x3EFB00", "from_z": 4000, "quick": 91, "count": 3, "pivot": [0, -290, 8000], "distance": 4000},
+        "strike": {"routine": "0x3F0670", "z": [-6500, -9500], "side": 1000, "reaction": 1, "camera": {"distance": 3500, "up": 500}},
+        "records": {"save": "0x46BC70", "size": 5, "defaults": records, "bonus": {"jukebox": 200, "perfect": 300}},
+        "texts": texts,
     }))
 }
 
