@@ -251,6 +251,13 @@ pub fn objects(elf: &[u8], arena: usize, blocks: &[Vec<Batch>]) -> Result<Vec<Ob
                 });
                 out[k].parent = Some(out.len() - 1);
             }
+            // 0x3D6BC0: 40 copies of 0-3 (k & 3), the leaves (0x3D7378), and of 19 for their shadows (0x3D7110), after
+            // the table's (OpenKumite moves them); 19 itself is not drawn (each leaf's shadow is the copy)
+            for k in 0..80 {
+                let template = if k < 40 { k & 3 } else { 19 };
+                out.push(Object { model: model(template)?, parent: None, poses: vec![rest(template)?], face: false });
+            }
+            out[19].model = vec![];
             // 0x3D7C38: 14, 15, 17 and 18 (their +0x28 flag, 0x3D6BC0) pitch on a curve through four points (times
             // 0x44C170, pitches 0x44C180, slopes 0x44C190), each node twice: a frame a step, back to its start past
             // the last time
@@ -363,6 +370,29 @@ pub fn objects(elf: &[u8], arena: usize, blocks: &[Vec<Batch>]) -> Result<Vec<Ob
 /// 0x3D5E80). None elsewhere.
 pub fn motion(elf: &[u8], arena: usize) -> Option<serde_json::Value> {
     let gp = |off: usize| f32le(elf, GP - off - VADDR).map(f64::from);
+    if arena == 1 {
+        // (the leaves' copies after the table's objects, then their shadows')
+        let table = (crate::u32le(elf, ROWS - VADDR + 16 * arena)? as usize).checked_sub(VADDR)?;
+        let (first, list) =
+            (crate::u32le(elf, table + 8)?, (crate::u32le(elf, table + 12)? as usize).checked_sub(VADDR)?);
+        let floats = (crate::u32le(elf, table + 0x1C)? as usize).checked_sub(VADDR)?;
+        // (each lantern's lattice its float parameter, object +0xC)
+        let size = |k: usize| -> Option<f64> {
+            let i = crate::u16le(elf, list + 64 * k + 0xC)? as usize;
+            f32le(elf, floats + 4 * i).map(f64::from)
+        };
+        let turn = |k: usize| f32le(elf, list + 64 * k + 0x14).map(f64::from);
+        let lanterns: Vec<serde_json::Value> =
+            (4..14).map(|k| Some(serde_json::json!([k, size(k)?, turn(k)?]))).collect::<Option<_>>()?;
+        return Some(serde_json::json!({
+            "lanterns": {"objects": lanterns, "gain": gp(0x7B68)?, "wind": crate::effects::wind(elf, arena)?},
+            "leaves": {"first": first, "count": 40, "templates": 4, "shadow": 19, "reach": f32le(elf, 0x52_1C00 - VADDR)?,
+                "rock": f32le(elf, 0x52_1C10 - VADDR)?, "flat": [gp(0x7BAC)?, gp(0x7BA8)?], "lift": [gp(0x7BB0)?, 800.0, 5000.0],
+                "spin": [gp(0x7B9C)?, gp(0x7B98)?, gp(0x7B94)?], "tumble": gp(0x7B90)?, "tilt": [gp(0x7B8C)?, gp(0x7B88)?, gp(0x7B84)?],
+                "drop": [500.0, gp(0x7B7C)?, gp(0x7B78)?, gp(0x7B74)?], "drift": f32le(elf, 0x52_1C20 - VADDR)?, "blow": 20.0,
+                "land": 50.0, "settle": 2.5, "wind": crate::effects::wind(elf, arena)?}
+        }));
+    }
     if arena == 11 {
         // (the copies after the table's objects)
         let table = (crate::u32le(elf, ROWS - VADDR + 16 * arena)? as usize).checked_sub(VADDR)?;
