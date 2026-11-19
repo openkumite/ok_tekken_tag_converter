@@ -340,6 +340,13 @@ the cursor reset by 0x3F3108): over the hall as it stands (no shade of its own; 
 cursor's row lit by the band 0x3F2A38 (the screen's width, 63 above the row's y, grey 128 at alpha 0x40), then 0x3F2D00
 and THE KING OF IRONBOWL (112, 40); up / down move it round the five, a button on a row opens that record's card
 (0x3F25D8; a 300 game's sound 0x1058, else 4), START leaves; the help line 109 or EXIT:START (72, 440).
+**SCORE SHEET** (0x3F25D8, a record's card; a button closes it): SCORE SHEET (203, 80; size 5, colour 10); RANK
+1ST..5TH:%3d (106, 212; size 8) with the score, in colour 11 / 2 / 9 / 21 for 230+ / 170+ / 100+ / less (a 300 game
+blinking 11 and 2, frame & 2); the card (0x3C59D8) at (36, 100), frames 1-10 and the total; the team's two bodies'
+portraits (0x3CF1C0) at (204, 296) and (204, 376); SUMMARY (365, 259; size 5, colour 19); STRIKES, SPARES, MISSES
+(both kinds), FOULS, SPLITS (336, y; size 5; colours 2, 17, 1, 10, 22) and `:%2d` their counts (476, y) at y 259,
+285, 311, 389, 415; the rank's pin (0x3F2480: arena object 1 for 300, 4 / 5 / 6 by the rank, turning with the frame
+counter). The records' cards are the defaults' at 0x523C10 (section 5's layout; frame k at ball 2k).
 
 **TOP 5 BOWLERS** (0x3F2D00 / 0x3F2AC0): the title (183, 64; size 5, colour 10); a record every 71 from y 135: its
 place `%2d` (16, y - 27; size 10) and ST / ND / RD / TH (y - 7; size 5); the team's faces (`003_110` frames, 51 x 52

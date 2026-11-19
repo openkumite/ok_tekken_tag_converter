@@ -27,6 +27,47 @@ const POSES: usize = 0x52_37D8;
 const RECORDS: usize = 0x52_3C00;
 const CARDS: usize = 0x52_3C10;
 const BODY_NAMES: usize = 0x41_5CC0;
+/// A score card (0x5E bytes at `at`, BOWL_ENDINGS.md 5) as balls in order: frame k (1-10) at +0xD + 2k (its pins)
+/// and +0x27 + 2k (its mark), a strike without its second ball; the tenth's extra balls at +2 and +4 after a strike
+/// (else +2 after a spare). Marks: none, strike, spare, miss (3 and 4), foul, split.
+fn card(elf: &[u8], at: usize, what: &str) -> Result<Value> {
+    let ball = |b: usize| -> Result<(u8, &str)> {
+        let mark = match u8_at(elf, at + 0x27 + b, what)? {
+            1 => "strike",
+            2 => "spare",
+            3 | 4 => "miss",
+            5 => "foul",
+            6 => "split",
+            _ => "none",
+        };
+        Ok((u8_at(elf, at + 0xD + b, what)?, mark))
+    };
+    let mut balls = Vec::new();
+    for k in 1..10 {
+        let first = ball(2 * k)?;
+        balls.push(first);
+        if first.0 != 10 {
+            balls.push(ball(2 * k + 1)?);
+        }
+    }
+    let first = ball(20)?;
+    balls.push(first);
+    if first.0 == 10 {
+        let second = ball(22)?;
+        balls.push(second);
+        balls.push(if second.0 == 10 { ball(24)? } else { ball(23)? });
+    } else {
+        let second = ball(21)?;
+        balls.push(second);
+        if first.0 + second.0 == 10 {
+            balls.push(ball(22)?);
+        }
+    }
+    let rolls: Vec<u8> = balls.iter().map(|b| b.0).collect();
+    let marks: Vec<&str> = balls.iter().map(|b| b.1).collect();
+    Ok(json!({"rolls": rolls, "marks": marks}))
+}
+
 /// The texts of the results, the records and the pause menu (printf formats: their control codes left out).
 const TEXTS: [(&str, usize); 21] = [
     ("replay", 0x52_3990),
@@ -123,7 +164,7 @@ pub fn bowl(elf: &[u8], motions: &[usize]) -> Result<Value> {
             let name = u32_at(elf, a(BODY_NAMES) + 4 * bodies[0] as usize, what)?;
             let name: String =
                 text(elf, u32_at(elf, (name as usize).wrapping_sub(VADDR), what)?).chars().take(3).collect();
-            Ok(json!({"name": name, "bodies": bodies, "score": score}))
+            Ok(json!({"name": name, "bodies": bodies, "score": score, "card": card(elf, a(CARDS) + 0x5E * k, what)?}))
         })
         .collect::<Result<_>>()?;
     let mut texts = serde_json::Map::new();
