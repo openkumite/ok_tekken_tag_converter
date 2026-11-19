@@ -44,6 +44,28 @@ pub fn angry_strips(ups: &[Upload]) -> Vec<(String, Vec<u8>)> {
         .collect()
 }
 
+/// The select cursor (upload 115 of file 3) in 2P's palette, upload 117 (0x3CC9E0: 1P's is 116, the one after it):
+/// `003_057_p2.png` and its PNG.
+pub fn cursor_2p(ups: &[Upload]) -> Option<(String, Vec<u8>)> {
+    let pair = [ups.get(115)?.clone(), ups.get(117)?.clone()];
+    let (w, h, px) = tex::pictures(&pair, &|_| Some(1)).into_iter().next()?;
+    Some(("003_057_p2.png".to_string(), tex::png(w, h, &px)))
+}
+
+/// The text colours (the printf `%c`: palette upload 9 + colour, 36 of them) of the chrome font (upload 2 of file 3):
+/// `003_001_cNN.png`, NN the colour, and their PNGs.
+pub fn font_colours(ups: &[Upload]) -> Vec<(String, Vec<u8>)> {
+    (0..FONT_COLOURS)
+        .filter_map(|c| {
+            let pair = [ups.get(2)?.clone(), ups.get(9 + c)?.clone()];
+            let (w, h, px) = tex::pictures(&pair, &|_| Some(1)).into_iter().next()?;
+            Some((format!("003_001_c{c:02}.png"), tex::png(w, h, &px)))
+        })
+        .collect()
+}
+/// The chrome font's colours (palettes 9-44 of file 3).
+const FONT_COLOURS: usize = 36;
+
 /// A picture of file 3 by its upload number among `ups` (its uploads): `003_NNN.png`, NNN its place among the
 /// images, palettes not counted (sprites.py).
 fn sprite(ups: &[Upload], k: usize) -> String {
@@ -82,7 +104,7 @@ pub fn front_end(elf: &[u8], ups: &[Upload]) -> Result<Value> {
     for i in 0..12 {
         let r = 0x51EFE0 + 8 * i;
         menu.push(json!({"mode": u8_at(elf, a(r) + 4, what)?, "label": string(elf, u32_at(elf, a(r), what)?),
-            "locked": u8_at(elf, a(r) + 5, what)? != 0}));
+            "locked": u8_at(elf, a(r) + 5, what)? != 0, "colour": u8_at(elf, a(r) + 6, what)?}));
     }
     let titles: Vec<String> =
         (0..9).map(|m| u32_at(elf, a(0x51EC18 + 12 * m), what).map(|p| string(elf, p))).collect::<Result<_>>()?;
@@ -108,6 +130,8 @@ pub fn front_end(elf: &[u8], ups: &[Upload]) -> Result<Value> {
             *p = format!("{:03}_000.png", 143 + k);
         }
     }
+    // the cursor tags' x by side (0x5205D8: {x on 1P's side, x on 2P's, sprite} by tag)
+    let tag_dx = [i32_at(0x5205D8)?, i32_at(0x5205D8 + 4)?];
     let streaks = u8s(0x51F678, BODIES)?;
     let mut plates = vec![];
     for b in 0..BODIES {
@@ -155,12 +179,31 @@ pub fn front_end(elf: &[u8], ups: &[Upload]) -> Result<Value> {
     Ok(json!({
         "screen": [640, 448],
         // (the fonts draw @ as ©)
-        "title": {"picture": "134_003.png", "press_start": string(elf, 0x51EED0),
-            "copyright": [string(elf, 0x51EF40).replace('@', "©"), string(elf, 0x51EF70)]},
+        // (0x3BCC88: from white, then the logo and the blinking line until the demo; 0x3BC998 the line, the second of
+        // 0x51EE68's, which a connected pad picks; 0x3C4930 the namco logo)
+        "title": {"picture": "134_003.png", "press_start": string(elf, 0x51EE78),
+            "copyright": [string(elf, 0x51EF40).replace('@', "©"), string(elf, 0x51EF70)], "copyright_y": [409, 429],
+            "press_y": 329, "blink_mask": 0x30, "from_white": 43, "namco": {"picture": "134_000.png", "x": 257, "y": 350}},
+        // the sound ids the front end plays (group 0: 3 cursor, 4 select 1, 5 select 2; FRONTEND.md 9)
+        "sounds": {"cursor": 3, "start": 4, "decide": 5, "cancel": 3, "pick": 4, "last_pick": 5},
         // the chrome font: 12 glyphs of 52 x 42 a row (read off the picture, not the code)
-        "fonts": {"big": {"picture": sprite(2), "glyph": [52, 42], "rows": ["0123456789AB", "CDEFGHIJKLMN", "OPQRSTUVWXYZ", "!?.-':\"%<&()"]}},
-        "menu": {"address": "0x51EFE0", "items": menu},
-        "select": {"titles": titles, "slots": slots, "face_dy": 52, "hidden_slots": [34, 35],
+        "fonts": {"big": {"picture": sprite(2), "glyph": [52, 42], "rows": ["0123456789AB", "CDEFGHIJKLMN", "OPQRSTUVWXYZ", "!?.-':\"%<&()"],
+            "colours": (0..FONT_COLOURS).map(|c| format!("003_001_c{c:02}.png")).collect::<Vec<_>>()}},
+        // (0x3BD2E0: five rows about the cursor, the band behind it, the fades, the arrows; FRONTEND.md 9)
+        "menu": {"address": "0x51EFE0", "items": menu, "rows": 5, "y": 323, "row_h": 26, "scroll": 4, "clip": [315, 417],
+            "fades": [[315, 354], [380, 419]], "band": {"y": [353, 380], "colour": [192, 192, 255], "alpha_step": 8},
+            "arrows": {"pictures": [sprite(129), sprite(130)], "x": [183, 445], "y": 358, "period": 24}, "idle": 480,
+            "logo_step": 4, "dim": 64},
+        // (QUICK SELECT off, the default: the faces at the slots' places, the lightning, the frame; on: 52 lower)
+        "select": {"titles": titles, "slots": slots, "face_dy": 0, "hidden_slots": [34, 35],
+            "lightning": {"pictures": (0..45).map(|k| format!("141_{k:03}.png")).collect::<Vec<_>>(), "rect": [0, 180, 640, 300], "level": 0x70},
+            "frame": {"picture": "141_045.png", "size": [320, 309]}, "face_size": 51,
+            "face_level": {"normal": 0x80, "hover": 0xA0, "picked": 0x30}, "cursors": [sprite(115), "003_057_p2.png"],
+            "cursor_rect": [-1, -1, 55, 53], "cursor_pulse": {"low": 96, "high": 240, "step": 6}, "tag_dx": tag_dx, "tag_dy": 40,
+            "random_roll": 3, "plates": [[[138, 264], [41, 238]], [[376, 264], [475, 238]]],
+            "timer": {"frames": 2400, "x": 320, "y": 260, "blink": {"below": 6, "period": 30, "off": 8}}, "done": 90,
+            // (1P's cursor starts on Xiaoyu's slot, as the PS2 shows it; 2P's on Jin's, the other end of the row [L])
+            "start_slots": [18, 27], "ordinal": {"text": string(elf, 0x5205C8), "x": [62, 480], "y": 350},
             "faces": faces, "random_face": sprite(162), "locked_face": sprite(165), "cursor": sprite(174), "cursor_dxy": [-2, -2],
             "tags": [sprite(119), sprite(121), sprite(123), sprite(124), sprite(125), sprite(126), sprite(127)],
             "selectable": set(0x51E850)?, "copy_pool": set(0x51E8A0)?, "portraits": portraits},
