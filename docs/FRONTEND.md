@@ -97,8 +97,10 @@ with QUICK SELECT on (settings +8) 52 lower, over a backdrop of its own (section
 
 - Cursor moves follow the neighbour bytes (rows wrap left / right). Mokujin (slot 34) and Unknown (slot 35) are
   visible and linked (Yoshimitsu <-> Mokujin, Lei <-> Unknown) only when settings +8 is set; otherwise both are
-  hidden (0x3C9804). Section 20 of FIGHT_DATA calls +8 QUICK SELECT; that this byte gates the two slots is read in
-  code, its meaning here is [M].
+  hidden (0x3C9804). +8 is QUICK SELECT (config +0x2C, FIGHT_DATA 20): seen in PCSX2 with Mokujin and Unknown made
+  selectable through memory, the grid of QUICK SELECT OFF (the 3D characters') keeps them out; switched ON, the bottom
+  row holds 8 and the select has no 3D characters (0x3AE7C8 only with +8 clear). So the PS2 never stands Mokujin or
+  Unknown on the select: there is no select pose of theirs to decode (their movesets have no aliases 0 and 3). [H]
 - The 20 characters selectable from the start (table 0x51E850): Paul, Law, Lei, King, Yoshimitsu, Nina, Hwoarang,
   Xiaoyu, Eddy, Jin, Julia, Bryan, Heihachi, Gun Jack, Anna, Michelle, Armor King, Ganryu, Jun, Baek. The rest
   unlock in section 7. [H]
@@ -360,9 +362,13 @@ flame `182_001` (not followed). `front_end.vs`: `background`, `logo`, `logo_y`, 
 **Small texts** (format 16): the small font `003_002` (upload 4 of file 3): 21 glyphs of 16 x 17 a row in ASCII
 order from `!` (`/` after `]`, `\` drawn as a yen sign, `@` as ©), each drawn 16 apart whatever its ink (the
 title's line measured in PCSX2). The printf (0x3C6C60) takes the left x and the text's foot y. Its colours are the
-palettes 9-44 of file 3 as for the chrome font (`003_002_cNN.png`), but the code's colour numbers do not pick them
-as for the chrome font: the PS2 shows the title's line (colour 5) in palette 31's yellow, the copyright (11) in
-palette 0's white, INSERT COIN (0x11) in palette 29's green [M]. The title (0x3BC998, 0x3BC868): the line at x 336 -
+palettes 9-44 of file 3 as for the chrome font (`003_002_cNN.png`); the printf's `%c` n picks them through a table
+of its own (0x3C68A8: font 11's table 0x51FE98, a sprite id a colour, 35-44 and 5; the chrome font's, font 10, is
+0x51FE30: colour n -> upload 9 + n, 0 its own palette 3): the title's line (colour 5) -> upload 40, palette 31's
+yellow; INSERT COIN (colour 3, 0x3CC4A4's a3) -> 38, palette 29's green; the copyright (11) -> sprite 0, an image,
+white on the PS2 (palette 0 here). All three as the PS2 shows them. The printf's other codes: %H the x, %V the foot y
+(the glyphs' top 20 above), %F the font (10 chrome, 11 small; 0x51FFA0: glyphs a row, sprite, size), %S the size (10
+the glyphs' own, the default), %T measure only. [H] The title (0x3BC998, 0x3BC868): the line at x 336 -
 16 - 0xD8 (its width) = 120, foot 329; the copyright (0x3BCC0C) at x 0x24 and 0x123, feet 409 and 429. The select's
 side nobody plays (0x3CC4A4 -> 0x3BC828): while frame & 0x30, INSERT COIN (0x3BCA30) or, while frame & 0x40, " CREDIT
 0" (0x3BC650), from x = 160 + 320 x side - 12.8 x letters (the code's measure "%T%F%S%s" at size 4; the place as seen),
@@ -390,8 +396,7 @@ u16 (`raw[2]`) / 16384 x 0.85 (the select's 9830: 0.50; arena 16's 10649: 0.56).
 
 Ranked by how much a player would notice:
 
-1. The VS screen's special portraits (0x3C3948's bodies 0x32, 0x7B); how the printf's codes (%F, %S, %c) map to
-   sizes and palettes in general.
+1. The VS screen's special portraits (0x3C3948's bodies 0x32, 0x7B).
 2. What sets gp-0x6230 (Xiaoyu's costume 5).
 3. The exact roles of the six health-bar strips and the timer and banner drawing (positions of the round / K.O.
    texts).

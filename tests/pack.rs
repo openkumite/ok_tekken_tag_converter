@@ -529,6 +529,11 @@ fn front_end(pack: &Hashed) {
         (&fe["vs"]["places"][1][0], &fe["select"]["insert"]["texts"][1], &fe["title"]["press_x"]),
         (&serde_json::json!([708, -38, 20, 3]), &" CREDIT 0".into(), &120.into())
     );
+    // the small font's colours through the printf's table (0x51FE98): the title's line 5, the copyright 11, INSERT COIN 3
+    assert_eq!(
+        (&fe["title"]["press_colour"], &fe["title"]["copyright_colour"], &fe["select"]["insert"]["colour"]),
+        (&31.into(), &0.into(), &29.into())
+    );
     for p in named {
         assert!(pack.exists(&format!("assets/pictures/{p}")), "{p}");
     }
