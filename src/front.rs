@@ -77,6 +77,25 @@ fn sprite(ups: &[Upload], k: usize) -> String {
     format!("003_{:03}.png", ups.iter().take(k).filter(|u| !tex::is_palette(u)).count())
 }
 
+/// A printf format of the executable with its place, font, colour and size codes (`%H%V%F%c%S%P%T%Z`) left out and
+/// its numbers (`%d`, `%2d`, `%02d`) kept.
+fn format(elf: &[u8], pointer: u32) -> String {
+    let at = (pointer as usize).wrapping_sub(VADDR);
+    let raw: Vec<u8> = elf.get(at..).unwrap_or_default().iter().take(96).take_while(|&&c| c != 0).copied().collect();
+    let s = String::from_utf8_lossy(&raw).to_string();
+    let mut out = String::new();
+    let mut chars = s.chars().peekable();
+    while let Some(c) = chars.next() {
+        match (c, chars.peek()) {
+            ('%', Some(&n)) if n.is_ascii_uppercase() || n == 'c' => {
+                chars.next();
+            }
+            _ => out.push(c),
+        }
+    }
+    out
+}
+
 /// A string of the executable as it is (codes like `%H%V` left out).
 fn string(elf: &[u8], pointer: u32) -> String {
     let at = (pointer as usize).wrapping_sub(VADDR);
@@ -126,6 +145,10 @@ pub fn front_end(elf: &[u8], ups: &[Upload], clips: &[Option<String>]) -> Result
     // white on the PS2: colour 0's
     let small_colour = |n: usize| -> Result<usize> {
         Ok((u32_at(elf, a(0x51FE98 + 4 * n), what)? as usize).checked_sub(9).filter(|&c| c < FONT_COLOURS).unwrap_or(0))
+    };
+    // a round text: its format, x (the left), y (the foot), chrome colour, printf size (10: the glyphs' own)
+    let banner = |p: u32, x: i32, y: i32, colour: usize, size: i32| -> Value {
+        json!({"text": format(elf, p), "x": x, "y": y, "colour": colour, "size": size})
     };
     // the main menu 0x51EFE0: {label*, id, locked, help, 0}
     let mut menu = vec![];
@@ -223,7 +246,11 @@ pub fn front_end(elf: &[u8], ups: &[Upload], clips: &[Option<String>]) -> Result
         "sounds": {"cursor": 3, "start": 4, "decide": 5, "cancel": 3, "pick": 4, "last_pick": 5},
         // the chrome font: 12 glyphs of 52 x 42 a row (read off the picture, not the code)
         "fonts": {"big": {"picture": sprite(2), "glyph": [52, 42], "rows": ["0123456789AB", "CDEFGHIJKLMN", "OPQRSTUVWXYZ", "!?.-':\"%<&()"],
-            "colours": (0..FONT_COLOURS).map(|c| format!("003_001_c{c:02}.png")).collect::<Vec<_>>()},
+            "colours": (0..FONT_COLOURS).map(|c| format!("003_001_c{c:02}.png")).collect::<Vec<_>>(),
+            // (0x3C69D8: each glyph's advance at size 10 from table 0x51FF08, by its place in the font's characters
+            // 0x51FEC8 (one not among them takes the first's); an A is drawn 6 further left, and what follows it too;
+            // a size s scales both by s / 10, the glyph drawn 52 x 42 x s / 10 from its foot y less 20 (0x3C7080))
+            "advance": u8s(0x51FF08, 48)?, "kern_a": 6, "foot_dy": -20},
             // the small font: 21 glyphs of 16 x 17 a row, in ASCII order with gaps (read off the picture), 16 apart
             // whatever their ink, the space too (as the PS2 spaces the title's line) [M]
             "small": {"picture": sprite(4), "glyph": [16, 17], "rows": ["!\"#$%&'()*+-,.0123456", "789:;<=>?@ABCDEFGHIJK", "LMNOPQRSTUVWXYZ[\\]/_"],
@@ -282,16 +309,43 @@ pub fn front_end(elf: &[u8], ups: &[Upload], clips: &[Option<String>]) -> Result
             "texts": {"stage": string(elf, 0x51F6C0), "final": string(elf, 0x51F6F0), "fight": string(elf, 0x51F700),
                 "practice": string(elf, 0x51F710), "final_number": 8, "stage_modes": [0, 3, 5], "fight_modes": [2, 4],
                 "practice_modes": [7], "tops": [330, 366], "scales": {"text": 0.73, "final": 0.83, "number": 1.04}, "colour": 14}},
-        "hud": {"bars": {"x": [29, 370], "y": 30, "w": 240, "h": 28},
+        // (0x3C2F40 per side: the member in back first (0x3C23F0 with a3 0: 15 up and out, colour level 0x50, 0x70
+        // angry), the one in front over it (a3 1: level 0x80, its name plate); a tag swaps them over 30 frames, the
+        // offsets n / 2 and 15 - n / 2 as n counts down; the strips 0x3CE318 without blending, the caps 9 wide; from
+        // the bar's inner end: health, the trail of what it lost (dropping max / 400 a frame), the recoverable cap
+        // (red), then empty to the outer end; FRONTEND.md 4)
+        "hud": {"bars": {"x": [29, 370], "y": 30, "w": 240, "h": 28, "cap_w": 9, "back": 15, "levels": [0x50, 0x80],
+                "angry_level": 0x70, "swap": 30},
             "strips": (0..6).map(|i| sprite(45 + 2 * i)).collect::<Vec<_>>(),
             "angry_strips": (6..12).map(|i| format!("003_{i:03}_angry.png")).collect::<Vec<_>>(), "angry_at": 120, "angry_blink": 8,
             "trail_per_frame": [800, 400],
-            "plates": plates, "plate_y": 58, "streaks": [sprite(57), sprite(59)],
-            "lamps": {"lit": sprite(67), "unlit": sprite(69), "x": [250, 364], "dx": 22, "y": 60, "blink": [180, 11]},
+            // (0x3C1DA0: the front member's streak, 124 x 34 added to what is behind (draw mode 4, 0x3CE398), and its plate
+            // (0x3CF1C0, the table's x not added) at the bar's outer end less 9 (side 0) or at 490 (side 1), y 58)
+            "plates": plates, "plate_y": 58, "plate_x": [20, 490], "streaks": [sprite(57), sprite(59)], "streak_size": [124, 34],
+            // (0x3C1F08: 8 higher (+0x24) when the side has no partner)
+            "lamps": {"lit": sprite(67), "unlit": sprite(69), "x": [250, 364], "dx": 22, "y": 60, "blink": [180, 11], "solo_dy": -8},
             "team_icon": {"picture": sprite(73), "x": [272, 348], "dx": 16, "y": 60},
             "chicken": {"picture": sprite(71), "x": [13, 595], "y": 400},
-            "timer": {"digits": sprite(0), "digit_w": 40, "y": 8, "infinity": sprite(7)},
-            "stage": {"text": string(elf, 0x51ED10), "final": string(elf, 0x51ED28), "alternate": 32}},
+            // (0x3C6738 at (320, 6): the tens 39 left of the ones, 40 x 47; INFINITY at x 285)
+            "timer": {"digits": sprite(0), "digit_w": 40, "y": 6, "x": 320, "tens_dx": -39, "infinity": sprite(7), "infinity_x": 285},
+            "stage": {"text": string(elf, 0x51ED10), "final": string(elf, 0x51ED28), "alternate": 32},
+            // (0x3BC540 -> 0x3BC048 per side, feet at y 24, the small font: the player's side in the ladder modes STAGE
+            // (0x3BBF00: x 15 or 370, colour 0; " FINAL" from the eighth fight while frame & 0x20 is clear) and the
+            // run's time 130 right (colour 5); the side nobody plays INSERT COIN / CREDIT as the select's (0x3BC828 at
+            // x 160 or 480, colour 3), in Time Attack TIME ATTACK (x 408, colour 6))
+            "top": {"y": 24, "stage_x": [15, 370], "stage": format(elf, 0x51ED10), "final": format(elf, 0x51ED28),
+                "stage_colour": small_colour(0)?, "time_dx": 130, "time": format(elf, 0x51ED40), "time_colour": small_colour(5)?,
+                "insert_x": [160, 480], "insert_colour": small_colour(3)?, "time_attack": format(elf, 0x51EDE0),
+                "label_x": [56, 408], "label_colour": small_colour(6)?},
+            // (0x36EA88's table 0x500440 by round state: 0 the call (0x36EDE0: ROUND n on the first round's frames 66-104,
+            // the others' 6-44, READY! from 106 / 46; TAG BATTLE for ROUND in a one-round match of pairs), 2 the end
+            // (0x36EF58 by the result flags: TIME UP, PERFECT!, DOUBLE K.O., else K.O. at size 12), 4 the pose (0x36F0D8:
+            // DRAW, YOU WIN! / YOU LOSE for a human against the CPU); the chrome font, x the left, y the foot; no FIGHT)
+            "banners": {"round": banner(0x500488, 0xA5, 0xDC, 2, 10), "tag_battle": banner(0x500470, 0x74, 0xDC, 2, 10),
+                "ready": banner(0x5004A0, 0xC0, 0xDC, 2, 10), "time_up": banner(0x5004B0, 0xBC, 0xDC, 12, 10),
+                "perfect": banner(0x5004C0, 0xAA, 0xDC, 11, 10), "double_ko": banner(0x5004D8, 0x72, 0xDC, 12, 10),
+                "ko": banner(0x5004F0, 0xF5, 0xDC, 12, 12), "draw": banner(0x500500, 0xE8, 0xDC, 12, 10),
+                "you_win": banner(0x500520, 0x9D, 0x168, 2, 10), "you_lose": banner(0x500558, 0x98, 0x168, 12, 10)}},
         "arcade": {"fights": 8, "rivals": rivals, "fallback": fallback, "pairs": pairs, "rival_arena": 6,
             "boss": 33, "boss_arena": 14, "boss_rounds": 1, "early_fights": 3, "early_excluded": [14, 15, 20, 29],
             "continue": {"frames": 898, "digit_frames": 100}, "time_format": string(elf, 0x51ED40)},

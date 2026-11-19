@@ -53,8 +53,9 @@ use std::collections::{BTreeSet, HashMap, HashSet};
 /// 2D files' palettes as drawn; 10: the endings, `assets/endings/` and gamedata/endings.json; 11: Tekken Bowl, `bowl.json`,
 /// its motions, ball, pin and deck; 12: the shadows and effects, `shadows.json`, `stages.json`, `pictures/effects/`;
 /// 14: the arenas' objects, placed and moved, and their added and multiplying strips, in their stages; 15: the front
-/// end's motion, its sounds per action, the font's colours; 16: the select's 3D characters).
-pub const FORMAT: i64 = 17;
+/// end's motion, its sounds per action, the font's colours; 16: the select's 3D characters; 17: the front end's
+/// sounds and music, the small font's colours; 18: the fight HUD as drawn, its round texts and the chrome font's advances).
+pub const FORMAT: i64 = 18;
 /// What a pack's manifest names it.
 pub const KIND: &str = "ttt";
 
