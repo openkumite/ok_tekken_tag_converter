@@ -65,8 +65,9 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 /// stages.json `weather`, the arenas' pictures in the effects' atlas, the people's scripts and `walk`; 29: front_end's
 /// GAME OPTIONS `modes` and values as printed, `backdrop`, `volumes`, the records' `defaults` and `more`, `ranking`;
 /// 30: bowl.json `texts` `bowl_style`, `switch_hands`, `help_messages`, `special_effects`; 31: ai.json
-/// `rules.wake_wait`, `per_moveset`).
-pub const FORMAT: i64 = 31;
+/// `rules.wake_wait`, `per_moveset`; 32: stages.json `scales` and `objects`, Nina's and King's objects' copies, Law-A's
+/// pitching boats).
+pub const FORMAT: i64 = 32;
 /// What a pack's manifest names it.
 pub const KIND: &str = "ttt";
 
@@ -150,6 +151,8 @@ pub fn convert(ctx: &Ctx, src: &dyn DiscFile, research: bool) -> Result<Value> {
     let (mut shadows, mut effect_pics, mut effect_paths) = (vec![], vec![vec![]; 5], vec![vec![]; 4]);
     // each arena's effect entries (geometry part 1: its weather's pictures and paths)
     let mut weather = BTreeMap::new();
+    // and its people's models' scale of their motions (a character file's f32 at +4 / 1000: 0x3D87A8)
+    let mut scales: BTreeMap<usize, Vec<f64>> = BTreeMap::new();
     ctx.log(&format!("[ttt] {}: the {} files of TEKKEN.BIN", src.name(), archive::FILES));
     // (the first and the last file are random filler)
     for i in 1..archive::FILES - 1 {
@@ -295,6 +298,12 @@ pub fn convert(ctx: &Ctx, src: &dyn DiscFile, research: bool) -> Result<Value> {
             let (mut people, mut motions) = (vec![], vec![]);
             let cast = pack.as_ref().filter(|_| research || listed.is_some()).and_then(|p| archive::pack(p.first()?));
             let cast = cast.unwrap_or_default();
+            if let Some(n) = listed {
+                let scale = |c: &&[u8]| {
+                    crate::f32le(c, 4).filter(|v| v.is_finite() && *v > 0.0).map_or(1.0, |v| f64::from(v) / 1000.0)
+                };
+                scales.insert(n, cast.iter().skip(1).map(scale).collect());
+            }
             for (k, c) in cast.iter().enumerate().skip(1) {
                 let Some(m) = model::parse_low(c) else { continue };
                 let file = format!("stages/{i:03}_p{k}.glb");
@@ -552,7 +561,7 @@ pub fn convert(ctx: &Ctx, src: &dyn DiscFile, research: bool) -> Result<Value> {
             (n, (entries, cells))
         })
         .collect();
-    assets.write("gamedata/stages.json", serde_json::to_string(&effects::stages(&a.elf, &fx))?.as_bytes())?;
+    assets.write("gamedata/stages.json", serde_json::to_string(&effects::stages(&a.elf, &fx, &scales))?.as_bytes())?;
     match effects::atlas(&effect_pics, &effect_paths, &arena_pics) {
         Some((png, json)) => {
             assets.write("pictures/effects/atlas.png", &png)?;

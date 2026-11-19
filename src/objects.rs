@@ -75,6 +75,29 @@ fn wrap(a: f64) -> f64 {
     }
 }
 
+/// The curve through the points (`x`, `y`) with slopes `d` as 0x3D6BC0 builds it: one Newton polynomial over each
+/// node taken twice (the divided difference over a doubled node its slope).
+// (i and k stay within the nodes and the level's differences)
+#[allow(clippy::indexing_slicing)]
+fn hermite(x: &[f64], y: &[f64], d: &[f64]) -> impl Fn(f64) -> f64 {
+    let z: Vec<f64> = x.iter().flat_map(|&v| [v, v]).collect();
+    let n = z.len();
+    let mut q: Vec<f64> = (0..n).map(|i| y.get(i / 2).copied().unwrap_or(0.0)).collect();
+    let mut coef = vec![q.first().copied().unwrap_or(0.0)];
+    for level in 1..n {
+        let next: Vec<f64> = (level..n)
+            .map(|i| {
+                let k = i - level;
+                let (a, b) = (q[k], q[k + 1]);
+                if z[i] == z[k] { d.get(i / 2).copied().unwrap_or(0.0) } else { (b - a) / (z[i] - z[k]) }
+            })
+            .collect();
+        coef.push(next.first().copied().unwrap_or(0.0));
+        q = next;
+    }
+    move |t| coef.iter().enumerate().rev().fold(0.0, |acc, (k, c)| acc * (t - z.get(k).copied().unwrap_or(0.0)) + c)
+}
+
 /// So many frames of a turn of `rate` radians a frame, at most `most`, as ends nearest a whole number of turns.
 fn loop_frames(rate: f64, most: usize) -> usize {
     let off = |n: usize| {
@@ -228,6 +251,19 @@ pub fn objects(elf: &[u8], arena: usize, blocks: &[Vec<Batch>]) -> Result<Vec<Ob
                 });
                 out[k].parent = Some(out.len() - 1);
             }
+            // 0x3D7C38: 14, 15, 17 and 18 (their +0x28 flag, 0x3D6BC0) pitch on a curve through four points (times
+            // 0x44C170, pitches 0x44C180, slopes 0x44C190), each node twice: a frame a step, back to its start past
+            // the last time
+            let p = |a: usize| -> Result<Vec<f64>> { (0..4).map(|k| f(a + 4 * k - VADDR)).collect() };
+            let (x, y, d) = (p(0x44_C170)?, p(0x44_C180)?, p(0x44_C190)?);
+            let curve = hermite(&x, &y, &d);
+            let last = x.last().copied().unwrap_or(0.0);
+            let frames = (last - x.first().copied().unwrap_or(0.0)).max(0.0) as usize + 1;
+            run(&mut out, &[14, 15, 17, 18], frames.min(4000), &mut |t, now| {
+                for k in [14, 15, 17, 18] {
+                    now[k].turn[0] = curve((t % frames) as f64 + x[0]);
+                }
+            });
         }
         3 => {
             // the carousel turns gp-0x7CC0 a frame (0x3D54F8); each horse rises and falls 300 mm on a sine whose
@@ -264,6 +300,22 @@ pub fn objects(elf: &[u8], arena: usize, blocks: &[Vec<Batch>]) -> Result<Vec<Ob
                 now[2].turn[1] = wrap(now[2].turn[1] + main);
                 now[3].turn[0] = wrap(now[3].turn[0] + tail);
             });
+            // 0x3D5B58: 40 copies (0x3D1A80, 0x3D1B68) of 0, 9 and 8 (by k & 7: 0-3, 4-6, 7) at y -2000 (0x521BC0), in
+            // the list after the table's (OpenKumite moves them along their lanes, 0x3D5E80)
+            for k in 0..40 {
+                let template = match k & 7 {
+                    0..=3 => 0,
+                    4..=6 => 9,
+                    _ => 8,
+                };
+                let at = [0.0, f(0x52_1BC4 - VADDR)?, 0.0];
+                out.push(Object {
+                    model: model(template)?,
+                    parent: None,
+                    poses: vec![Pose { at, turn: [0.0; 3], xyz: false, scale: [1.0; 3] }],
+                    face: false,
+                });
+            }
         }
         11 => {
             // 0x3D4B18: the formation's frame 11 goes round an ellipse (x 100 m: gp-0x7D00, z 80 m: gp-0x7CFC) by
@@ -292,10 +344,52 @@ pub fn objects(elf: &[u8], arena: usize, blocks: &[Vec<Batch>]) -> Result<Vec<Ob
                     now[k].turn[0] = wrap(now[k].turn[0] + tail);
                 }
             });
+            // 0x3D4830: ten groups of four of objects 1-10 (each group its own, drawn under object 0 by 0x3D4B18):
+            // here a copy of each of the ten for each group, after the table's (OpenKumite shows four of a group's)
+            for _ in 0..10 {
+                for m in 1..=10 {
+                    out.push(Object { model: model(m)?, parent: None, poses: vec![rest(m)?], face: false });
+                }
+            }
         }
         _ => {}
     }
     Ok(out)
+}
+
+/// What arena `arena`'s code does with its objects that depends on the camera or on chance, for OpenKumite to run
+/// (stages.json `objects`; mm, frames, radians): Nina's helicopter (object 1, 0x3D62A0: `wait` frames out of sight
+/// on its pad, then up to `top` and back down near `land`) and her 40 lanes' copies (objects 10-49, 0x3D5B58 /
+/// 0x3D5E80). None elsewhere.
+pub fn motion(elf: &[u8], arena: usize) -> Option<serde_json::Value> {
+    let gp = |off: usize| f32le(elf, GP - off - VADDR).map(f64::from);
+    if arena == 11 {
+        // (the copies after the table's objects)
+        let table = (crate::u32le(elf, ROWS - VADDR + 16 * arena)? as usize).checked_sub(VADDR)?;
+        let first = crate::u32le(elf, table + 8)?;
+        let route = |r: usize| -> Option<Vec<f64>> {
+            [0, 4, 8, 16, 20, 24].iter().map(|o| f32le(elf, 0x44_B1C0 + 32 * r + o - VADDR).map(f64::from)).collect()
+        };
+        return Some(serde_json::json!({"clouds": {
+            "first": first, "groups": 10, "members": 4, "models": 10, "routes": [route(0)?, route(1)?], "speed": [20.0, 40.0],
+            "angle": gp(0x7D28)?, "radius": gp(0x7D24)?, "rate": [gp(0x7D20)?, gp(0x7D1C)?], "fade": gp(0x7D0C)?, "spin": gp(0x7D10)?
+        }}));
+    }
+    if arena != 9 && arena != 18 {
+        return None;
+    }
+    let heli = serde_json::json!({
+        "object": 1, "bob": gp(0x7C48)?, "wait": 600, "pitch": [gp(0x7C44)?, gp(0x7C00)?],
+        "veer": [gp(0x7C3C)?, gp(0x7C40)?, gp(0x7BF8)?, gp(0x7BFC)?], "rise": 450.0, "ease": 330.0, "swing": gp(0x7C38)?,
+        "top": gp(0x7C30)?, "back": [gp(0x7C1C)?, gp(0x7C20)?], "land": [2000.0, 4000.0, gp(0x7C14)?, gp(0x7C18)?],
+        "swing_down": gp(0x7C0C)?, "settle": [120.0, 30.0, gp(0x7C08)?, gp(0x7C04)?]
+    });
+    let lanes = serde_json::json!({
+        "first": 10, "count": 40, "lanes": 10, "y": f32le(elf, 0x52_1BC4 - VADDR)?, "x": gp(0x7C84)? + gp(0x7C80)?, "apart": 4000.0, "speed": 15.0,
+        "span": [gp(0x7C64)?, gp(0x7C6C)?], "period": gp(0x7C68)?, "place": [gp(0x7C78)?, gp(0x7C7C)?], "gap": 4000.0,
+        "clear": gp(0x7C74)?, "most": 20
+    });
+    Some(serde_json::json!({"helicopter": heli, "lanes": lanes}))
 }
 
 #[cfg(test)]
@@ -311,5 +405,11 @@ mod tests {
         assert!((y - libm::sqrt(0.5)).abs() < 1e-9 && x == 0.0 && z == 0.0 && (w - libm::sqrt(0.5)).abs() < 1e-9);
         assert_eq!(loop_frames(1.029744267463684, 120), 61);
         assert_eq!(wrap(3.5), 3.5 - 2.0 * PI);
+        // Law-A's pitch curve: through its points, flat at each
+        let (x, y) = ([0.0, 90.0, 350.0, 449.0], [0.0, 0.1309, -0.08727, 0.0]);
+        let c = hermite(&x, &y, &[0.0; 4]);
+        for (a, b) in x.iter().zip(y) {
+            assert!((c(*a) - b).abs() < 1e-6 && (c(a + 0.01) - c(a - 0.01)).abs() < 1e-5);
+        }
     }
 }

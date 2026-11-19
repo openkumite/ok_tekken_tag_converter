@@ -66,8 +66,12 @@ pub fn shadow(m: &Model, record: usize) -> Value {
 /// `motions` played in turn (`stage_NN_mK`), and the frame of them the first one `start`s at; its `flare` (0x3A1C78:
 /// none on most arenas): the `sun` (metres, the arena's axes), the `strength` and the nine `discs` [picture of
 /// `pictures/effects/flare_K.png`, size, brightness]; its `weather` ([`weather`]) from `fx`: each arena's entries and
-/// their pictures' atlas cells.
-pub fn stages(elf: &[u8], fx: &BTreeMap<usize, (Vec<Entry>, Vec<Option<usize>>)>) -> Value {
+/// their pictures' atlas cells; `scales`, each arena's people's models' scale of their motions and walks (`scales`).
+pub fn stages(
+    elf: &[u8],
+    fx: &BTreeMap<usize, (Vec<Entry>, Vec<Option<usize>>)>,
+    scales: &BTreeMap<usize, Vec<f64>>,
+) -> Value {
     let discs: Vec<Value> = (0..9)
         .filter_map(|k| {
             let o = DISCS + 12 * k - VADDR;
@@ -116,7 +120,7 @@ pub fn stages(elf: &[u8], fx: &BTreeMap<usize, (Vec<Entry>, Vec<Option<usize>>)>
                 }
             }
             Some(json!({"id": a, "shadow": {"toward": [x * s, y * s, z * s], "colour": [0, 0, 0], "alpha": alpha as f64 / 128.0},
-                "lights": {"toward": [v(0), v(1), v(2)], "colour": [v(3), v(4), v(5)], "ambient": v(6)}, "dust": dust, "people": people, "walk": walk, "flare": flare(a),
+                "lights": {"toward": [v(0), v(1), v(2)], "colour": [v(3), v(4), v(5)], "ambient": v(6)}, "dust": dust, "people": people, "walk": walk, "scales": scales.get(&a), "objects": crate::objects::motion(elf, a), "flare": flare(a),
                 "weather": fx.get(&a).and_then(|(e, cells)| weather(elf, a, e, cells))}))
         })
         .collect();
