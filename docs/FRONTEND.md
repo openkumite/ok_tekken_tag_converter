@@ -375,7 +375,33 @@ then the mode's rows (FREESTYLE: COMMAND LIST, TRAINING DUMMY with its value und
 HIT ANALYSIS; VS CPU: COMMAND LIST, CPU LEVEL, ATTACK DATA, HIT ANALYSIS; CHAIN TRAINING: RETRY, ATTACK DATA, TIME
 DISPLAY; COMBO TRAINING: COMBO DISPLAY (the character, "(YOU)", TYPE 1), ATTACK DATA, HIT ANALYSIS), CHARACTER SELECT,
 RESET; help texts 135-190. In the fight: TOTAL DMG per side, DMG: n (nnn%), the mode's name at the foot, COMMAND
-CAPTURE / SELECT + O = REC. The menus' code (0x506528-0x507200's users) is not decoded; the layout is as seen. [M]
+CAPTURE / SELECT + O = REC. The menus' layout is as seen [M]; their code (0x379000-0x37FB70, the texts
+0x506528-0x507200) [H]:
+
+- **The dummy** (0x37A258 each frame; 0x37AF30 by TRAINING DUMMY's value v): v 11 CONTROLLER: +0x420 = 1 (the pad),
+  +0x12C = 1; else +0x420 = 4 and 0x37DC98 writes the dummy's pad word +0x430 (+0x12C = 0, the guard input flag).
+  For v 6-10 while +0xF7 (set at a move's start from +0x131, the hit) only 0x37E0E8: in a move of posture class
+  ((+4 >> 11) & 0x1F) 9 or 10, the input 0x60 (v 6, buttons 3+4: QUICK ROLL into the foreground), 0x90 (7, 1+2: into
+  the background), 4 (8, tag: QUICK TAG OUT), 0x2000 (9, forward: SPRING FORWARD), 0x8000 (10, back: QUICK ROLL BACK),
+  but only on a frame 0x37E1D8 finds it taken (the input pushed into the history, the move's list walked, or within
+  the END look-ahead's window the END destination's at frame 1). Otherwise first 0x37DDE0: a lying move (+4 & 0x204)
+  holds up (0x1000) and nothing else; then by v (table 0x506D60): 1 STAND GUARD back (0x8000) while the player's move
+  has mask bit 0x10 and its frame is not past its last active frame (0x37E010); 2 CROUCH down (0x4000, 0x37DFF0); 3
+  CROUCH GUARD down, down-back (0xC000) the same against bit 0x08 (0x37E180); 4 GUARD ALL in the attack's time
+  down-back against 0x08, else back against 0x10 (0x37E090); 5 AUTO GUARD no input, +0x12C = 1 (the stance's guard
+  counts). VS CPU: +0x420 = 2, the CPU. The options' getter 0x3794A0(k).
+- **The training data**: section 3 of the body's file (TEKKEN.BIN 0x159 + 3 x body; 0x3672B0 -> 0x37D0F8 into
+  0x897B90 + 0x40D8 x slot): u16 n, u16 m; n entries of 0x42 bytes (+0 steps, +2 the first step, +6 a chain
+  training entry, +8 a combo training entry (the 19-step 10-hit combos), +0xE a time, +0x12 eight entries shown before
+  it, +0x22 sixteen aliases that count as done); m steps of 8 bytes (the command list's tokens, drawn by 0x3DD188).
+  The chain entries are listed at +0x3ED8 (up to 128), the combo entries at +0x3E94 (16).
+- **CHAIN TRAINING** (0x37EB04, state 0x8B8010): 0 the first entry (+4 = 0), its aliases, the count; 1 "READY!"
+  (0x506DD8) at (192, 220) size 10 colour 2 for 90 frames, voice 0x105A at its start, 0x105B at its end; 2 the
+  entry's commands with those before it (0x37B8D8: from y 100, 60 apart, at x 320), the time running (to 216000,
+  "%02d'%02d\"%02d" at (240, 60) size 4 colour 19 with TIME DISPLAY), "COMBO n:m" at (400, 80) size 4 colour 10;
+  the player's move (+0x10C) among the 16 aliases: sound 0x103D, the next entry; after the last, state 3: 180
+  frames, voice 0x1058 at 120; START or a face button after them starts again. COMBO TRAINING (0x37CDA0, state
+  gp-0x7070) places both sides (0x37D8C8) and plays the combo entries; not followed further.
 
 **The help line** (0x3E5268 -> 0x3E06A0, when HELP MESSAGES is on: 0x3B1468): a band (0, 389, 640 x 48) RGBA
 0x18181860 (0x3DBCF0), the text at (30, 390) (its top) in the help font of the executable's archive 0x457380 entry 0
