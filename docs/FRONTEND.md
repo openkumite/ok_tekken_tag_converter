@@ -348,7 +348,18 @@ or SURVIVAL record is named there (0x3C9144: 0x3D0350 each frame, 3000 frames to
 0x3C7AB0) `132_000` at the foot, the rank (0x3C7278) and suffix, both faces with their frames and name plates, the
 time or "WINS n" (0x3C7428), the name at (488, -28) size 10; the entry's row over a grey band, its place underlined in
 a red-to-white pulse, the seconds left at (480, -54). Read in code; the CHARACTER USAGE frames seen in PCSX2 agree; the
-rows' slide in (0x3C8F3C-0x3C9110) and the arena behind (screen 7's camera) not decoded. [H on the rows, M on the rest]
+arena behind (screen 7's camera: step 2 loads file 5 and 0x3CF0E0(5, ..., 15000)) not decoded. [H on the rows, M on
+the rest]
+
+**The ranking's pace** (0x3C8A88, step gp-0x74CE by table 0x5203C0; the list at 0x440D50: +0x11A the first row's foot,
++0x16C the page's first row, +0x11E / +0x120 the hold's count and length) [H]: steps 0-3 build the list (rows apart
+gp-0x6264 = 93 / 93 / 75, gp-0x6260 = 4 / 4 / 5 a page, the first foot gp-0x625C = 153 / 153 / 135; the hold +0x120 150
+/ 150 / 130 by 0x3C80E8 / 0x3C83A8 / 0x3C84B8) and load the arena; 4 in from black (gp-0x6BE0 up 8 a frame to 256);
+without an entry 5: the last page's first row (count less count % per, or a whole page), the foot at first less
+count rows; 6 down 12 a frame to it; 7 held +0x120 frames, then the page before (6 again) until the first; 8 60 frames;
+9-10 out to black (256 down 8 a frame); 15 three frames, the next screen. With an entry, 0xB places it third (0x3C9034)
+and 0xC eases to it ((target - foot + 15) / 16 a frame, 1 to 16). The rows are drawn first, the banner over them
+(0x3C93A0).
 
 **Name entry** (0x3D0350): right / down the next letter, left / up the one before (round in 42); a face button takes
 the letter under the cursor ("<" takes the last back, "=" ends); the third letter ends; the entry shows the current
@@ -402,6 +413,21 @@ CAPTURE / SELECT + O = REC. The menus' layout is as seen [M]; their code (0x3790
   the player's move (+0x10C) among the 16 aliases: sound 0x103D, the next entry; after the last, state 3: 180
   frames, voice 0x1058 at 120; START or a face button after them starts again. COMBO TRAINING (0x37CDA0, state
   gp-0x7070) places both sides (0x37D8C8) and plays the combo entries; not followed further.
+
+**GAME OPTIONS' select options** [H]: CHARACTER SELECT CURSOR (settings +0xA, HOLD 1): each pick of a side writes its
+slot to 0x4157F8 + 8 x side + the pick's number (0x3CAB18); a played side's cursor starts on byte 0 (0x3C993C; at first
+18 and 27, 0x3AE798), after its first pick goes to byte 1 when set (0x3CAB8C); 0x3C94C0 clears byte 1 (a pick taken
+back); the bytes go to the config's +0x38 / +0x39 at the select's end (0x3CB6CC; 1 ON 1 only +0x38) and back at boot
+(0x3AE760). QUICK SELECT (settings +8): 0x3CCCB8 draws no lightning or frame and 0x3AE7C8 no 3D characters, no timer
+(0x3CC190); instead the mode's title (0x3BBC40: table 0x51EC18 by mode {text, width, colour}: "PLAYER SELECT" ...,
+centred by the width at foot 40, size 5) and white lines (0x3BE8C0: 4 high, 6 to 2 above the points of 0x440708,
+TEAM BATTLE 0x440728, 1 ON 1 the first two 10 higher; the even ones fading leftwards from 4 right of the point to 160
+left of it, the odd ones rightwards), the grid 52 lower (0x3CC6D4, 0x3CCA28) with a panel per slot (0x3BE038, not
+followed). CHICKEN MARKING (settings +0xE, with settings +0x1A = 2): 0x3D2B88, called from the round's end (0x36E4CC,
+0x36FAE0), compares the team's per-member counters (+0x5C / +0x60 of the side's 0x60 bytes at 0x440940) with table
+0x521190's percentages (25, 33, 50, 75, 83 / 17, 22, 33, 50, 55 by settings +0xB) scaled by the rounds played; a side
+marked gets gp-0x7428 = 1 and voice 0x1046, and the HUD (0x3C21DC) draws sprites 0x47 / 0x48 for it; what the counters
+count is not followed. [M]
 
 **The help line** (0x3E5268 -> 0x3E06A0, when HELP MESSAGES is on: 0x3B1468): a band (0, 389, 640 x 48) RGBA
 0x18181860 (0x3DBCF0), the text at (30, 390) (its top) in the help font of the executable's archive 0x457380 entry 0
@@ -548,9 +574,8 @@ Ranked by how much a player would notice:
 2. What sets gp-0x6230 (Xiaoyu's costume 5).
 3. Tekken Bowl's ball and pin physics.
 4. The ending scenes' scripts (descriptor `script*`), the staff roll, which cutscene files (41-128) they use.
-5. QUICK SELECT's select backdrop (0x3BBC40, 0x3BE8C0).
-6. The attract loop's code (0x3BCC88's steps 0-2) and PAIR PLAY MODE (0x3C4A28: shown with a multitap).
-7. What settings +8 means beyond the two grid slots; config +0x08 and +0x37.
+5. The attract loop's code (0x3BCC88's steps 0-2) and PAIR PLAY MODE (0x3C4A28: shown with a multitap).
+6. What settings +8 means beyond the two grid slots; config +0x08 and +0x37.
 
 ## Scripts (`docs/re/`)
 
