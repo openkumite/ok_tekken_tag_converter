@@ -230,6 +230,10 @@ The CPU AI's tables (FIGHT_DATA.md sections 19 and 21), in the shape of the Tekk
   `followup_prob_b`, `consecutive_attack_limit_b` / `followup_prob_c` are Tekken Tag's lists C, B and D (P32-P3C).
 - `spacing.entries` (0x432E10): per body (`character`), the 6 reach thresholds.
 - `zone_masks` (0x4318D8, 0x4318F0): Tekken 3's values.
+- **new** (format 31) `per_moveset.entries` (0x507620, 16 bytes per move set 0-31): Tekken 3's shape: `can_parry`,
+  `high_mid_reversal` / `low_parry` (inputs, or null), `combo_preludes` `{prob, alias, sequence}` (the neutral
+  offence's set-ups, 0x386CD4: rand() drawn again for each prelude, the first with `(rand() & 0xFFF) <= prob` whose
+  alias is reachable plays its input from the second word); the reaction chooser reads the parries (0x3895E4).
 - `handlers.entries` (0x507A80, 34): `moveset`, `vs_handler`, `self_handler` (code addresses); `routines`: the
   seven live ones (section 21.6) as the Tekken 3 converter's kinds (`back_off` Paul, `canned_throws` King,
   `stance_dash` Hwoarang, `fire_dodge` Ogre and Devil / Angel) with their aliases, and **new** `poke_or_crouch`
@@ -243,7 +247,9 @@ The CPU AI's tables (FIGHT_DATA.md sections 19 and 21), in the shape of the Tekk
 - `evade_choices` (0x507990, u32), `wakeup_categories` (0x5078E0, u64): Tekken 3's values.
 - `rules`: Tekken 3's keys with none of their move sets (-1) or aliases (0xFFFF), and **new** `followup_rules`: the
   per-alias rule of the follow-ups and chain throws (0x3876A4): `aliases`, `movesets` (mine; all when absent),
-  `allow` (`never`, `not_easy`, `coin` / `no_coin`: `rand() & 0x70` set / clear).
+  `allow` (`never`, `not_easy`, `coin` / `no_coin`: `rand() & 0x70` set / clear); **new** (format 31) `wake_wait`
+  (0x3890D0): lying, against his attack, the wake-up waits while he is in `moveset` 14's `alias` 0xBA9 within
+  `distance` 2000 (Tekken 3's wait has no such test).
 - `rng`: `ai_lcg_seed` (640, the AI generator's start, gp-0x64E8) and `rand_shift` 0 (libc `rand()` returns bits
   0-14 of its state; Tekken 3's 16-30).
 - **new** `distance_jitter`: `amplitude` 192 and `sine` (0x4FCE88, 4096 x s16, 4096 = 1): bookkeeping's swing of
@@ -359,7 +365,7 @@ bodies 0-38 (34-38 Tiger, Panda, Tetsujin, Alex, Angel).
 | `gamedata/sound.json`, `music.json`, `rounds.json` | the sound, music and round-flow tables (below; written by `src/sound.rs` and `fight::rounds`) |
 | `audio/sfx/NNN/KKK.wav` | sample KKK of the sound bank in file NNN of TEKKEN.BIN (all 156 banks, 2 350 samples, 16-bit mono, at the rate of its `VAGp` header; 45 MB) |
 | `audio/music/NN.flac` | the music stream in file NN (25, 16-bit stereo 44 100 Hz; 197 MB, 291 MB as WAV) |
-| `endings/ending_EE_*` | ending EE's scene (EE 00-37, `gamedata/endings.json` names the files; BOWL_ENDINGS.md 7.3): `_camera.bin` its camera path as on the disc (file 2EE + 47: `u32 frames`, then eye xyz, target xyz, H as f32 a frame, game units, y down), `_0.glb` / `_1.glb` the body tracks of actor slots 0 and 1 (file 2EE + 48 part 0) as clips `ending_EE_0` / `ending_EE_1` in `anim::clip_glb`'s shape (the root's track places the actor in the arena), **new** (format 26) with hand tracks 2K and 2K + 1 (part 2) as rotations of the finger nodes `node_39`-`node_53` and `node_64`-`node_78` (BOWL_ENDINGS.md 7.3), `_face.bin` / `_hands.bin` parts 1 and 2 as on the disc (packs of tracks `u16 frames, u16 triples`, then s16 triples) |
+| `endings/ending_EE_*` | ending EE's scene (EE 00-37, `gamedata/endings.json` names the files; BOWL_ENDINGS.md 7.3): `_camera.bin` its camera path as on the disc (file 2EE + 47: `u32 frames`, then eye xyz, target xyz, H as f32 a frame, game units, y down), `_0.glb` / `_1.glb` the body tracks of actor slots 0 and 1 (file 2EE + 48 part 0) as clips `ending_EE_0` / `ending_EE_1` in `anim::clip_glb`'s shape (the root's track places the actor in the arena), **new** (format 30) with hand tracks 2K and 2K + 1 (part 2) as rotations of the finger nodes `node_39`-`node_53` and `node_64`-`node_78` (BOWL_ENDINGS.md 7.3), `_face.bin` / `_hands.bin` parts 1 and 2 as on the disc (packs of tracks `u16 frames, u16 triples`, then s16 triples) |
 | `audio/index.json` | Tekken 3's shape: `sfx` (a bank each: `bank` its file, `samples`: `file` = `NNN/KKK.wav`, `rate`, `seconds`, `name` from the `VAGp` header; no `tones`: Tekken Tag has no VAB programs), `music` (`name`, `file` = `NN.flac`, `seconds`) |
 
 **A character** is every section of the model (the fight draws them all: FORMATS.md section 7) in one mesh, skinned

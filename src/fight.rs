@@ -479,7 +479,9 @@ const TTT_PROFILE: [(usize, &str); 7] = [
 const PROFILES: usize = 0x431918 - VADDR; // 5 difficulties x 0x400, 8 levels x 0x80
 const RANGES: usize = 0x432e10 - VADDR; // 6 x u16 per body: four reach boundaries, unused, the body offset
 const ZONES: (usize, usize) = (0x4318d8 - VADDR, 0x4318f0 - VADDR); // 6 x u32 zone masks: mine, his
-const HANDLERS: (usize, usize) = (0x507a80 - VADDR, 34); // {moveset, vs-this-moveset handler, own handler}
+const HANDLERS: (usize, usize) = (0x507a80 - VADDR, 34);
+/// The per-moveset table (0x507620): its file offset and rows, one per move set.
+const PER_MOVESET: (usize, usize) = (0x507620 - VADDR, 32); // {moveset, vs-this-moveset handler, own handler}
 const DIFFICULTIES: [&str; 5] = ["EASY", "NORMAL", "HARD", "VERY HARD", "ULTRA HARD"];
 
 /// ai.json: the CPU AI's tables (docs/FIGHT_DATA.md section 19) in Tekken 3's shape (ok_tekken3_converter's ai.json):
@@ -556,6 +558,23 @@ pub fn ai(elf: &[u8]) -> Result<Value> {
         .iter()
         .map(|&(cmd, a)| Ok(json!({"cmd": cmd, "address": format!("{a:#X}"), "steps": words(a + 2)?})))
         .collect::<Result<Vec<_>>>()?;
+    // per move set (0x507620, 16 bytes: can parry, the high / mid reversal and the low parry inputs, the combo
+    // preludes {prob, alias, input} to a negative prob; the neutral offence draws rand() for each prelude, 0x386D60)
+    let per_moveset = (0..PER_MOVESET.1)
+        .map(|m| {
+            let at = PER_MOVESET.0 + 16 * m;
+            let seq = |p: u32| -> Result<Value> { Ok(if p == 0 { Value::Null } else { json!({"words": words(p as usize)?}) }) };
+            let mut preludes = vec![];
+            let mut k = u32_at(elf, at + 12, what)? as usize;
+            while k != 0 && preludes.len() < 16 && s16(k - VADDR)? >= 0 {
+                let words = words(u32_at(elf, k - VADDR + 4, what)? as usize)?;
+                preludes.push(json!({"prob": s16(k - VADDR)?, "alias": u16_at(elf, k - VADDR + 2, what)?, "sequence": {"words": words}}));
+                k += 8;
+            }
+            Ok(json!({"moveset": m, "can_parry": s16(at)?, "high_mid_reversal": seq(u32_at(elf, at + 4, what)?)?,
+                "low_parry": seq(u32_at(elf, at + 8, what)?)?, "combo_preludes": preludes}))
+        })
+        .collect::<Result<Vec<_>>>()?;
     let evade = (0..7).map(|k| u32_at(elf, 0x507990 - VADDR + 4 * k, what)).collect::<Result<Vec<_>>>()?;
     let wake = (0..6).map(|k| u32_at(elf, 0x5078e0 - VADDR + 8 * k, what)).collect::<Result<Vec<_>>>()?;
     let pads = (0..4).map(|k| u16_at(elf, 0x507a08 - VADDR + 2 * k, what)).collect::<Result<Vec<_>>>()?;
@@ -575,6 +594,7 @@ pub fn ai(elf: &[u8]) -> Result<Value> {
         "spacing": {"address": "0x432E10", "format": "6 x u16 per body: [0..3] reach boundaries, [4] unused, [5] body offset",
             "entries": spacing},
         "zone_masks": {"my_zone": zone(ZONES.0)?, "his_zone": zone(ZONES.1)?},
+        "per_moveset": {"address": "0x507620", "entries": per_moveset},
         "handlers": {"address": "0x507A80", "entries": handlers, "routines": routines()},
         // Ogre's (0x507A08; Devil's 0x507A00 is the same), drawn by rand() & 3
         "boss_punish_pads": {"address": "0x507A08", "pad_words": pads},
@@ -584,7 +604,9 @@ pub fn ai(elf: &[u8]) -> Result<Value> {
             "wake_forward": {"movesets": []}, "turn_by_facing": {"movesets": []}, "parries": {"aliases": []},
             "late_parry": {"moveset": -1, "until": [0, 0], "alias": 0xffff}, "counter_alias": {"alias": 0xffff},
             "unthrown": {"moveset": -1}, "evade_closer": {"moveset": -1, "distance": 0},
-            "followup_rules": followup_rules()},
+            "followup_rules": followup_rules(),
+            // the wake-up's wait (0x3890D0): his moveset 14's 0xBA9 within 2000
+            "wake_wait": {"moveset": 14, "alias": 0xba9, "distance": 2000}},
         // bookkeeping 0x381D30: the distance's swing, sine table 0x4FCE88 (4096 x s16, 4096 = 1) x 192 / 4096
         "distance_jitter": {"amplitude": 192, "sine": sine},
         "canned_sequences": {"entries": canned},
