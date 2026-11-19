@@ -485,7 +485,7 @@ foot 400. `fonts.small` (`picture`, `glyph`, `rows`, `advance`, `colours`), `tit
 `front_end.sounds`: `cursor` 3, `start` 4, `decide` 5, `cancel` 3, `pick` 4, `last_pick` 5.
 
 **Sounds and music, measured** (format 17; PCSX2's video capture with its audio, the pad driven through PINE by a cheat
-that makes 0x358698 return a word of memory, the samples matched by cross-correlation with the pack's): title START
+that makes 0x358698 return a word of memory: pnach `patch=1,EE,203586ac,extended,3C0A0010`, `203586b4 008A5821`, `20358718 8D62FF00` (t2 = 0x100000, t3 = t2 + port x 4, the result lw -0x100(t3)), so the pad of port n is the word at 0xFFF00 + 4n written over PINE (0x7F00, which a lone lw could reach, does not take PINE writes); movies ignore it; the samples matched by cross-correlation with the pack's): title START
 sound 4; main menu moves 3, choice 5; select moves 3, picks 4, the last pick 5, cancel 3; no announcer anywhere in the
 front end. Music: none on the title (the attract's movie and demo have their own) and the main menu; the select's
 BGM 0 (file 2: `select.L` / `select.R`, a bank played on two SPU voices, written also as `audio/music/02.flac`) from
