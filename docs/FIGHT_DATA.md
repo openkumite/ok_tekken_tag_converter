@@ -983,7 +983,7 @@ Handler calls: step 6 / 7 when S+0xCC < 0 and rand < P3E. Returns: -1 nothing, -
 |---|---|---|
 | 0 Paul (vs) | 0x38B698 | his alias 0x39D at my zone < 3: walk back (0x8000) from his frame 16, before that cooldown -1. Alias 0x39C returns at once (a branch bug: both were meant). |
 | 3 King (own) | 0x38BC00 | cooldown ≤ 0 and rand < P1A (T3 P16). He stands, 1/8, my zone < 3, not airborne / unthrowable, I am idle, his hit ≥ 9 frames away, both +0x42 = 0, walk alias 0x3F reachable: one of `n,f,d/f,d/f+1+3,d/f` / `…d/f+2+4…` / `…d/f+1+2…` (0x507A52, 14 bytes each), and list B armed. He crouches, my zone < 2 (same tests, 0x3838B0): `d,d+2+4,d,d,n` (0x507A32, both rows equal). He is down, my zone < 2, his +0x42 0 or 2: `d/b,d/b+1+3,…` / `d/b,d/b+2+4,…` (0x507A12). |
-| 4 Yoshimitsu (vs) | 0x38B368 | reacts to his aliases 0x1A1, 0x1A8, 0x5A9, 0x5C7, 0x5C9, 0x5EE and neighbours: sidesteps (0x38A690), backs off, filters lows (Tekken 3's handler) [I for the detail]. |
+| 4 Yoshimitsu (vs) | 0x38B368 | Tekken 3's 0x80061B88 step for step, Tekken Tag's aliases; by his alias (OPP +0x10C): 0x1A8 at his zone < 3 cooldown -1. 0x5C7 at his zone ≥ 3 forward 0x2000, else lock S+0xD0 = 4, the low / ground filter (0x38A748: S+0xBC = 0x3840F8), cooldown -1. 0x5CA-0x5CC: at my zone ≤ 0 outside his active frames the same with -2, inside 0; facing me (turn - 0x2000 < 0x4001) lock 20 and at my zone < 2 the filter and cooldown -1, else forward (0x38AEB0); turned, at my zone < 3 with 1/8 and not crouching / 0x400000 a sidestep (0x38A690(-1)), else lock 10 and forward. 0x1A1 / 0x5A9: after his active frames cooldown -1; his turn > 0x1000: forward at his zone > 1; at his zone ≥ 3 within 0xA8D a backdash (0x38A760); his zone < 2 and his hit ≥ 11 frames away -1, his zone ≥ 3 or his hit < 11 frames away 0, else a sidestep (rand & 1). 0x5C9, 0x623-0x625: his turn ≥ 0x4000: at my zone < 2 cooldown -1; else at my zone < 2 cooldown 1, < 3 the filter and cooldown -1, else forward. Others (0x5EE ...): -1. |
 | 6 Hwoarang (own) | 0x38BE78 | in alias 0xA8B (stance): unless frame 13-17 with his hit < 10 frames away, forward 0x2000 with 15/16. |
 | 14 Ogre / True Ogre (vs) | 0x38B820 | his alias 0xBA9 or 0x1A6, by his frame: lock S+0xD0 = 8; 1/32 at frames 9-13 and my zone < 2 a sidestep; early: walk in / cooldown -4 / sidestep by stage side (0x38AF28); during the move: back off or cooldown 8; after: at my zone < 2 a punish pad from 0x507A08 {d/f+2, d/f+1, d/f+4, d/f+4}, at zone 2 d/f (0x6000), else 1/8 walk in. |
 | 25 Ganryu (vs) | 0x38B718 | his alias 0x1407, I am not attacking, not airborne, he faces me: at his frames 24-25 and distance < 3000 the sequence 0x507618 (n, d/f); else at distance < 4000 crouch guard d/b (0xC000). |
@@ -1052,7 +1052,7 @@ Confidence: high for 21.1-21.4 and the handler table; medium for the life fields
 - Which pad bits pick the intro and win pose (as buttons).
 - How costume bodies 34-38 index the per-body tables (the dump script assumes they use their host body's).
 - Wall / ring-out rules; the ground game was not compared with Tekken 3 in this pass.
-- CPU AI (section 21): Yoshimitsu's handler in detail; player +0xF7 and +0x11A's exact meaning; the life table
+- CPU AI (section 21): player +0xF7 and +0x11A's exact meaning; the life table
   0x440940's fields; gp-0x6FAC; the wake-up and first-attack bodies were not re-read against Tekken 3 line by line.
 - Player +0x12E (counter-hit cause), +0x3E8 / +0x3F0 (conditions 0x36 / 0x37), transition bit 0x4000's effect.
 

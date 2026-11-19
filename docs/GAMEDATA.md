@@ -212,7 +212,8 @@ The CPU AI's tables (FIGHT_DATA.md sections 19 and 21), in the shape of the Tekk
 - `handlers.entries` (0x507A80, 34): `moveset`, `vs_handler`, `self_handler` (code addresses); `routines`: the
   seven live ones (section 21.6) as the Tekken 3 converter's kinds (`back_off` Paul, `canned_throws` King,
   `stance_dash` Hwoarang, `fire_dodge` Ogre and Devil / Angel) with their aliases, and **new** `poke_or_crouch`
-  (Ganryu); Yoshimitsu's is not described (a stub).
+  (Ganryu); (format 20) Yoshimitsu's 0x38B368 is Tekken 3's `special_moves` with Tekken Tag's aliases (`rush`
+  0x1A8, `stance` 0x5C7, `spin` 0x5CA-0x5CC, `ignore` 0x5EE, `sweep` 0x1A1 / 0x5A9, `flight` 0x5C9 / 0x623-0x625).
 - `canned_sequences.entries`: `sidestep_0` / `sidestep_1` (0x507452 + 0x18 x side), `backdash` (0x5074A2),
   `okizeme` (0x507482), King's `throws_stand_0..2` (0x507A52), `throws_crouch_0..1` (0x507A32), `throws_down_0..1`
   (0x507A12), Ganryu's `poke` (0x507618): step words (buttons << 8 | numpad direction), the first one as it is.
