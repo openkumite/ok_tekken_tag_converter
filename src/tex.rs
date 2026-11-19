@@ -65,6 +65,41 @@ pub fn uploads(d: &[u8]) -> Vec<Upload> {
     out
 }
 
+/// Texture channel `k` showing its frame `f` (0x3A82C8 sets a fighter's channels up, 0x3A80E8 uploads the frame shown):
+/// `model` is the fighter's model part, whose channel table follows its nodes (a u32 count, then at +0x14 16 bytes
+/// `{s16 channel, u16 dbp, x, y, w, h, dbw, psm}` each: where the frame goes, from the fighter's first texture block);
+/// `frames` its pack part 1 (channel k's frame f at [0][k][f], an image and its palette). Only Jin has one: his
+/// face with and without the mark (`k` 0, frames 0 and 1).
+pub fn channel_frame(ups: &mut [Upload], model: &[u8], frames: &[u8], k: usize, f: usize) -> Option<()> {
+    let t = u32le(model, 0x14)? as usize;
+    let e = (0..u32le(model, t.checked_sub(4)?)?.min(8) as usize)
+        .map(|e| t + 16 * e)
+        .find(|&o| u16le(model, o) == Some(k as u16))?;
+    let [dbp, x, y, w, h, dbw, psm] = [2, 4, 6, 8, 10, 12, 14].map(|i| u16le(model, e + i).unwrap_or(0) as usize);
+    fn pack(d: &[u8], i: usize) -> Option<&[u8]> {
+        crate::archive::pack(d)?.get(i).copied()
+    }
+    let src =
+        uploads(pack(pack(pack(frames, 0)?, k)?, f)?).into_iter().find(|u| u.psm == 0x13 && u.w >= w && u.h >= h)?;
+    // shortcut: PSMT8 only (Jin's), in a sheet its own width from a page boundary; others would need the GS's swizzle
+    let at = |u: &&mut Upload| {
+        u.psm == 0x13
+            && psm == 0x13
+            && u.dbw == dbw * 64
+            && u.dbp as usize <= dbp
+            && (dbp - u.dbp as usize).is_multiple_of(32)
+    };
+    let dst = ups.iter_mut().find(at)?;
+    let p = (dbp - dst.dbp as usize) / 32; // pages of 128 x 64 texels, across the buffer then down
+    let across = (dst.dbw / 128).max(1);
+    let (px, py) = (p % across * 128 + x, p / across * 64 + y);
+    for r in 0..h {
+        let row = src.data.get(r * src.w..r * src.w + w)?;
+        dst.data.get_mut((py + r) * dst.w + px..(py + r) * dst.w + px + w)?.copy_from_slice(row);
+    }
+    Some(())
+}
+
 pub struct Tex0 {
     pub tbp: u32,
     /// buffer width in pixels
@@ -353,6 +388,42 @@ mod tests {
             let ups = uploads(&noise[o..]);
             let _ = (pictures(&ups, &|_| None), image(&ups, &t, true));
         }
+    }
+
+    #[test]
+    fn a_channel_frame_goes_where_its_table_says() {
+        // a pack (`archive::pack`): count, first offset, (size, next) pairs, the parts 16-aligned
+        fn pack(parts: &[Vec<u8>]) -> Vec<u8> {
+            let mut o = (8 + 8 * parts.len()).next_multiple_of(16);
+            let mut d = [(parts.len() as u32).to_le_bytes(), (o as u32).to_le_bytes()].concat();
+            for (k, p) in parts.iter().enumerate() {
+                o += p.len().next_multiple_of(16);
+                let next = if k + 1 == parts.len() { u32::MAX } else { o as u32 };
+                d.extend([(p.len() as u32).to_le_bytes(), next.to_le_bytes()].concat());
+            }
+            d.resize(d.len().next_multiple_of(16), 0);
+            parts.iter().for_each(|p| {
+                d.extend(p.iter().copied().chain(std::iter::repeat_n(0, p.len().next_multiple_of(16) - p.len())))
+            });
+            d
+        }
+        // a 128 x 192 PSMT8 sheet of 0s; channel 0's frames 0 and 1 (16 x 8 of 1s, of 2s) go to page 2 (block
+        // 0x40), at (16, 4)
+        let mut ups = uploads(&gif(0, 0x13, 128, 192, &[0; 128 * 192]));
+        let frames = pack(&[pack(&[pack(&[gif(0, 0x13, 16, 8, &[1; 128]), gif(0, 0x13, 16, 8, &[2; 128])])])]);
+        let mut model = vec![0u8; 0x14];
+        model.extend(0x1Cu32.to_le_bytes());
+        model.extend(1u32.to_le_bytes());
+        model.extend([0u16, 0x40, 16, 4, 16, 8, 2, 0x13].iter().flat_map(|v| v.to_le_bytes()));
+        assert_eq!(channel_frame(&mut ups, &model, &frames, 0, 1), Some(()));
+        let at = |x: usize, y: usize| ups[0].data[y * 128 + x];
+        assert_eq!((at(16, 132), at(31, 139), at(15, 132), at(16, 140), at(16, 4)), (2, 2, 0, 0, 0));
+        // no such channel or frame: nothing changes
+        assert_eq!(
+            (channel_frame(&mut ups, &model, &frames, 1, 0), channel_frame(&mut ups, &model, &frames, 0, 2)),
+            (None, None)
+        );
+        assert_eq!(ups[0].data.iter().filter(|&&p| p != 0).count(), 128);
     }
 
     #[test]

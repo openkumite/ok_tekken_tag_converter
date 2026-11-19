@@ -235,7 +235,7 @@ pub fn convert(ctx: &Ctx, src: &dyn DiscFile, research: bool) -> Result<Value> {
                 movies.push(json!({"name": name, "file": format!("{i:02}.avi"), "audio_file": format!("{i:02}.flac"),
                     "fps": fps, "frames": frames, "seconds": seconds}));
             }
-        } else if let Some((m, ups)) = pack.as_ref().and_then(|p| {
+        } else if let Some((m, mut ups)) = pack.as_ref().and_then(|p| {
             let m = p.iter().find_map(|c| model::parse(c))?;
             Some((m, p.iter().flat_map(|c| tex::uploads(c)).collect::<Vec<_>>()))
         }) {
@@ -246,6 +246,13 @@ pub fn convert(ctx: &Ctx, src: &dyn DiscFile, research: bool) -> Result<Value> {
             let tris: usize = m.sections.iter().flatten().map(|s| s.verts.len().saturating_sub(2)).sum();
             let slot = i.checked_sub(FIGHTERS).filter(|s| s % 3 == 0).map(|s| s / 3);
             let who = slot.map(|s| moves::fighter(&a.elf, s)).transpose()?.flatten();
+            // Jin's set-up shows his texture channel 0's frame 1, the face without the mark (0x3A85E4: character 9)
+            if let (Some((9, _)), Some(p)) = (who, pack.as_ref()) {
+                p.iter()
+                    .find(|c| c.starts_with(b"PS2TagA"))
+                    .zip(p.get(1))
+                    .and_then(|(m, f)| tex::channel_frame(&mut ups, m, f, 0, 1));
+            }
             let (name, moveset) = match who.and_then(|(body, costume)| Some((roster.get(body)?, costume))) {
                 Some(((name, set), costume)) => {
                     (format!("{name} · costume {}", costume + 1), Some(*set).filter(|&m| m < moves::MOVESETS))
