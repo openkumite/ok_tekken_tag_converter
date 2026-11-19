@@ -66,8 +66,8 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 /// GAME OPTIONS `modes` and values as printed, `backdrop`, `volumes`, the records' `defaults` and `more`, `ranking`;
 /// 30: bowl.json `texts` `bowl_style`, `switch_hands`, `help_messages`, `special_effects`; 31: ai.json
 /// `rules.wake_wait`, `per_moveset`; 32: stages.json `scales` and `objects`, Nina's and King's objects' copies, Law-A's
-/// pitching boats; 33: camera.json `team_intro.start_frames`, `fighter_cameras`).
-pub const FORMAT: i64 = 33;
+/// pitching boats; 33: camera.json `team_intro.start_frames`, `fighter_cameras`; 34: front_end `practice`).
+pub const FORMAT: i64 = 34;
 /// What a pack's manifest names it.
 pub const KIND: &str = "ttt";
 
