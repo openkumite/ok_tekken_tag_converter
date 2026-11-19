@@ -392,6 +392,16 @@ plays at about v / 63 of full scale (volume 25: 0.40; the announcer's 29: 0.46-0
 u16 (`raw[2]`) / 16384 x 0.85 (the select's 9830: 0.50; arena 16's 10649: 0.56). `select.music` (`bgm`, `from`),
 `select.ordinal` (`second`, `second_after`), `vs.texts`.
 
+**Timing, measured** (the game's frame counter gp-0x74D8 read through PINE each frame, the screen gp-0x74D0 and its
+step -0x74CE, and the capture's frames at 59.94 Hz): the title (2, 6-10) from white 43 frames, the logo 300, to black
+33, then the demo (4); START on the title: the main menu (3, 0) the next frame, no fade; 480 frames without a key: the
+attract (3, 2); a choice: the select (5, 0-4) 6 frames on, plus its loading (the counter runs: the select's 2400-frame
+timer counts it); the last pick to the select's end (5, 5): 90 frames counted while the models are in (131-135 seen),
+no fade; the select's last picture then holds while the VS screen loads (48 frames), the portraits slide 10 frames,
+the VS screen holds while the fight loads (273 frames from its first in the arcade), 2 black frames, the fight. The
+timer out takes both of a side's picks on the same frame. CONTINUE? (0x3BA560): t from 898 down one a frame, the
+digit (t + 100) / 100 after the step; as each digit below 9 begins (remainder 99) the announcer's 0x1047 + digit.
+
 ## Not decoded
 
 Ranked by how much a player would notice:
