@@ -496,6 +496,14 @@ loop sector, negative read as 0), kind 3 (id 3) clears it; kind 2 (id 0) is the 
 Confidence: high on groups, ids, voice and hit selection, arena music ids and the BGM -> file map; medium on which
 ids loop.
 
+**Levels measured** (PCSX2's own capture of an arcade fight, Xiaoyu against Julia, BGM 34; each sample found in the
+capture by normalised cross-correlation at 16 kHz, its gain the least-squares scale of the sample's WAV; the music's
+gain fitted below 150 Hz, where the PS2's resampling does not smear it): music 0.534 of the stream; footsteps (001/067,
+volume 25) 0.39-0.49, median 0.43; announcer and the CONTINUE countdown (001/083, 085, 073-078, volume 29) 0.48-0.55;
+a voice (479/008, 25) 0.46; hits 001/015 (21) 0.44-0.46. So a sample plays at about volume / 58 of its WAV, and the
+music at 0.82 x its BGM entry's volume / 16384 (BGM 21: 10649): OpenKumite's mix gives footsteps 0.43 and the music
+0.552 (0.85 x, 0.3 dB louder) in its own export of the same fight; within the measurement's spread, left as it is.
+
 ## 15. Tag (third pass)
 
 - No tag invulnerability exists in code. The only hit immunity is +0x14E: set to 4 frames on a hit that dealt

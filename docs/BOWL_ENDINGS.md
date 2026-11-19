@@ -445,6 +445,12 @@ scroll 1.5 px a frame (y << 8 less 0x180) from y 480, freed above 0, up to 64 on
 
 ### 7.6 The EMBU (scene 1, 0x3A97B0; state machine 0x3A9AB8, table 0x519B30) [H unless marked]
 
+Reached as screen 11 (gp-0x74D0; jump table 0x4FB970 -> 0x3BB310, gp-0x74CE its state) by 0x3BB4C0(a): gp-0x62BE
+= a. The title's attract (0x3BCC88, state 0 at 0x3BCD14) takes its variant from gp-0x6BE8 +5 (stored to +4; +5 counts
+0, 1, 2 and wraps): 0 the EMBU (0x3C9358(1), then 0x3BB4C0(1)), 1 0x3C9358(0), 2 0x3C9358(2); so every third attract
+is the EMBU, and writing 0 to gp-0x6BE8 +5 makes the next one it. The menu's entry for screen 11 is looked up in the
+main menu's list 0x51EFE0 (8 bytes an entry, +4 the screen; 0x3BD240); state 0 treats gp-0x62BE 0xD apart (0x3BB35C) [M].
+
 Set-up 0x3A97B0: gp-0x6E94 counts the plays; once config +0x37 is set (0x3BFDC8) odd plays take cast 1, else cast
 0 (gp-0x6E98 = 0x437CE0 + 0x18 x cast); the arena gp-0x6E90 is 4 for cast 0, 13 for cast 1 (stored to gp-0x743A);
 scene 1: camera file 41 (0x392E00(0): `u32 count` 22, `u32 offsets[22]`, each an ending's path), motion pack file 42
