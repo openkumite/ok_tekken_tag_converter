@@ -71,6 +71,31 @@ pub fn font_colours(ups: &[Upload]) -> Vec<(String, Vec<u8>)> {
 /// The chrome font's colours (palettes 9-44 of file 3).
 const FONT_COLOURS: usize = 36;
 
+/// Entry `n` of the executable's archive 0x457380 (u32 count, then {u32 offset, u32 size} from the archive's start;
+/// 0x364528): 0 the help line's font and its palette (GIF uploads), 2 the English help texts.
+fn archive_entry(elf: &[u8], n: usize) -> Option<&[u8]> {
+    let base = 0x457380 - VADDR;
+    let at = |k: usize| u32_at(elf, base + k, "the help archive").ok().map(|v| v as usize);
+    elf.get(base + at(4 + 8 * n)?..)?.get(..at(8 + 8 * n)?)
+}
+
+/// The help line's font (FRONTEND.md 8: 0x3DEA50 uploads archive entry 0, a 256 x 180 4-bit picture and its palette,
+/// to the GS at 0x3B40, 4 rows down; 0x3DEDD8 draws a glyph from it): `help_font.png` and its PNG.
+pub fn help_font(elf: &[u8]) -> Option<(String, Vec<u8>)> {
+    let (w, h, px) = tex::pictures(&tex::uploads(archive_entry(elf, 0)?), &|_| None).into_iter().next()?;
+    Some(("help_font.png".to_string(), tex::png(w, h, &px)))
+}
+
+/// The help texts (archive entry 2, 0x45D780: NUL-separated, as 0x3E4FA0 counts them), up to the first "null"; bytes
+/// past ASCII (the font's button glyphs) as the characters of the same number.
+fn help_texts(elf: &[u8]) -> Vec<String> {
+    let e = archive_entry(elf, 2).unwrap_or_default();
+    e.split(|&b| b == 0)
+        .map(|s| s.iter().map(|&b| char::from(b)).collect::<String>())
+        .take_while(|s| s != "null")
+        .collect()
+}
+
 /// A picture of file 3 by its upload number among `ups` (its uploads): `003_NNN.png`, NNN its place among the
 /// images, palettes not counted (sprites.py).
 fn sprite(ups: &[Upload], k: usize) -> String {
@@ -217,9 +242,11 @@ pub fn front_end(elf: &[u8], ups: &[Upload], clips: &[Option<String>]) -> Result
             json!({"stage": stage, "kind": u16_at(elf, a(r) + 2, what)?, "character": u32_at(elf, a(r) + 4, what)?}),
         );
     }
-    // the options 0x439CE0 (0x40 bytes: {config byte*, default, label*, 0, value names*[6]}), the game options' first 12
+    // the options 0x439CE0 (0x40 bytes: {config byte*, default, label*, kind, value names*[11], s16 arrow x[2]}), the
+    // GAME OPTIONS page's 14 rows: kind 0 a list, 1 a number 0-10 (0 OFF), 2 DEFAULT and EXIT (no config); the arrows'
+    // x (-1 none: a two-value list has only the right one) by 0x3B4440
     let mut options = vec![];
-    for i in 0..12 {
+    for i in 0..14 {
         let r = 0x439CE0 + 0x40 * i;
         let values: Vec<String> = (0..6)
             .map(|k| u32_at(elf, a(r) + 16 + 4 * k, what))
@@ -228,8 +255,10 @@ pub fn front_end(elf: &[u8], ups: &[Upload], clips: &[Option<String>]) -> Result
             .filter(|&p| p != 0)
             .map(|p| string(elf, p))
             .collect();
-        options.push(json!({"label": string(elf, u32_at(elf, a(r) + 8, what)?), "config": u32_at(elf, a(r), what)? as usize - 0x439C60,
-            "default": u32_at(elf, a(r) + 4, what)?, "values": values}));
+        let config = (u32_at(elf, a(r), what)? as usize).checked_sub(0x439C60);
+        options.push(json!({"label": string(elf, u32_at(elf, a(r) + 8, what)?), "config": config,
+            "default": u32_at(elf, a(r) + 4, what)?, "values": values, "kind": u8_at(elf, a(r) + 12, what)?,
+            "arrows": [s16(r + 0x3C)?, s16(r + 0x3E)?]}));
     }
     Ok(json!({
         "screen": [640, 448],
@@ -361,6 +390,68 @@ pub fn front_end(elf: &[u8], ups: &[Upload], clips: &[Option<String>]) -> Result
         "unlocks": {"address": "0x440818", "schedule": schedule, "kinds": {"0": "cpu_pool", "1": "selectable", "3": "reset",
             "4": "gallery", "5": "tekken_bowl", "6": "last"}, "points_per_stage": 50},
         "options": options,
+        // OPTIONS (screen 9; FRONTEND.md 8): the menu 0x3B19B0, its title at (193, 40) size 5 colour 19, the six entries
+        // of 0x439CC8 from (40, 90) 30 apart, size 4, colour 5 (the cursor's 11), each over a line 0x4402B0 (4 high, 24
+        // above the foot, blue (128, 128, 255) at alpha 0x60 from x 40 fading to 400), the cursor's a band 0x440100 (24
+        // high, x 0 to 40 to 640, green (0, 255, 128) from 0 to 0x60 to 0) and the line white; help text = entry. GAME
+        // OPTIONS (0x3B42A0): title at (194, 40), the rows of `options` from (40, 90) 20 apart, size 4, "%s:" then the
+        // value in colour 16 (the default) or 12, a number 0 as OFF; the cursor's label 11 over the pause's bar
+        // (0x3B15F8, x 0 to 40 to 170 past "%s:", colour table 0x43A148's first); the arrows on the cursor's row: a
+        // list's left one always, a number's while above 0 and the right one while below 10; DEFAULT's YES / NO at x 200
+        // (the chosen 11, the other 22); help text 6 + row, its \S alternative the value
+        // RECORDS (0x3B2978): "RECORDS" at (243, 40); left / right turn the pages (CHARACTER USAGE 0x3B2090, GREATEST
+        // SURVIVORS 0x3B2358, TIME ATTACK 0x3B2670), their names at (x, 70) size 4 between the arrows at x 153 and 483
+        // blinking every 24 frames (0x3B1F10); 6 rows from foot 130, 50 apart, each over a bar (0x3B15F8 with 26
+        // spaces: the colour table 0x43A148's entry 1, 2, 3); the rank (size 5 at x 70, 4 up) and its suffix (0x3B1EC8:
+        // ST, ND, RD, TH; size 4), the faces 40 x 42 at x 160 and 210, 46 up; then the columns {x, dy from the foot,
+        // size, colour}: the name and "%3d.%1d%%" of the picks; the wins (999 at most), WIN / WINS, the name; the time,
+        // the name. Help text 24 + page. The name entry (0x3D0450): 3 letters of table 0x520BE8, round in 42
+        "records": {"title": "RECORDS", "title_xy": [243, 40], "page_y": 70, "page_size": 4, "arrows_x": [153, 483],
+            "arrows_blink": 24, "row_y": 130, "row_dy": 50, "rank_x": 70, "suffixes": ["ST", "ND", "RD", "TH"],
+            "faces_x": [160, 210], "bar_w": 330, "help": 24,
+            "pages": [
+                {"title": "CHARACTER USAGE", "x": 192, "colour": 14, "bar": [255, 0, 0, 0x60],
+                    "columns": [{"x": 210, "dy": 0, "size": 4, "colour": 11}, {"x": 410, "dy": -6, "size": 5, "colour": 14}]},
+                {"title": "GREATEST SURVIVORS", "x": 173, "colour": 15, "bar": [0, 255, 0, 0x60],
+                    "columns": [{"x": 260, "dy": -4, "size": 5, "colour": 11}, {"x": 338, "dy": 0, "size": 4, "colour": 11},
+                        {"x": 460, "dy": -6, "size": 5, "colour": 15}]},
+                {"title": "TIME ATTACK", "x": 230, "colour": 6, "bar": [0, 192, 255, 0x60],
+                    "columns": [{"x": 260, "dy": 0, "size": 4, "colour": 11}, {"x": 460, "dy": -6, "size": 5, "colour": 6}]}],
+            "letters": string(elf, 0x520BE8).chars().take(42).collect::<String>(), "name_len": 3,
+            "new_record": format(elf, 0x51FA58)},
+        "options_menu": {"title": format(elf, 0x51E0C8), "title_xy": [193, 40], "title_size": 5, "title_colour": 19,
+            "items": (0..6).map(|k| u32_at(elf, a(0x439CC8) + 4 * k, what).map(|p| string(elf, p))).collect::<Result<Vec<_>>>()?,
+            "item_xy": [40, 90], "item_dy": 30, "size": 4, "colours": {"item": 5, "cursor": 11},
+            "line": {"x": [40, 400], "y": [-24, -20], "colour": [128, 128, 255, 0x60], "cursor": [255, 255, 255, 0x60]},
+            "band": {"x": [0, 40, 640], "y": [-24, 0], "colour": [0, 255, 128, 0x60]}, "help": 0,
+            "game": {"title": format(elf, 0x51E4A0), "title_xy": [194, 40], "row_xy": [40, 90], "row_dy": 20,
+                "colours": {"label": 5, "cursor": 11, "value": 12, "default": 16, "off": 22}, "bar_past": 170,
+                "yes_no_x": 200, "help": 6}},
+        // (0x3E5268 -> 0x3E06A0: help text n at (x, y) in the help font, 12 x 18 glyphs 16 a row (character - `first`;
+        // the picture is uploaded 4 rows down, where the code counts its rows from), each advancing its byte of table 0x4572E0; a space 4 (0x3DF808: a line wider than `wrap` breaks and
+        // spreads its spaces), `\n` a new line 20 lower, `\S[...]` the alternatives of which only the current value's is
+        // drawn (gp-0x67BA); the dark band under it (0x3DBCF0, RGBA 0x18181860) when HELP MESSAGES is on (0x3B1468);
+        // colour level 0x60)
+        "help": {"font": {"picture": "help_font.png", "glyph": [12, 18], "columns": 16, "first": 32,
+                "widths": u8s(0x4572E0, 160)?, "space": 4, "line_h": 20, "wrap": 0x244},
+            "x": 30, "y": 390, "level": 0x60, "band": {"rect": [0, 389, 640, 48], "colour": [0x18, 0x18, 0x18, 0x60]},
+            "texts": help_texts(elf)},
+        // the pause menu (0x3B7B98): its items 0x51E7A8 (CANCEL, RESET, COMMAND LIST, SCREEN CAPTURE, TOP BOWLERS,
+        // BOWLING OPTIONS, ADJUST DISPLAY, CONTROLLER SETUP; SCREEN CAPTURE once the Gallery is open, the Bowl's two only
+        // in Tekken Bowl and COMMAND LIST and SCREEN CAPTURE not there); the window 0x3DC768 (x, y, w, h; drawn 8 out,
+        // navy RGBA 0x00004040 over the scene, `h_capture` high with SCREEN CAPTURE or in the Bowl) and its frame; "PAUSE
+        // Pn" blinking (frame & 0x30) in the chrome font, size 5, colour 0; the items from (180, 180) 20 apart, size 4,
+        // colour 5, the cursor's 11 over a bar (0x3BB680: from x 180 to 40 past the text, 12 to 4 above its foot, green
+        // (0, 255, 128) at alpha 0x60, 0 at its right end: the template 0x4402F8); help text 31 + item. RESET? (0x3B8460):
+        // the window (240, 206, 160, 40) alone, the text at (270, 230) colour 19, YES / NO at (258, 250) size 4, the
+        // chosen 11, the other 22, the printf's "{" / "}" (the gold arrows `003_067` / `003_068`, as seen) at
+        // (320, 250) towards it; NO first; help 40
+        "pause": {"items": (0..8).map(|k| u32_at(elf, a(0x51E7A8) + 4 * k, what).map(|p| string(elf, p))).collect::<Result<Vec<_>>>()?,
+            "header": format(elf, 0x51E728), "header_xy": [233, 150], "header_size": 5, "window": [160, 130, 320, 130],
+            "h_capture": 150, "colour": [0, 0, 0x40, 0x40], "item_xy": [180, 180], "item_dy": 20, "size": 4,
+            "colours": {"item": 5, "cursor": 11, "off": 22}, "bar": {"dx": 40, "y": [-12, -4], "colour": [0, 255, 128, 0x60]},
+            "help": 31, "reset": {"window": [240, 206, 160, 40], "text": format(elf, 0x51E800), "xy": [270, 230], "colour": 19,
+                "yes_no": ["YES", "NO"], "yes_no_xy": [258, 250], "arrow_xy": [320, 250], "help": 40}},
     }))
 }
 
