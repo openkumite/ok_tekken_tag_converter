@@ -36,6 +36,8 @@ pub const CAMERA_FILE: usize = 12;
 const CAMERA_MOTIONS: usize = 0x508130 - VADDR; // u32 offsets of the camera motions in disc file 12, rising
 const INTRO_OFFSET: usize = 0x509c20 - VADDR; // s16 eye x, y, z
 const TEAM_SHOTS: (usize, usize) = (0x521140 - VADDR, 2); // 18 x s16: two turns, then four points (0x3D2330)
+/// By character (+0x28, the 33 fighters): {s32 count, u32 list of (s16 alias, s16 frame)} (0x3D29E8).
+const START_FRAMES: (usize, usize) = (0x447480 - VADDR, 33);
 const TEAM_PAIRS: usize = 0x43a180 - VADDR; // 28 bytes: two {character, costume, alias, x, z, facing}, 2 x s16; -1 ends
 const REPLAY_SHOTS: (usize, usize) = (0x520c40 - VADDR, 42); // 10 x s16 (0x3D0748)
 const REPLAY_SEQUENCES: (usize, usize) = (0x520f88 - VADDR, 14); // 4 x s8 shot numbers, one a pass
@@ -767,6 +769,20 @@ pub fn camera(elf: &[u8], file12: &[u8]) -> Result<Value> {
         let (Some(a), Some(b)) = (m(&v), m(v.get(6..).unwrap_or_default())) else { break };
         pairs.push(json!([a, b]));
     }
+    let start_frames = (0..START_FRAMES.1)
+        .map(|c| {
+            let r = bytes(elf, START_FRAMES.0 + 8 * c, 8, "the intros' start frames")?;
+            let (n, at) = (w(r, 0) as usize, w(r, 4) as usize);
+            ensure!(n <= MAX_LIST, "character {c}: {n} intro start frames");
+            let at = at.checked_sub(VADDR).with_context(|| format!("character {c}: start frames at {at:#x}"))?;
+            Ok(bytes(elf, at, 4 * n, "the intros' start frames")?
+                .as_chunks::<4>()
+                .0
+                .iter()
+                .map(|e| [h(e, 0) as i16, h(e, 2) as i16])
+                .collect::<Vec<_>>())
+        })
+        .collect::<Result<Vec<_>>>()?;
     let mut replay_shots = Vec::new();
     for i in 0..REPLAY_SHOTS.1 {
         let [target, follow, p, y, r, pr, yr, rr, d, dr] = s16s(elf, REPLAY_SHOTS.0 + 20 * i, "the replay's shots")?;
@@ -833,7 +849,11 @@ pub fn camera(elf: &[u8], file12: &[u8]) -> Result<Value> {
         // point's x, y, z scaled H / 600, turned by Ry * Rx * Rz of its `turn_*` (4096 a turn; each product's terms
         // truncated) and put on the base; then each frame from + (to - from) * sin(t * 1024 / frames) / 4096, t from 0
         "team_intro": {"routine": "0x3B5328", "frames": 90, "place": {"x": 500, "z": 1500}, "shots": team_shots,
-            "pair_scale": 0x1333, "pairs": pairs},
+            "pair_scale": 0x1333, "pairs": pairs,
+            // by character (0x447480): [alias, frame] its intro motions start at in the team intro (0x368398 while
+            // gp-0x6334 is set: that frame, or the motion's frames - 90 when shorter than it + 90; 1 for an alias not
+            // listed)
+            "start_frames": start_frames},
         // The K.O. replay's shots (0x3D0660 at its start: a sequence by the AI's random of 14; each pass 0x3D0748 takes
         // the sequence's next; the loser: player 1 while player 0's +0xB4 >= 0): `target` 0 the winner's root (+0x51C),
         // 1 the loser's, 2 the loser's point +0x39C as kept at the K.O.; the loser's root when a fighter was in a throw

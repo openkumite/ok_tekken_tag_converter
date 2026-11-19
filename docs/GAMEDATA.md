@@ -196,7 +196,10 @@ and `attract` are not written (not decoded).
   (against the CPU the CPU's alone), a set-up frame and `frames` (90) + 1 more: `place` (x 500, z 1500), two
   `shots` (0x521140: `turn_from` / `turn_to`, `target_from` / `target_to`, `eye_from` / `eye_to`, eased by sine over
   `frames`), `pair_scale`, and `pairs` (0x43A180: two members `character`, `costume` (-1 any), `alias`, `x`, `z`,
-  `facing`) that stand in their own places and motions.
+  `facing`) that stand in their own places and motions; **new** (format 33) `start_frames` by character (0x447480):
+  [alias, frame] its intro motion starts at in the team intro (0x368398 while gp-0x6334 is set: that frame, or the
+  motion's frames - 90 when shorter than it + 90; frame 1 for an alias not listed): 255 for aliases 4 and 6, so the
+  150-frame intros play their last 90 frames.
 - **New** (format 25) `replay_shots` (0x3D0748, per frame 0x3D0A38): the K.O. replay's 42 `shots` (0x520C40:
   `target` 0 the winner's root / 1 the loser's / 2 the loser's point at the K.O., `follow` 0 / 1 / 3 none, `turn`,
   `turn_range`, `distance`, `distance_range`), 14 `sequences` of 4 shot numbers (0x520F88: one a pass, picked by the

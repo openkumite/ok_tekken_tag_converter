@@ -300,6 +300,8 @@ fn fight_data(pack: &Hashed) {
     // the team intro's two shots and 97 pairs, the replay's 42 shots in 14 sequences of 4
     assert_eq!(camera["team_intro"]["shots"][1]["eye_from"], serde_json::json!([0, 100, 6500]));
     assert_eq!(camera["team_intro"]["pairs"].as_array().unwrap().len(), 97);
+    // the intros' start frames by character (0x447480): Paul's alias 4 at 255, his pair alias 4773 at 140
+    assert_eq!(camera["team_intro"]["start_frames"][0], serde_json::json!([[4, 255], [6, 255], [4773, 140]]));
     assert_eq!(camera["replay_shots"]["shots"][32]["follow"], 3);
     assert_eq!(camera["replay_shots"]["sequences"][13], serde_json::json!([33, 7, 26, 39]));
     let list = camera["move_camera_lists"]["lists"].as_array().unwrap().iter().find(|l| l["id"] == 0x69).unwrap();
