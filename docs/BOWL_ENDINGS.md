@@ -332,8 +332,11 @@ scene; hard cap 7200 frames. [H]
 | 4 | camera = path a from frame b (c = 1800, unused) | [H] |
 | 19 / 20 | fade in / out from / to black over a frames (0x3AC5D0) | [H] |
 | 5 / 6 | flash (alpha b to 0 over a frames) / fade to colour 10 | [M] |
-| 10, 17, 18 | effects at an actor's joint b (0x3A2BC0, 0x3A2758) | [L] |
-| 12, 16, 26-28, 31 | show / hide, position offset (0x378368), flags, clear objects, Kuma / Panda +0xB052, 0x34CB38 | [L] |
+| 17 | a burst 0x3A2758(kind (a >> 1) & 3, at, 0, 0) at actor a & 1's node b (its matrix +0x30, fighter 0x8796C0 + 0xB8A0 x side + 0xDB0 + 0xC0 x node; y, z negated), turned away from the other actor's node c (at +0x10: the difference); b = 0x4002: the matrix 0x444CD0 instead (0x3D2270) | [H] |
+| 18 | the dust 0x3A2758(3, at, flag 1, c x 2 pi / 4096) at actor a & 1's node b: spinning c x 2 pi / 4096 a frame (+0x84 into +0x74 each frame, 0x3A06F0); b = 0x62: the actor's place on the floor (fighter +0x510 x, z; y 0), flag 0; 0x4000: twenty objects 0x3ACCD0 (0x3ACEE0) instead; 0x4001: the point gp-struct 0x415808 +0x14 (y - 800), flag 0; 0x4002: as op 17's. With the flag, dust more than 500 mm up is 3 particles at the set's own size and colour 0x808080, not the arena's row | [H] |
+| 10 | the character effect 0x3A2BC0(side c & 1, 0, at) at actor c & 1's node b (0x4003: the point 0x5F6280 through the actor's +0x974 matrix, plus +0x988): particles of the side's own set (4 + side, the character's effect file by 0x35C970 -> table 0x519438) [M] | [M] |
+| 12 | actor a & 1's texture channel 0 (0x8D5E20, 4 players x 2 x 16 bytes) to frame 1 (b = 0) or 0 (0x3A86D8) [M: what the channel animates] | [M] |
+| 16, 26-28, 31 | position offset (0x378368), flags, clear objects, Kuma / Panda +0xB052, 0x34CB38 | [L] |
 | 21-25, 29, 30, 32 | spawn 2D / 3D effect objects (0x3AC7C0 ... 0x3AA410) | [L] |
 | 7-9, 11, 13, 14 | no-op | [H] |
 
