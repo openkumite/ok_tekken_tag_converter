@@ -159,6 +159,8 @@ pub fn fighters(elf: &[u8]) -> Result<Vec<(String, usize, usize)>> {
         let (pointer, body, set) =
             (u32_at(elf, r, what)?, u8_at(elf, r + 4, what)? as usize, u8_at(elf, r + 7, what)? as usize);
         let Some(name) = text(elf, pointer) else { continue }; // text, not a pointer: the previous row's name
+        // Unknown (body 33) fights with Jun's moveset 28 on her own body (0x35C904); the roster's 15 is the copier's
+        let set = if body == 33 { 28 } else { set };
         // (Xiaoyu and Jin have two rows)
         if !out.iter().any(|o| o.1 == body) {
             out.push((name, body, set));

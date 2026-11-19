@@ -271,7 +271,7 @@ Not exported: the attract mode's profile.
 ## `movesets/`
 
 `index.json`: `models` (each fighter model of the pack: `model` and `model_record` its file number, `glb`, `body`,
-`moveset_id`, `moveset_file`), `fighters` (the roster's 39: `name`, `body`, `moveset_id`, `moveset_file`), `files`, `aliases`
+`moveset_id`, `moveset_file`), `fighters` (the roster's 39: `name`, `body`, `moveset_id`, `moveset_file`; **new** (format 35) Unknown's is Jun's 28, as 0x35C904 sets it on her body: the roster's 15 is the copier's), `files`, `aliases`
 (5532).
 
 `moveset_NN.json`: `moveset_id`, `fighters`, `move_count` (distinct moves), `aliases`: 5 532 values, the move of
