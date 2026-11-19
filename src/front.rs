@@ -455,6 +455,27 @@ pub fn front_end(elf: &[u8], ups: &[Upload], clips: &[Option<String>]) -> Result
                     "columns": [{"x": 260, "dy": 0, "size": 4, "colour": 11}, {"x": 460, "dy": -6, "size": 5, "colour": 6}]}],
             "letters": string(elf, 0x520BE8).chars().take(42).collect::<String>(), "name_len": 3,
             "new_record": format(elf, 0x51FA58)},
+        // the ranking (screen 7, 0x3C8A88) where a new TIME ATTACK or SURVIVAL record is named: the banner by kind
+        // (0x3C93A0: sprites 0x520448 253, 257, 255 of file 132: TIME ATTACK, GREATEST SURVIVORS, CHARACTER USAGE) at (0, 20); rows clipped to y
+        // 20-446 (0x3DBAA8), `dy` apart from foot `first` (gp-0x6264 / -0x625C: 93 from 153, 4 shown; CHARACTER USAGE 75
+        // from 135, 5), `132_000` (sprite 251) across at each foot (0x3C9458); a row (0x3C75E8, 0x3C7AB0): the rank "%2d" at x 16, 27
+        // above the foot, size 10, and its suffix size 5, 7 above (0x3C7278); the members' faces (0x3CBFB8, 51 x 51 in
+        // the cursor frame `003_110` 2 out, 0x3CC078), the second first, and their name plates (0x3CF1E8); TIME ATTACK's
+        // time size 5 at (300, -8); SURVIVAL's "WINS" size 5 at (275, -7) then the number size 10 at -26 (0x3C7428; "WINS
+        // " below 100); the name at (488, -28) size 10. Colours: the entry's row 11, the others 13, a time 10, wins 12.
+        // The entry's row: a band over the row (0x3CE5D8, from 93 above the foot, grey at alpha 0x40), the name so far
+        // with the letter under the cursor in its place, under the place a bar 48 x 4 at -8 (0x3CE5D8, red to white:
+        // (255, 2t + 1, 2t + 1), t 5 to 113 and back by 5 a frame), the seconds left "%d" size 5 colour 0 at (480,
+        // -54) of the `frames` the entry may take (0x3C9124: 3000, then the name is taken as it is)
+        "ranking": {"banners": ["132_001.png", "132_003.png", "132_002.png"], "banner_xy": [0, 20], "clip": [20, 446],
+            "rows": [{"dy": 93, "first": 153, "shown": 4}, {"dy": 93, "first": 153, "shown": 4}, {"dy": 75, "first": 135, "shown": 5}],
+            "separator": "132_000.png", "rank": {"x": 16, "dy": -27, "suffix_dy": -7, "suffix_size": 5},
+            "colours": {"row": 13, "entry": 11, "time": 10, "wins": 12}, "faces": [[160, -74], [210, -57]],
+            "face_frame": sprite(0xAE), "face_size": 51, "plates": [[220, -78], [270, -60]],
+            "time": {"x": 300, "dy": -8, "size": 5}, "wins": {"x": 275, "dy": -7, "size": 5, "number_dy": -26, "number_size": 10},
+            "name": {"x": 488, "dy": -28}, "band": {"h": 93, "colour": [128, 128, 128, 0x40]},
+            "cursor": {"dy": -8, "w": 48, "h": 4, "low": 5, "high": 113, "step": 5},
+            "counter": {"x": 480, "dy": -54, "size": 5, "colour": 0}, "frames": 3000},
         "options_menu": {"title": format(elf, 0x51E0C8), "title_xy": [193, 40], "title_size": 5, "title_colour": 19,
             "items": (0..6).map(|k| u32_at(elf, a(0x439CC8) + 4 * k, what).map(|p| string(elf, p))).collect::<Result<Vec<_>>>()?,
             "item_xy": [40, 90], "item_dy": 30, "size": 4, "colours": {"item": 5, "cursor": 11},
