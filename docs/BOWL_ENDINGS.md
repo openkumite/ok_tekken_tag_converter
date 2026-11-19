@@ -400,13 +400,22 @@ scene; hard cap 7200 frames. [H]
 | 2 / 3 | actor 0 / 1 plays track a (body 0[a], face 1[a], hands 2[2a, 2a + 1]) | [H] |
 | 4 | camera = path a from frame b (c = 1800, unused) | [H] |
 | 19 / 20 | fade in / out from / to black over a frames (0x3AC5D0) | [H] |
-| 5 / 6 | flash (alpha b to 0 over a frames) / fade to colour 10 | [M] |
+| 5 / 6 | from white (b x 2 to 0 over a frames) / to white over a frames (task 0x3AC5D0, kinds 2 / 3: entry 10 of the full-screen quads 0x43FD10, white; 19 / 20 use entry 9, black) | [H] |
 | 17 | a burst 0x3A2758(kind (a >> 1) & 3, at, 0, 0) at actor a & 1's node b (its matrix +0x30, fighter 0x8796C0 + 0xB8A0 x side + 0xDB0 + 0xC0 x node; y, z negated), turned away from the other actor's node c (at +0x10: the difference); b = 0x4002: the matrix 0x444CD0 instead (0x3D2270) | [H] |
 | 18 | the dust 0x3A2758(3, at, flag 1, c x 2 pi / 4096) at actor a & 1's node b: spinning c x 2 pi / 4096 a frame (+0x84 into +0x74 each frame, 0x3A06F0); b = 0x62: the actor's place on the floor (fighter +0x510 x, z; y 0), flag 0; 0x4000: twenty objects 0x3ACCD0 (0x3ACEE0) instead; 0x4001: the point gp-struct 0x415808 +0x14 (y - 800), flag 0; 0x4002: as op 17's. With the flag, dust more than 500 mm up is 3 particles at the set's own size and colour 0x808080, not the arena's row | [H] |
 | 10 | the character effect 0x3A2BC0(side c & 1, 0, at) at actor c & 1's node b (0x4003: the point 0x5F6280 through the actor's +0x974 matrix, plus +0x988): particles of the side's own set (4 + side, the character's effect file by 0x35C970 -> table 0x519438) [M] | [M] |
 | 12 | actor a & 1's texture channel 0 (0x8D5E20, 4 players x 2 x 16 bytes) to frame 1 (b = 0) or 0 (0x3A86D8) [M: what the channel animates] | [M] |
-| 16, 26-28, 31 | position offset (0x378368), flags, clear objects, Kuma / Panda +0xB052, 0x34CB38 | [L] |
-| 21-25, 29, 30, 32 | spawn 2D / 3D effect objects (0x3AC7C0 ... 0x3AA410) | [L] |
+| 15 | True Ogre's fire (0x3A6440 -> 0x3A4EE8, character 20 only) from actor a & 1 for b frames (task 0x3AC558) | [H] |
+| 16 | 0x378368: table 0x8A7B70[a & 1] = {b, ?, c} (6 bytes; its reader not followed) | [L] |
+| 21 | full-screen quad 0x43FD10 entry 9 (black, a 0 / 1) or 10 (white, a 2 / 3) at alpha b / 128 for c frames (0x3AC7C0) | [H] |
+| 22 | an iris (0x3AC8B0 -> 0x3CF850(x a, y b, r)): black outside a circle (15-step fans and two bands), r from 640 down by (640 - (c & 0xFF)) / (c >> 8) a frame to c & 0xFF, then held to the scene's end | [H] |
+| 23 | an oval (0x3AC978 -> 0x3CFAD8(220, 133, 0xC0)): black outside the ellipse about (320, 224) of half-height 220, half-width 220 x 1.33, for a frames | [H] |
+| 24 | a screen fill (0x3ACAB0 -> 0x3AC9D8(a)) for b frames from table 0x437D10 (16 bytes: r, g, b, a, ALPHA's A B C D): 0 (255, 255, 255) and 1 (205, 157, 200) with (Cs - Cd) x Ad (the colour less the picture, the frame's alpha taken as 1 [M]), 2 (162, 51, 50) at 64 / 128 over | [H] |
+| 25 | an arena prop (0x3ACB08 -> 0x3D10D0(b & 0x3FFF, matrix)) on arenas 3, 5 and 7 by b, at actor a's node matrix (fighter +0x2A30 or +0x3CF0; flag 0x20 the other actor) for c frames; its matrix 0x444CD0 is ops 17 / 18's node 0x4002 [M] | [M] |
+| 26 / 31 | gp-0x6E84 = a & 1 (cleared with the arena's people, 0x390E74); 0x34CB38(0 / 1) by bits of a, its result unused: nothing drawn | [H] |
+| 27 | 0x3465E0: gp-0x6420 \|= 3 (also op 4's: a camera cut) | [H] |
+| 28 | actor a & 1's +0xB052 = b when it is Kuma or Panda (characters 20 / 29 at +0x2A): the face state 0x363330 reads | [M] |
+| 29 / 30 / 32 | 0x3AA4B8 for a frames; every other frame for a frames an object 0x3ACF50 (0x3AD1D8); gp-0x6E78 = 1 for a frames (0x3AA410, read by 0x3ABD1C) | [L] |
 | 7-9, 11, 13, 14 | no-op | [H] |
 
 Typical: ops 0-4 at frame 0, fade in over 45, effects, fade out over 60-120, end at camera frames - 1. No op plays
@@ -489,7 +498,7 @@ Ranked by how much a player would notice:
 1. The pin simulation's inner details: ball-pin and pin-pin impulse response (0x3EDC90, 0x3EDF88), the pin's mass
    and inertia, the exact down test. A port needs a rigid-body step with the constants of section 3; it will not
    match pin for pin without decoding these.
-2. Ending effect ops (10, 17, 18, 21-25, 29, 30, 32): the visible flourishes in many endings.
+2. Ending effect ops 10, 12, 16, 25, 28-30, 32 (the props, the character effects, Kuma's face), op 15's fire.
 3. The face part's joint mapping (33 triples; section 7.3's outline).
 4. What a spectator the ball hits plays (0x3DB860).
 5. Whether the staff roll draws over the ending scene (its texts are 7.5's); the flash / fade colours (table 0x43FD10, 9 and 10).
