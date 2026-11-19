@@ -376,6 +376,13 @@ pub fn convert(ctx: &Ctx, src: &dyn DiscFile, research: bool) -> Result<Value> {
             if let Some(e) = i.checked_sub(4).and_then(|k| effect_pics.get_mut(k)) {
                 *e = pics.clone();
             }
+            // file 9: the lens flare's discs (EFFECTS.md 5), opaque: the GS adds them by their colour alone
+            if i == 9 {
+                for (k, (w, h, px)) in pics.iter().enumerate() {
+                    let px: Vec<u8> = px.as_chunks::<4>().0.iter().flat_map(|&[r, g, b, _]| [r, g, b, 255]).collect();
+                    assets.write(&format!("pictures/effects/flare_{k}.png"), &tex::png(*w, *h, &px))?;
+                }
+            }
             if let Some(e) = i.checked_sub(4).and_then(|k| effect_paths.get_mut(k)) {
                 *e = effects::paths(&d);
             }

@@ -360,6 +360,13 @@ fn openkumite(pack: &Hashed) {
                 .iter()
                 .all(|m| written.contains_key(&format!("assets/stages/stage_10_m{m}.glb")))
     }));
+    // Eddy-A's lens flare: its sun 85.6 m ahead, strength 0.6, nine discs (the first a hexagon of 0.1 at 192)
+    let flare = &stages["stages"][10]["flare"];
+    assert_eq!(
+        (&flare["sun"][2], &flare["discs"][0]),
+        (&serde_json::json!(-85.60000000000001), &serde_json::json!([1, 0.10000000149011612, 192.0]))
+    );
+    assert!(stages["stages"][0]["flare"].is_null() && written.contains_key("assets/pictures/effects/flare_1.png"));
     let effects = load("pictures/effects/effects.json");
     assert_eq!((&effects["atlas"]["rows"], &effects["strips"]["spark"]["life"]), (&3.into(), &35.into()));
     sound(&load, count("audio/sfx"), count("audio/music"));

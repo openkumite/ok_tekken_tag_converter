@@ -13,6 +13,14 @@ const ALPHA: usize = 0x46_B280;
 /// The arenas' dust (12 bytes an arena: u32 particles, f32 scale, u8 r, g, b; 0x3A2758's kind 3).
 const DUST: usize = 0x43_7AC0;
 const ARENAS: usize = 23;
+/// The lens flare (0x3A1C78, a task of every arena): the jump table by arena - 1 (16), its cases (one a row of the
+/// suns 0x437A50, 16 bytes: x, y, z, 1; and of the strengths gp-0x7EB8, floats) and the case of none; the nine discs
+/// (0x5196C0, 12 bytes: u32 picture of file 9 (disc k's is the word before its row's size), f32 size, f32 brightness).
+const FLARE_CASES: usize = 0x51_9730;
+const FLARE_CASE0: u32 = 0x3A_1CEC;
+const SUNS: usize = 0x43_7A50;
+const DISCS: usize = 0x51_96C0;
+const GP: usize = 0x5F_D0F0;
 
 /// A fighter's shadow mesh (the Tekken 3 converter's `shadows.json` entry) from its low-detail model, fighter-pack
 /// part 8, which the game draws into its shadow picture (0x3424A8): each vertex on its heavier joint, in that
@@ -53,8 +61,27 @@ pub fn shadow(m: &Model, record: usize) -> Value {
 /// ambient (128 = 1, the GS's modulation); and its `dust` (0x3A2758, kind 3 at the floor): so many particles, their
 /// size times `scale`, their colour (128 = 1); its `people`, the background characters (0x114FC8, FORMATS.md 12):
 /// `model` (`stages/stage_NN_pK.glb`), `at` (metres, the arena's axes), `heading` (degrees about y, 0 = +z), the
-/// `motions` played in turn (`stage_NN_mK`), and the frame of them the first one `start`s at.
+/// `motions` played in turn (`stage_NN_mK`), and the frame of them the first one `start`s at; its `flare` (0x3A1C78:
+/// none on most arenas): the `sun` (metres, the arena's axes), the `strength` and the nine `discs` [picture of
+/// `pictures/effects/flare_K.png`, size, brightness].
 pub fn stages(elf: &[u8]) -> Value {
+    let discs: Vec<Value> = (0..9)
+        .filter_map(|k| {
+            let o = DISCS + 12 * k - VADDR;
+            Some(json!([u32le(elf, o)?, f32le(elf, o + 4)?, f32le(elf, o + 8)?]))
+        })
+        .collect();
+    let flare = |a: usize| -> Option<Value> {
+        let case = u32le(elf, FLARE_CASES + 4 * a.checked_sub(1)? - VADDR).filter(|_| a <= 16)?;
+        let row = (case.checked_sub(FLARE_CASE0)? as usize)
+            .is_multiple_of(0x10)
+            .then(|| (case - FLARE_CASE0) as usize / 0x10)?;
+        (row < 7).then_some(())?;
+        let sun: Vec<f64> = (0..3)
+            .map(|k| f32le(elf, SUNS + 16 * row + 4 * k - VADDR).map(|v| v as f64 * SCALE))
+            .collect::<Option<_>>()?;
+        Some(json!({"sun": sun, "strength": f32le(elf, GP - 0x7EB8 + 4 * row - VADDR)?, "discs": discs}))
+    };
     let stages: Vec<Value> = (0..ARENAS)
         .filter_map(|a| {
             let f: Vec<f64> =
@@ -70,7 +97,7 @@ pub fn stages(elf: &[u8]) -> Value {
                 .map(|p| json!({"model": p.model, "at": p.pos.map(|v| (v as f64 * SCALE) as f32), "heading": p.heading, "motions": p.motions, "start": p.start}))
                 .collect();
             Some(json!({"id": a, "shadow": {"toward": [x * s, y * s, z * s], "colour": [0, 0, 0], "alpha": alpha as f64 / 128.0},
-                "lights": {"toward": [v(0), v(1), v(2)], "colour": [v(3), v(4), v(5)], "ambient": v(6)}, "dust": dust, "people": people}))
+                "lights": {"toward": [v(0), v(1), v(2)], "colour": [v(3), v(4), v(5)], "ambient": v(6)}, "dust": dust, "people": people, "flare": flare(a)}))
         })
         .collect();
     json!({"stages": stages})
