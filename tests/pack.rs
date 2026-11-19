@@ -582,7 +582,7 @@ fn endings(pack: &Hashed) {
 /// arena's music (docs/FIGHT_DATA.md sections 13-14).
 fn sound(load: &dyn Fn(&str) -> serde_json::Value, samples: usize, tracks: usize) {
     let (index, sound, music) = (load("audio/index.json"), load("gamedata/sound.json"), load("gamedata/music.json"));
-    assert_eq!((samples, tracks, index["music"].as_array().unwrap().len()), (2350, 25, 25));
+    assert_eq!((samples, tracks, index["music"].as_array().unwrap().len()), (2350, 26, 26));
     let bank = |n: u64| {
         let b = index["sfx"].as_array().unwrap().iter().find(|b| b["bank"] == n).unwrap();
         b["samples"].as_array().unwrap().len() as u64
@@ -621,6 +621,12 @@ fn sound(load: &dyn Fn(&str) -> serde_json::Value, samples: usize, tracks: usize
         assert!(index["music"].as_array().unwrap().iter().any(|m| m["file"] == file), "{file}");
     }
     assert_eq!((&bgm[9]["columns"][0]["file"], &bgm[14]["columns"][0]["file"]), (&"22.flac".into(), &"23.flac".into()));
+    // the select's (BGM 0, a bank's two samples) as a stream, looping from its VAG frame 1483 (as PCSX2 plays it)
+    let select = &bgm[0]["columns"][0];
+    assert_eq!(
+        (&select["file"], &select["loop"], &select["loop_seconds"]),
+        (&"02.flac".into(), &true.into(), &(1483.0 * 28.0 / 44100.0).into())
+    );
     let rounds = load("gamedata/rounds.json");
     assert_eq!(rounds["win_poses"]["aliases"], serde_json::json!([4770, 4771, 4772, 4773]));
     // the AI: 5 x 8 profiles, Tekken 3's fields 4 bytes later (EASY / NORMAL level 0's cooldowns), King's reach

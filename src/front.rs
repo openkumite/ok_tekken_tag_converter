@@ -238,7 +238,14 @@ pub fn front_end(elf: &[u8], ups: &[Upload], clips: &[Option<String>]) -> Result
             "random_roll": 3, "plates": [[[138, 264], [41, 238]], [[376, 264], [475, 238]]],
             "timer": {"frames": 2400, "x": 320, "y": 260, "blink": {"below": 6, "period": 30, "off": 8}}, "done": 90,
             // (1P's cursor starts on Xiaoyu's slot, as the PS2 shows it; 2P's on Jin's, the other end of the row [L])
-            "start_slots": [18, 27], "ordinal": {"text": string(elf, 0x5205C8), "x": [62, 480], "y": 350},
+            // (0x3CC660: "1ST" while the side has no pick, not in mode 5; 0x3CB4B4: "2ND" once it has, not in modes 5
+            // and 6, while its partner's place stands nobody (select +0x14 + 4 x side) and `second_after` frames after
+            // the pick (the side's +0x18, set by 0x3CA9B4))
+            "start_slots": [18, 27], "ordinal": {"text": string(elf, 0x5205C8), "x": [62, 480], "y": 350,
+                "second": string(elf, 0x5204B8), "second_after": 90},
+            // (BGM 0 from the select's frame 18, select +0x10; it stops as the select ends: the VS screen is silent, as
+            // the PS2 plays it)
+            "music": {"bgm": 0, "from": 18},
             // (0x3CC4A4 -> 0x3BC828: the side nobody plays, while frame & 0x30: INSERT COIN (0x3BCA30, 0x51EE98), or
             // the credits (0x3BC650, 0x51EF00, its leading space kept) while frame & 0x40; 0x3BC868: centred on 160 +
             // 320 x side by a width of 12.8 a letter (16 x 4 / 5: size 4; the PS2 shows it there) [M], its foot
@@ -262,7 +269,14 @@ pub fn front_end(elf: &[u8], ups: &[Upload], clips: &[Option<String>]) -> Result
         // (0xF7 / 0xF8) centred at y 340 in the VS modes (gp-0x7440 and -0x743E), else the stage's texts
         "vs": {"background": "142_000.png", "logo": "142_001.png", "logo_y": 340, "steps": 10, "portrait": [188, 256],
             "feather": 20, "places": [[[-257, 38, 20, 3], [-360, 38, 216, -3]], [[708, -38, 20, 3], [810, -38, 216, -3]]],
-            "team_dy": [-22, -90]},
+            "team_dy": [-22, -90],
+            // (0x3C410C, by mode, table 0x51F740: modes 0, 3, 5 "STAGE" and the fight's number, the eighth "FINAL" over
+            // "STAGE"; 2 and 4 "FIGHT" and the number; 7 "PRACTICE"; none in 1 and 6. The printf's size (7, 8, 10) as a
+            // scale of the chrome font's 42-pixel glyphs (size / 9.6), the lines' tops (from its y 350 and 385) and the colour
+            // (its %c 14: palette 14, silver edged in red) are as the PS2 shows them [M])
+            "texts": {"stage": string(elf, 0x51F6C0), "final": string(elf, 0x51F6F0), "fight": string(elf, 0x51F700),
+                "practice": string(elf, 0x51F710), "final_number": 8, "stage_modes": [0, 3, 5], "fight_modes": [2, 4],
+                "practice_modes": [7], "tops": [330, 366], "scales": {"text": 0.73, "final": 0.83, "number": 1.04}, "colour": 14}},
         "hud": {"bars": {"x": [29, 370], "y": 30, "w": 240, "h": 28},
             "strips": (0..6).map(|i| sprite(45 + 2 * i)).collect::<Vec<_>>(),
             "angry_strips": (6..12).map(|i| format!("003_{i:03}_angry.png")).collect::<Vec<_>>(), "angry_at": 120, "angry_blink": 8,

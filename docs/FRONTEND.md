@@ -105,8 +105,18 @@ with QUICK SELECT on (settings +8) 52 lower, over a backdrop of its own (section
 - Faces: table **0x520508** (s32 sprite per body, 0-38; palette id 0x84): `003_069`-`109`, e.g. Paul 160 =
   `003_097`, Tiger 173 = `003_109`. Cursor frame id 0xAE = `003_110` drawn at (x-2, y-2) (0x3CC078). [H]
 - Costume: the chosen slot gives the character, the button its costume: the fighter's select value is
-  `character * 8 + (costume & 7)` (0x35C8D0); bodies 34-38 come out of the roster through that value. Which pad
-  bit gives which costume was not read. [M]
+  `character * 8 + (costume & 7)` (0x35C8D0); bodies 34-38 come out of the roster through that value. [H]
+- **Costume per button** (0x3C9ED8, on the pad's raw word 0x415728, libpad's bits byte-swapped: L2 1, R2 2, L1 4, R1 8,
+  triangle 0x10, circle 0x20, cross 0x40, square 0x80, SELECT 0x100, START 0x800, up 0x1000, right 0x2000, down 0x4000,
+  left 0x8000; 0x3CA428 turns L1/L2/R1/R2/R3 into 4): square 0; cross 1; triangle 2 when the character has one
+  (table 0x4FF690, 16 bytes a character: s16 model index per costume 0-7, -1 none; and its flag in 0x43B9B8, filled
+  from 0x51E918), else 0; circle 3, else 1; a shoulder 4 (0x3AE608: Armor King's only once his ending, config +0x10
+  bit 18, was seen), else 0; START 4 when it has one and not in TEAM BATTLE, else no pick. Both sides played by people
+  (gp-0x6A88 / -0x6A84 clear): taking the other side's character in its costume gives another (0x3C0210: 0 -> 2 else 1,
+  1 -> 3 else 0, others 0). The timer out picks for a side as a button drawn by 0x3800D8(5): square, triangle, a
+  shoulder, cross, circle (0x3CA070). Xiaoyu takes costume 5 one time in 6 when gp-0x6230 is set (set by the cursor
+  code 0x3C9C84; not followed). SELECT (0x100) cancels the last pick (0x3CB018). Checked in PCSX2: square, cross and
+  triangle give Xiaoyu costumes 0, 1 and 2. [H]
 - Random: 0x35C7A8 picks uniformly among the set bits of (selectable AND a mask). Mokujin copies a random character
   from mask 0x51E8A0 (28 characters, no bosses). [H]
 - Select music is BGM 0 (FD 14), started 18 frames in (select +0x10). With QUICK SELECT off (the default) the screen
@@ -318,8 +328,14 @@ is on a character it took (seen). `select.models`: `camera`, `places`, `places_o
 `light`, `motions` (by character id: the two clips).
 
 A cursor move: sound 3; a pick: sound 4, the last sound 5; cancel: sound 3. The PS2 starts 1P's cursor on Xiaoyu
-(seen; gp-0x6248). After the last pick 90 frames, the last 20 a fade (gp-0x71D0 = 20). No announcer call and no
-flash in the select's own code: a pick shows as the 3D model's pose. Also seen on the PS2: "INSERT COIN" and "CREDIT
+(seen; gp-0x6248). After the last pick 90 frames (gp-0x624C), counted only while 0x3AF448 says the models are in
+(PCSX2: 131-135 frames with the disc's loading), then the select's last picture holds while the VS screen loads: no
+fade shows (gp-0x71D0 = 20 is set 4 frames before the end). No announcer call and no flash in the select's own code:
+a pick shows as the 3D model's pose. **1ST / 2ND**: "1ST" (0x5205C8, drawn by 0x3CC660) while the side has no pick,
+not in mode 5; "2ND" (0x5204B8, drawn by the side's machine at 0x3CB4B4) once it has one, not in modes 5 and 6, only
+while its partner's place stands nobody (select +0x14 + 4 x side clear: the cursor on a character it took) and the
+side's +0x18 has run out (90 frames, set by the pick at 0x3CA9B4). **The timer** (0x3CC190) is drawn whatever the
+picks (after the last one too), but QUICK SELECT; its blink-off skipped once select +0x1C is set. Also seen on the PS2: "INSERT COIN" and "CREDIT
 0" alternating on the side nobody plays. `front_end.select`: `face_dy`, `face_size`, `face_level`, `lightning`,
 `frame`, `cursors`, `cursor_rect`, `cursor_pulse`, `tag_dx`, `tag_dy`, `random_roll`, `plates`, `ordinal`, `timer`,
 `done`, `start_slots` (2P's [L]).
@@ -331,8 +347,13 @@ mirrored by 0x3C3648) at x = x0 + dx x step, y = y0 + dy x step: 1P's leader (-2
 (-360 + 38 s, 216 - 3 s), 2P's (708 - 38 s, 20 + 3 s) and (810 - 38 s, 216 - 3 s), the partner over its leader;
 TEAM BATTLE's 22 and 90 higher. The step goes 0 to 10, one a frame (state 3), then holds while the fight loads
 (states 4-6: about 4 s in PCSX2 from the arcade's select, 3.5 s in the attract). "VS" `142_001` (0xF7 / 0xF8) centred
-at y 340 when gp-0x7440 and -0x743E are set (the VS modes, the attract); otherwise "STAGE" / "FINAL" and the number
-(0x51F6C0, 0x51F6F0) in the chrome font at y 350 and 385. Bodies 0x32 and 0x7B take another drawing over the blue
+at y 340 when gp-0x7440 and -0x743E are set (both pads played, the attract); otherwise by mode (0x3C410C, jump table
+0x51F740): modes 0, 3, 5 "STAGE" (0x51F6C0) at y 350 and the fight's number (settings +0x24 + 1) centred at y 385,
+the eighth fight "FINAL" (0x51F6F0) at 350 over "STAGE" at 385; modes 2, 4 "FIGHT" (0x51F700) and the number; mode 7
+"PRACTICE" (0x51F710) at 385; modes 1, 6 nothing. The printf's sizes 7 (the words), 8 (FINAL STAGE), 10 (the
+number) and colour 14 (palette 14 of the chrome font, silver edged in red): seen in PCSX2 (arcade, STAGE 1), the
+scales size / 9.6 of the 42-pixel glyphs [M]. The VS screen is silent: the select's music stops as the select ends,
+the fight's starts after the load. Bodies 0x32 and 0x7B take another drawing over the blue
 flame `182_001` (not followed). `front_end.vs`: `background`, `logo`, `logo_y`, `steps`, `portrait`, `feather`,
 `places` [side][member] `[x0, dx, y0, dy]`, `team_dy`.
 
@@ -354,13 +375,24 @@ foot 400. `fonts.small` (`picture`, `glyph`, `rows`, `advance`, `colours`), `tit
 
 `front_end.sounds`: `cursor` 3, `start` 4, `decide` 5, `cancel` 3, `pick` 4, `last_pick` 5.
 
+**Sounds and music, measured** (format 17; PCSX2's video capture with its audio, the pad driven through PINE by a cheat
+that makes 0x358698 return a word of memory, the samples matched by cross-correlation with the pack's): title START
+sound 4; main menu moves 3, choice 5; select moves 3, picks 4, the last pick 5, cancel 3; no announcer anywhere in the
+front end. Music: none on the title (the attract's movie and demo have their own) and the main menu; the select's
+BGM 0 (file 2: `select.L` / `select.R`, a bank played on two SPU voices, written also as `audio/music/02.flac`) from
+the select's frame 18, looping from 0.9416 s (the VAG frame flagged loop start, 1483: the PS2 repeats every 15.009
+s), cut when the select ends; the VS screen silent. Levels: an effect of sample volume v (the group entry's byte 6)
+plays at about v / 63 of full scale (volume 25: 0.40; the announcer's 29: 0.46-0.51), the music at its BGM entry's
+u16 (`raw[2]`) / 16384 x 0.85 (the select's 9830: 0.50; arena 16's 10649: 0.56). `select.music` (`bgm`, `from`),
+`select.ordinal` (`second`, `second_after`), `vs.texts`.
+
 ## Not decoded
 
 Ranked by how much a player would notice:
 
-1. Which button gives which costume (seen: × gives costume 1).
-2. The VS screen's STAGE / FINAL texts and its special portraits (0x3C3948's bodies 0x32, 0x7B); how the
-   printf's colour numbers map to the small font's palettes.
+1. The VS screen's special portraits (0x3C3948's bodies 0x32, 0x7B); how the printf's codes (%F, %S, %c) map to
+   sizes and palettes in general.
+2. What sets gp-0x6230 (Xiaoyu's costume 5).
 3. The exact roles of the six health-bar strips and the timer and banner drawing (positions of the round / K.O.
    texts).
 4. Tekken Bowl's ball and pin physics.

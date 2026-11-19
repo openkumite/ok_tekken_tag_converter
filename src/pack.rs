@@ -54,7 +54,7 @@ use std::collections::{BTreeSet, HashMap, HashSet};
 /// its motions, ball, pin and deck; 12: the shadows and effects, `shadows.json`, `stages.json`, `pictures/effects/`;
 /// 14: the arenas' objects, placed and moved, and their added and multiplying strips, in their stages; 15: the front
 /// end's motion, its sounds per action, the font's colours; 16: the select's 3D characters).
-pub const FORMAT: i64 = 16;
+pub const FORMAT: i64 = 17;
 /// What a pack's manifest names it.
 pub const KIND: &str = "ttt";
 
@@ -129,6 +129,8 @@ pub fn convert(ctx: &Ctx, src: &dyn DiscFile, research: bool) -> Result<Value> {
         (vec![], vec![], vec![], vec![], vec![], vec![], vec![]);
     // OpenKumite's audio/index.json, and each bank's (file, bytes, samples) and each music stream's file
     let (mut sfx, mut tracks, mut banks, mut streams) = (vec![], vec![], vec![], vec![]);
+    // where the select's music loops from (seconds)
+    let mut select_loop = None;
     let roster = moves::roster(&a.elf)?;
     // file 3's uploads: the HUD and select atlas, whose pictures the front end's tables name
     let mut atlas = vec![];
@@ -146,7 +148,21 @@ pub fn convert(ctx: &Ctx, src: &dyn DiscFile, research: bool) -> Result<Value> {
         let mut unknown = false;
         if d.starts_with(b"VAGp") {
             let (mut items, mut samples) = (vec![], vec![]);
-            for (k, (name, rate, pcm)) in audio::vag_bank(&d).into_iter().enumerate() {
+            let bank = audio::vag_bank(&d);
+            // the select's music (BGM 0, a sound bank: its left and right halves, looped by the SPU) as a stream too
+            if let [(_, 44100, l, Some(start)), (_, 44100, r, _)] = &bank[..] {
+                let pcm = l.iter().zip(r).flat_map(|(a, b)| [*a, *b]).collect();
+                let flac = format!("{i:02}.flac");
+                assets.write(
+                    &format!("audio/music/{flac}"),
+                    &psx::flac(&psx::Pcm { rate: 44100, channels: 2, samples: pcm })?,
+                )?;
+                tracks
+                    .push(json!({"name": format!("bank file {i}"), "file": flac, "seconds": l.len() as f64 / 44100.0}));
+                streams.push(i);
+                select_loop = Some(*start as f64 / 44100.0);
+            }
+            for (k, (name, rate, pcm, _)) in bank.into_iter().enumerate() {
                 let (file, wav, seconds) =
                     (format!("audio/{i:03}_{k:03}.wav"), audio::wav(rate, 1, &pcm), pcm.len() as f64 / rate as f64);
                 if research {
@@ -462,7 +478,7 @@ pub fn convert(ctx: &Ctx, src: &dyn DiscFile, research: bool) -> Result<Value> {
     for (name, v) in [
         ("bowl", bowl::bowl(&a.elf, &lengths)?),
         ("sound", sound::sound(&a.elf, &banks, &characters)?),
-        ("music", sound::music(&a.elf, &streams)?),
+        ("music", sound::music(&a.elf, &streams, select_loop)?),
         ("rounds", fight::rounds()),
     ] {
         assets.write(&format!("gamedata/{name}.json"), serde_json::to_string(&v)?.as_bytes())?;
