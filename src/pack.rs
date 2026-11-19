@@ -59,8 +59,8 @@ use std::collections::{BTreeSet, HashMap, HashSet};
 /// sounds and music, the small font's colours; 18: the fight HUD as drawn, its round texts and the chrome font's advances;
 /// 19: ai.json `survival`; 20: Yoshimitsu's CPU handler in ai.json; 21: the movies, `assets/video/`, and the EMBU,
 /// endings.json `embu`; 22: the arenas' background people, the lens flare, faces to the camera; 23: bowl.json `replay`,
-/// `strike`, `records`, `texts`).
-pub const FORMAT: i64 = 23;
+/// `strike`, `records`, `texts`; 24: the help line's font and texts, the pause menu).
+pub const FORMAT: i64 = 24;
 /// What a pack's manifest names it.
 pub const KIND: &str = "ttt";
 
@@ -560,6 +560,9 @@ pub fn convert(ctx: &Ctx, src: &dyn DiscFile, research: bool) -> Result<Value> {
     let mut roster = assets::roster(&roster, &characters);
     if let Some(r) = roster.as_object_mut() {
         r.insert("front_end".into(), front::front_end(&a.elf, &atlas, &clips)?);
+    }
+    if let Some((name, png)) = front::help_font(&a.elf) {
+        assets.write(&format!("pictures/{name}"), &png)?;
     }
     assets.write("gamedata/roster.json", serde_json::to_string(&roster)?.as_bytes())?;
     assets.write("stages/index.json", serde_json::to_string(&arenas)?.as_bytes())?;

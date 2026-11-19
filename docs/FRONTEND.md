@@ -293,8 +293,52 @@ default 2 wins), ROUND TIME (30, 40, 60, 80, 99, INFINITY; 60), CHARACTER CHANGE
 SELECT CURSOR (DEFAULT / HOLD), QUICK SELECT, CHICKEN MARKING, HELP MESSAGES, SPEAKER OUT, BGM / SE VOLUME 0-10.
 Life is fixed at 140. [H]
 
-Pause menu (0x51E710): resume, COMMAND LIST, SCREEN CAPTURE (once unlocked), CONTROLLER SETUP, ADJUST DISPLAY,
-quit; in Bowl also TOP BOWLERS and BOWLING OPTIONS. [M: from the labels and help texts]
+**OPTIONS (0x3B19B0; format 24, `options_menu`)**: "OPTIONS MENU" at (193, 40), size 5, colour 19; GAME OPTIONS,
+CONTROLLER SETUP, RECORDS, ADJUST DISPLAY, MEMORY CARD(PS2), EXIT (0x439CC8) from (40, 90) 30 apart, size 4, colour
+5, the cursor's 11; under each a line 4 high 24 above the foot from x 40 to 400 (template 0x4402B0: blue (128, 128,
+255) at alpha 0x60 fading out), the cursor's white over a band 24 high (0x440100 twice: green (0, 255, 128) from x 0
+up to 0x60 at 40, out at 640); the help line = entry. **GAME OPTIONS (0x3B42A0)**: "GAME OPTIONS" at (194, 40); the
+14 rows of 0x439CE0 (`options`) from (40, 90) 20 apart, size 4: a list "%s:%c%s", a number "%s: %c%d" (0: OFF),
+DEFAULT and EXIT their label; the label colour 5 (the cursor's 11 over the pause's bar from x 0 to 40 to 170 past
+"LABEL:", 0x3B15F8), the value 16 at its default, else 12; on the cursor's row the arrows (+0x3C, +0x3E: a list's
+left one always, -1 none; a number's while above 0 / below 10); DEFAULT asks YES / NO at x 200 (the choice 11, the
+other 22, the arrow at 262 towards it). Help line 6 + row with the value's `\S` alternative. [H, not compared with
+the PS2: the emulator was busy]
+
+**RECORDS (0x3B2978; format 24, `records`)**: one screen of three pages, state gp-0x6362 (0, 2, 4 build the sorted
+list at 0x440D50 +0x124 / +0x126 by 0x3C84B8, 0x3C83A8, 0x3C80E8; 1, 3, 5 draw CHARACTER USAGE 0x3B2090, GREATEST
+SURVIVORS 0x3B2358, TIME ATTACK 0x3B2670); right goes to the next page, left to the one before; up / down scroll
+(gp-0x6346) six rows. "RECORDS" at (243, 40) size 5 colour 19; the page's name at (192 / 173 / 230, 70) size 4 colour
+14 / 15 / 6, the arrows "{" "}" at x 153 and 483 while (frame / 24) is odd (0x3B1F10), "u" / "d" (40, 120) / (40,
+152) when there are rows above / below (0x3B1F78, table 0x51E198). Rows from foot 130, 50 apart: the bar 0x3B15F8
+(26 spaces; colours 0x43A148: red, green, blue), the rank "%2d" size 5 at x 70 4 up and its suffix (0x3B1EC8 by rank:
+ST ND RD TH, 0x43A158) size 4, faces 40 x 42 at x 160 (and 210) 46 up (0x3CE318); CHARACTER USAGE: the name (210,
+size 4, colour 11), "%3d.%1d%%" of the per-mille (410, 6 up, size 5, colour 14); SURVIVORS (entries of 8 bytes at
++0x80: u16 wins at +2, the name at +4): "%3d" (260, 4 up, size 5) of at most 999, "WIN" and "S" from 2 (338, size
+4), the name (460, 6 up, size 5, colour 15); TIME ATTACK (10 entries of 12 bytes at +8: u32 time, the two characters
++4 / +5, the name +6): the time (260, size 4, colour 11), the name (460, 6 up, size 5, colour 6). Help 24 + page. A
+name is 3 letters of "ABCDEFGHIJKLMNOPQRSTUVWXYZ-!?.0123456789<=" (0x520BE8, 42 round; 0x3D0450). [H; not compared
+with the PS2]
+
+**Pause menu (0x3B7B98; format 24, `front_end.pause`)**, checked against PCSX2 captures of an arcade fight: the
+entries of table 0x51E7A8 (CANCEL, RESET, COMMAND LIST, SCREEN CAPTURE, TOP BOWLERS, BOWLING OPTIONS, ADJUST
+DISPLAY, CONTROLLER SETUP): SCREEN CAPTURE only once the Gallery is open (0x3BFEF8), TOP BOWLERS and BOWLING
+OPTIONS only in Tekken Bowl, where COMMAND LIST and SCREEN CAPTURE are not; so a fight shows five. Up / down move
+round them (sound 3); a face button or L1 / R1 (0xFC) takes one (jump table 0x51E830: CANCEL closes, RESET opens
+RESET?, sound 3; the others sound 5). The window 0x3DC768 (160, 130, 320 x 130; 150 high with six entries): navy at
+half over the scene in a grey frame about 10 out; "PAUSE P%d" (0x51E728; "PAUSE 1-%C" with a multitap) at (233,
+150) in the chrome font, size 5, colour 0, shown while frame & 0x30; the entries from (180, 180) 20 apart, size 4,
+colour 5, the cursor's 11 over the bar 0x3BB680 (from x 180 to 40 past the text, 12 to 4 above the foot, green (0,
+255, 128) at alpha 0x60 on the left to 0 on the right: template 0x4402F8). **RESET?** (0x3B8460) alone: window (240,
+206, 160 x 40), "RESET?" at (270, 230) colour 19, "YES  NO" at (258, 250) size 4, the choice 11 and the other 22,
+the printf's "{" / "}" (shown as the gold arrows `003_067` / `003_068`) at (320, 250) towards the choice; NO first;
+left / right choose (sound 3), YES takes the reset (0x35A518, sound 4), NO or START back to the entries (sound 3).
+
+**The help line** (0x3E5268 -> 0x3E06A0, when HELP MESSAGES is on: 0x3B1468): a band (0, 389, 640 x 48) RGBA
+0x18181860 (0x3DBCF0), the text at (30, 390) (its top) in the help font of the executable's archive 0x457380 entry 0
+(`help_font.png`: 12 x 18 cells, 16 a row from the space), each glyph its byte of 0x4572E0 on, a space 4; `\n` a
+line 20 lower; of the `\S[...]` alternatives only the current value's (gp-0x67BA). The pause's help is text 31 +
+entry, RESET?'s 40. The English texts are archive entry 2 (0x45D780). [H; the space's 4 measured]
 
 ## 9. Motion, effects and sounds (`front_end`, formats 15 and 16)
 

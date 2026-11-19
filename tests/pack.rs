@@ -536,8 +536,20 @@ fn front_end(pack: &Hashed) {
     }
     let mut named = vec![];
     pictures(fe, &mut named);
-    // (format 16: the small font's 36 colours, the VS screen's fire and logo, and its colours' picture)
-    assert_eq!(named.len(), 275);
+    // (format 16: the small font's 36 colours, the VS screen's fire and logo, and its colours' picture; format 24:
+    // the help font)
+    assert_eq!(named.len(), 276);
+    // (format 24, FRONTEND.md 8: the pause's entries, the help texts, GAME OPTIONS' 14 rows, the records' letters)
+    assert_eq!(
+        (&fe["pause"]["items"][7], &fe["help"]["texts"][31], &fe["options"][13]["label"], &fe["options"][0]["arrows"]),
+        (
+            &"CONTROLLER SETUP".into(),
+            &"Closes window and resumes current game.".into(),
+            &"EXIT".into(),
+            &serde_json::json!([322, 516])
+        )
+    );
+    assert_eq!(fe["records"]["letters"], "ABCDEFGHIJKLMNOPQRSTUVWXYZ-!?.0123456789<=");
     assert_eq!(
         (&fe["vs"]["places"][1][0], &fe["select"]["insert"]["texts"][1], &fe["title"]["press_x"]),
         (&serde_json::json!([708, -38, 20, 3]), &" CREDIT 0".into(), &120.into())
