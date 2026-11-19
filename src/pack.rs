@@ -52,8 +52,9 @@ use std::collections::{BTreeSet, HashMap, HashSet};
 /// camera, the camera id from bit 23; 8: ai.json; 9: the front end, `assets/pictures/` and roster.json `front_end`, the
 /// 2D files' palettes as drawn; 10: the endings, `assets/endings/` and gamedata/endings.json; 11: Tekken Bowl, `bowl.json`,
 /// its motions, ball, pin and deck; 12: the shadows and effects, `shadows.json`, `stages.json`, `pictures/effects/`;
-/// 14: the arenas' objects, placed and moved, and their added and multiplying strips, in their stages).
-pub const FORMAT: i64 = 14;
+/// 14: the arenas' objects, placed and moved, and their added and multiplying strips, in their stages; 15: the front
+/// end's motion, its sounds per action, the font's colours).
+pub const FORMAT: i64 = 15;
 /// What a pack's manifest names it.
 pub const KIND: &str = "ttt";
 
@@ -332,7 +333,11 @@ pub fn convert(ctx: &Ctx, src: &dyn DiscFile, research: bool) -> Result<Value> {
             }
             if i == 3 {
                 atlas = tex::uploads(&d);
-                for (name, png) in front::angry_strips(&atlas) {
+                for (name, png) in front::angry_strips(&atlas)
+                    .into_iter()
+                    .chain(front::cursor_2p(&atlas))
+                    .chain(front::font_colours(&atlas))
+                {
                     assets.write(&format!("pictures/{name}"), &png)?;
                 }
             }

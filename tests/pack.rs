@@ -495,6 +495,15 @@ fn front_end(pack: &Hashed) {
     assert_eq!((schedule.len(), &schedule[29]), (32, &serde_json::json!({"stage": 14, "kind": 1, "character": 33})));
     assert_eq!(fe["arcade"]["rivals"][0], serde_json::json!([19, 11, 1]));
     assert_eq!((&fe["options"][2]["label"], &fe["options"][2]["default"]), (&"ROUND TIME".into(), &2.into()));
+    // the motion and sounds (FRONTEND.md 9): ARCADE gold, the select's sounds, the tags' x, "1ST", the line
+    assert_eq!(
+        (&fe["menu"]["items"][0]["colour"], &fe["menu"]["items"][11]["colour"], &fe["sounds"]["last_pick"]),
+        (&11.into(), &19.into(), &5.into())
+    );
+    assert_eq!(
+        (&select["tag_dx"], &select["ordinal"]["text"], &fe["title"]["press_start"]),
+        (&serde_json::json!([2, 25]), &"1ST".into(), &"PRESS P1 AND/OR P2 BUTTON".into())
+    );
     fn pictures<'a>(v: &'a serde_json::Value, out: &mut Vec<&'a str>) {
         match v {
             serde_json::Value::String(s) if s.ends_with(".png") => out.push(s),
@@ -505,7 +514,7 @@ fn front_end(pack: &Hashed) {
     }
     let mut named = vec![];
     pictures(fe, &mut named);
-    assert_eq!(named.len(), 149);
+    assert_eq!(named.len(), 236);
     for p in named {
         assert!(pack.exists(&format!("assets/pictures/{p}")), "{p}");
     }
