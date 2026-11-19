@@ -56,7 +56,7 @@ use std::collections::{BTreeSet, HashMap, HashSet};
 /// end's motion, its sounds per action, the font's colours; 16: the select's 3D characters; 17: the front end's
 /// sounds and music, the small font's colours; 18: the fight HUD as drawn, its round texts and the chrome font's advances;
 /// 19: ai.json `survival`).
-pub const FORMAT: i64 = 19;
+pub const FORMAT: i64 = 20;
 /// What a pack's manifest names it.
 pub const KIND: &str = "ttt";
 

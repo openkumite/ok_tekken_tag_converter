@@ -594,7 +594,7 @@ pub fn ai(elf: &[u8]) -> Result<Value> {
 }
 
 /// The live per-moveset handlers (section 21.6) as the kinds of Tekken 3's routines they match, with the aliases
-/// their code compares (Tekken Tag's). Yoshimitsu's (0x38B368) is not read in detail: a stub.
+/// their code compares (Tekken Tag's).
 fn routines() -> Value {
     json!({
         "0x38B698": {"kind": "back_off", "aliases": {"attack": [0x39d]}, "note": "Paul: his 0x39D (0x39C returns at once, a branch bug)"},
@@ -604,6 +604,9 @@ fn routines() -> Value {
         "0x38AFC0": {"kind": "fire_dodge", "aliases": {"breath": [0x1459, 0x1458]}, "note": "Devil / Angel: Ogre's"},
         "0x38B718": {"kind": "poke_or_crouch", "aliases": {"attack": [0x1407]},
             "note": "Ganryu: the canned poke at his frames 24-25 within 3000, else a crouch guard within 4000"},
+        "0x38B368": {"kind": "special_moves", "aliases": {"rush": [0x1a8], "stance": [0x5c7], "spin": [0x5ca, 0x5cb, 0x5cc],
+            "ignore": [0x5ee], "sweep": [0x1a1, 0x5a9], "flight": [0x5c9, 0x623, 0x624, 0x625]},
+            "note": "against Yoshimitsu: Tekken 3's 0x80061B88 with Tekken Tag's aliases"},
     })
 }
 
