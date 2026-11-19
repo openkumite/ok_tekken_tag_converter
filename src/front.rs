@@ -21,10 +21,13 @@ const PORTRAITS: [usize; 39] = [
 const BODIES: usize = 39;
 
 /// The palette upload of image upload `k` of 2D file `file`, where the nearest one after it is not the one drawn
-/// with (FRONTEND.md 1, 3, 4): file 3's faces share upload 132 (palette id 0x84), its name plates upload 76 (0x4C);
-/// file 141's pictures take its upload 0.
+/// with (FRONTEND.md 1, 3, 4): file 3's faces share upload 132 (palette id 0x84) but RANDOM's and the locked face,
+/// which take upload 163 (0x3CBFB8), its name plates upload 76 (0x4C), the menu's arrows upload 40 (0x3CCF40: palette
+/// table 0x520638's fourth); file 141's pictures take its upload 0.
 pub fn palette(file: usize, k: usize) -> Option<usize> {
     match (file, k) {
+        (3, 162 | 165) => Some(163),
+        (3, 129 | 130) => Some(40),
         (3, 131..=173) => Some(132),
         (3, 75..=114) => Some(76),
         (141, 1..) => Some(0),
@@ -239,8 +242,16 @@ mod tests {
         let ups = [up(0x14, 32, 32), up(0, 8, 2), up(0x14, 32, 32)];
         assert_eq!((sprite(&ups, 0), sprite(&ups, 2)), ("003_000.png".to_string(), "003_001.png".to_string()));
         assert_eq!(
-            (palette(3, 140), palette(3, 80), palette(141, 5), palette(141, 0), palette(3, 45)),
-            (Some(132), Some(76), Some(0), None, None)
+            (
+                palette(3, 140),
+                palette(3, 80),
+                palette(141, 5),
+                palette(141, 0),
+                palette(3, 45),
+                palette(3, 162),
+                palette(3, 129)
+            ),
+            (Some(132), Some(76), Some(0), None, None, Some(163), Some(40))
         );
         assert_eq!(PORTRAITS.iter().collect::<std::collections::BTreeSet<_>>().len(), BODIES);
         assert!(is_2d(3) && is_2d(182) && !is_2d(46) && !is_2d(129));

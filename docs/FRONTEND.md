@@ -85,7 +85,8 @@ copies follow). Title screen: `134_003` logo, "PRESS START" / "INSERT COIN" / "F
 **Grid table 0x440A68** (initialised data): 36 slots x 12 bytes `{u8 slot, u8 up, u8 down, u8 left, u8 right, u8
 visible, s16 body, s16 x, s16 y}` (36 = no neighbour). Init 0x3C9778 fills `body` from **slot -> character table
 0x520460**: a character not in the selectable set (0x43B968) shows as body 0x36 (locked, face `003_101`), 0x37 is
-RANDOM (face `003_099`). Draw 0x3CC6C8: each visible slot's face at (x, y + 52), a lit frame on cursors. [H]
+RANDOM (face `003_099`; both take palette 0xA3, 0x3CBFB8). Draw 0x3CC6C8: each visible slot's face at (x, y), 51 x 51;
+with QUICK SELECT on (settings +8) 52 lower, over a backdrop of its own (section 9). [H]
 
 | Row (y) | x = 56 | 109 | 162 | 215 | 268 | 321 | 374 | 427 | 480 | 533 |
 |---|---|---|---|---|---|---|---|---|---|---|
@@ -108,10 +109,15 @@ RANDOM (face `003_099`). Draw 0x3CC6C8: each visible slot's face at (x, y + 52),
   bit gives which costume was not read. [M]
 - Random: 0x35C7A8 picks uniformly among the set bits of (selectable AND a mask). Mokujin copies a random character
   from mask 0x51E8A0 (28 characters, no bosses). [H]
-- Select music is BGM 0 (FD 14). The arcade-version layout also shows the big pictures of file 141 and the 3D model
-  of the hovered character (0x3AECA8 loads it); the simple layout (QUICK SELECT ON) does not. [M]
-- Tag-partner flow and the select timer: not decoded (per-player machine 0x3CA470, 7 states, jump table 0x5204D0;
-  0x3C9888 stores 60 and 2400, probably the timer). [L]
+- Select music is BGM 0 (FD 14), started 18 frames in (select +0x10). With QUICK SELECT off (the default) the screen
+  is file 141's lightning under the frame `141_045`, the timer, and each side's character as its 3D model (0x3AEEF0
+  on a cursor move, 0x3AEC58 / 0x3AE9D8 on a pick: motion 3); with it on, a backdrop of its own (0x3BBC40,
+  0x3BE8C0) and the picks' faces at y 324 (0x3BECC0). Section 9. [H]
+- Per-player machine 0x3CA470 (7 states, jump table 0x5204D0): 0 set up, 1 picking (a pick before the last plays
+  sound 4, the last sound 5, 0x3CA3BC; input is ignored 10 frames after a pick, gp-0x6238), 3 / 4 VS BATTLE's
+  handicap (1-150, +-1 or +-10) and round count (1-8), 6 done. Cancel (0x3C9518) takes the last pick back, sound
+  3. Timer (0x3C9888): select +8 = 2400 frames, +0xC = 60 a second; 90 frames (gp-0x624C) from the last pick to the
+  fight. What a side gets when the timer runs out: the character under its cursor (seen on the PS2, section 9). [H]
 
 ## 4. In-fight HUD (0x3C1F08 and 0x3C23F0, per side and member)
 
@@ -253,19 +259,78 @@ Life is fixed at 140. [H]
 Pause menu (0x51E710): resume, COMMAND LIST, SCREEN CAPTURE (once unlocked), CONTROLLER SETUP, ADJUST DISPLAY,
 quit; in Bowl also TOP BOWLERS and BOWLING OPTIONS. [M: from the labels and help texts]
 
+## 9. Motion, effects and sounds (`front_end`, format 14)
+
+Worked out on 2026-11-19 from the code and checked against the game running in PCSX2 2.8.2 (screens captured at
+640 x 448 shown 4:3: a capture's y is the screen's times about 1.07). Draw modes (0x3CD868: TEST_2 / ALPHA_2 from
+table 0x520648): 0 blended, 1 and 6 opaque, 2 and 4 additive. A level 0x80 draws a picture as it is; 0x3CE258 /
+0x3CE318 draw without the PRIM's blending, 0x3CE2B8 / 0x3CE398 with it (gp-0x69A8 = 0x40). The screen state is
+gp-0x74D0 (screens by jump table 0x4FB970 in 0x3578F0: 2 title and attract, 3 main menu, 5 select, 9 options, 12
+Theater, 14 music player, 16 Gallery), its step gp-0x74CE. Fades (0x3A6770 to a colour, 0x3A67D0 from one, over n
+frames; 0x3A6898 held). Sounds are sound ids of group 0 (bank 1): **3** `07_cursor`, **4** `08_select1`, **5**
+`09_select2`, played by 0x374CD8. [H unless marked]
+
+**Title (screen 2, 0x3BCC88)**: from white (0x3A67D0, 43 frames) to the logo `134_003`; then 300 frames of the logo,
+the line 0x3BC998 (the second of table 0x51EE68, "PRESS P1 AND/OR P2 BUTTON", once a pad is found; "INSERT COIN"
+otherwise) at y 329, shown while `frame & 0x30` (off 16 frames in 64), the namco logo `134_000` at (257, 350) and the
+copyright at y 409 and 429; then to black over 33 frames and the demo (mode 9). START: sound 4, the main menu. The
+attract loop seen on the PS2: opening movie, demo fight, CHARACTER USAGE ranking, namco, the movie again.
+`front_end.title`: `press_start`, `press_y`, `blink_mask`, `from_white`, `namco`, `copyright_y`.
+
+**Main menu (screen 3, 0x3BD2E0)**: the title's logo stays (0x3BCBC8(5); dimmed to 0x40 on other screens, 4 a frame,
+0x3C4868 / 0x3BB8B8); five rows about the cursor at y 323 + 26 k (the text's foot; the PS2 shows them 19 high),
+each in its entry's text colour (table 0x51EFE0 byte 6: the printf `%c` n is palette 9 + n of the chrome font, e.g.
+11 gold ARCADE, 19 silver OPTIONS, 23 blue PRACTICE; 22 grey for the VS modes without two pads), clipped to y
+315-417 (0x3DBAA8) under two black fades (gouraud quads 0x43FE30 / 0x43FE78: y 315-354 and 380-419). Behind the
+cursor's row a band, y 353-380, black to (192, 192, 255) at x 320 and back (0x43FEC0 / 0x43FF08), its alpha up 8 a
+frame to 0x80 from the menu's start. A move (only once the rows stand still): sound 3, the rows a row's height off,
+4 a frame back; held, again after 18 frames. The arrows `003_067` / `003_068` (palette 40) at (183, 358) and (445,
+358), on 24 frames and off 24 once the band is whole. A choice: sound 5. 480 frames without a key: the attract.
+Newly unlocked entries blink colour 9 every 4 frames. `front_end.menu`: `rows`, `y`, `row_h`, `scroll`, `clip`,
+`fades`, `band`, `arrows`, `idle`, `logo_step`, `dim`; the items' `colour`; `fonts.big.colours` the 36 colours.
+
+**Select (screen 5, 0x3CB900; draw 0x3CCCB8)**, QUICK SELECT off:
+
+| Layer | What | Rule |
+|---|---|---|
+| Lightning | `141_000`-`141_044` (ids 197-241), 320 x 150 stretched to 640 x 300 at y 180, level 0x70, opaque | the next picture each frame, a 45-frame loop (gp-0x69D0); still once select +0x1C is set (4 frames before the fight) |
+| Frame | `141_045` 320 x 309 at x 0, mirrored at x 639 | blended |
+| Faces | 51 x 51 at the slots' (x, y) | level 0x80; 0xA0 under a cursor; 0x30 under the cursor of the side that took it; RANDOM under a cursor shows the side's roll: the next selectable character every 3 frames, in id order, not a pick of the side's (0x3C99C8) |
+| Plates | the name plates (0x5206B8) at (138, 264) and (41, 238) for 1P's two, (376, 264) and (475, 238) for 2P's (0x3CC260) | the first pick, then the partner or the character under the cursor |
+| "1ST" | `%H%V%F1%S%VST` (0x5205C8) at x 62 / 480, y 350 | while picking (0x3CC660); the PS2 shows "2ND" for the partner |
+| Timer | the HUD's digits (0x3C6738) at (320, 260) | seconds `(t + 59) / 60 - 1` from 2400 frames; in the last 6 seconds off 8 frames every 30 (gp-0x6224) |
+| Cursors | `003_057` in palette 0x74 (1P, blue) or 0x75 (2P, pink: `003_057_p2`), 55 x 53 at (x - 1, y - 1); tags `1P` / `2P` at x + 2 / x + 25, y + 40 (0x5205D8) | 2P's drawn first; a level up and down 6 a frame between 96 and 240 (gp-0x69E0 / -0x69D8); both on one slot: 1P's shaded off diagonally (0x3CE078) |
+
+A cursor move: sound 3; a pick: sound 4, the last sound 5; cancel: sound 3. The PS2 starts 1P's cursor on Xiaoyu
+(seen; gp-0x6248). After the last pick 90 frames, the last 20 a fade (gp-0x71D0 = 20). No announcer call and no
+flash in the select's own code: a pick shows as the 3D model's pose. Also seen on the PS2: "INSERT COIN" and "CREDIT
+0" alternating on the side nobody plays. `front_end.select`: `face_dy`, `face_size`, `face_level`, `lightning`,
+`frame`, `cursors`, `cursor_rect`, `cursor_pulse`, `tag_dx`, `tag_dy`, `random_roll`, `plates`, `ordinal`, `timer`,
+`done`, `start_slots` (2P's [L]).
+
+**VS (seen on the PS2, the code not read)**: a moving fire behind (no 2D file of the converted ones: a stream [L]),
+each team's leader high (its left at about x 140, y 56) and its partner low in front (x 26, y 196), mirrored for 2P,
+a ring and a glow between, "VS" (VS modes) or "STAGE n" (the arcade) in the chrome font at the foot; about 1
+second, then black.
+
+**Options (screen 9, 0x3B4B20)**: over the logo dimmed to 0x40; ADJUST DISPLAY moves play entry 0x103F, its reset
+0x1040.
+
+`front_end.sounds`: `cursor` 3, `start` 4, `decide` 5, `cancel` 3, `pick` 4, `last_pick` 5.
+
 ## Not decoded
 
 Ranked by how much a player would notice:
 
-1. The select screen's tag-partner flow (two picks per player, the 1P/2P/1A-1D tags), its timer, and which button
-   gives which costume.
-2. The VS / loading screen layout (file 136, "VS" `0x51F208`, the "%3d%%" loading percent).
+1. Which button gives which costume; the 3D models of the select (their place, camera 0x415808, motions).
+2. The VS / loading screen's code (file 136, "VS" `0x51F208`, the "%3d%%" loading percent) and its moving
+   background.
 3. The exact roles of the six health-bar strips and the timer and banner drawing (positions of the round / K.O.
    texts).
 4. Tekken Bowl's ball and pin physics.
 5. The ending scenes' scripts (descriptor `script*`), the staff roll, which cutscene files (41-128) they use.
-6. The arcade-version select's layout (file 141's lightning pictures and its grid frame).
-7. The attract loop's order (movie, demo, ranking; 0x3BCC88) and PAIR PLAY MODE (art only, no menu entry found).
+6. QUICK SELECT's select backdrop (0x3BBC40, 0x3BE8C0) and the small font's glyph order (the title's line).
+7. The attract loop's code (0x3BCC88's steps 0-2) and PAIR PLAY MODE (0x3C4A28: shown with a multitap).
 8. What settings +8 means beyond the two grid slots; config +0x08 and +0x37.
 
 ## Scripts (`docs/re/`)
