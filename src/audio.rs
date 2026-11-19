@@ -68,21 +68,27 @@ pub fn vag_bank(d: &[u8]) -> Vec<(String, u32, Vec<i16>, Option<usize>)> {
     out
 }
 
-/// A stream file: 2048-byte audio sectors (left 1024 bytes, right 1024 bytes), and in movies
-/// 16 KiB MPEG-2 program stream packs between them. Returns (interleaved stereo pcm, pss).
+/// A movie's sound sectors and packs: 7 sound sectors, then 16 MPEG-2 program stream packs of 16 KiB, over and over.
+const MOVIE_SOUND: usize = 7;
+const MOVIE_PERIOD: usize = MOVIE_SOUND + 16 * 8;
+const PACK: u32 = 0xba01_0000;
+
+/// A stream file: 2048-byte audio sectors (left 1024 bytes, right 1024 bytes), and in movies 16 KiB MPEG-2 program
+/// stream packs between them. A movie's layout is taken by place, not by content: once its sound has ended (movie
+/// 15's 3 s early) its sound sectors hold leftovers, some a copy of a pack. Returns (interleaved stereo pcm, pss).
 pub fn stream(d: &[u8]) -> (Vec<i16>, Vec<u8>) {
     let (mut l, mut r, mut pss) = (Vec::new(), Vec::new(), Vec::new());
-    let mut rest = d;
-    while let Some((sector, after)) = rest.split_at_checked(2048) {
-        if u32le(sector, 0) == Some(0xba01_0000) {
-            let (pack, after) = rest.split_at(rest.len().min(0x4000));
-            pss.extend(pack);
-            rest = after;
-        } else {
-            let (left, right) = sector.split_at(1024);
+    let movie = u32le(d, MOVIE_SOUND * 2048) == Some(PACK);
+    for (k, sector) in d.chunks(2048).enumerate() {
+        let video = movie && k % MOVIE_PERIOD >= MOVIE_SOUND;
+        if video && (k % MOVIE_PERIOD - MOVIE_SOUND).is_multiple_of(8) && u32le(sector, 0) == Some(PACK) {
+            // (the last pack may be cut short)
+            pss.extend(d.get(k * 2048..).and_then(|p| p.get(..p.len().min(0x4000))).unwrap_or_default());
+        } else if let (false, Some((left, right))) = (video, sector.split_at_checked(1024))
+            && right.len() == 1024
+        {
             l.extend(left);
             r.extend(right);
-            rest = after;
         }
     }
     let (l, r) = (adpcm(&l), adpcm(&r));
@@ -129,13 +135,19 @@ mod tests {
         assert!(vag_bank(&vag[..0x2f]).is_empty());
         assert!(vag_bank(&[]).is_empty());
 
-        // a stream: an audio sector, a movie pack (cut short at the end), nothing of a cut sector
-        let mut s = vec![0u8; 2048];
-        s.extend(0xba01_0000u32.to_le_bytes());
-        s.resize(2048 + 3000, 0);
+        // a stream: audio sectors; a movie: its 7 sound sectors, packs (the last cut short) and, where its sound has
+        // ended, a sound sector that copies a pack, taken as sound; nothing of a cut sector
+        let mut s = vec![0u8; 7 * 2048];
+        let pack = |s: &mut Vec<u8>, n: usize| s.extend(0xba01_0000u32.to_le_bytes().iter().chain(&vec![1; n - 4]));
+        pack(&mut s, 0x4000);
+        s.resize(135 * 2048, 0);
+        pack(&mut s, 0x4000);
+        s.resize(150 * 2048, 0);
+        pack(&mut s, 3000);
         let (pcm, pss) = stream(&s);
-        assert_eq!((pcm.len(), pss.len()), (1024 / 16 * 28 * 2, 3000));
+        assert_eq!((pcm.len(), pss.len()), (14 * 1024 / 16 * 28 * 2, 0x4000 + 3000));
         assert_eq!(stream(&s[..2047]), (vec![], vec![]));
+        assert_eq!(stream(&s[..7 * 2048]).0.len(), 7 * 1024 / 16 * 28 * 2);
         let wav = wav(44100, 2, &pcm);
         assert_eq!(
             (wav.len(), &wav[..4], &wav[40..44]),

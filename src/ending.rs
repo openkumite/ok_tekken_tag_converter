@@ -11,6 +11,8 @@ use serde_json::{Value, json};
 
 /// The ending scenes (descriptors 0x51B488).
 pub const COUNT: usize = 38;
+/// The EMBU's scene files (scene 1, 0x3A97B0): its 22 camera paths and its motion pack.
+pub const EMBU: (usize, usize) = (41, 42);
 /// The scene files of ending `e`: its camera path and its motion pack.
 pub fn files(e: usize) -> (usize, usize) {
     (2 * e + 47, 2 * e + 48)
@@ -31,6 +33,19 @@ pub fn endings(elf: &[u8]) -> Result<Value> {
     let a = |addr: usize| addr - VADDR;
     let s16 = |at: usize| -> Result<i16> { Ok(u16_at(elf, at, what)? as i16) };
     let ptr = |at: usize| -> Result<usize> { (u32_at(elf, at, what)? as usize).checked_sub(VADDR).context(what) };
+    // a script: 10-byte records to op -1
+    let script_at = |at: usize| -> Result<Vec<Vec<i16>>> {
+        let mut records = vec![];
+        for k in 0..512 {
+            let r: Vec<i16> = (0..5).map(|i| s16(at + 10 * k + 2 * i)).collect::<Result<_>>()?;
+            let end = r.get(1) == Some(&-1);
+            records.push(r);
+            if end {
+                break;
+            }
+        }
+        Ok(records)
+    };
     let table: Vec<Vec<i8>> = (0..34)
         .map(|c| (0..8).map(|k| crate::u8_at(elf, a(0x51B678) + 8 * c + k, what).map(|v| v as i8)).collect())
         .collect::<Result<_>>()?;
@@ -46,15 +61,7 @@ pub fn endings(elf: &[u8]) -> Result<Value> {
             }
             members.push(json!([c, s16(cast + 4 * k + 2)?]));
         }
-        let mut records = vec![];
-        for k in 0..512 {
-            let r: Vec<i16> = (0..5).map(|i| s16(script + 10 * k + 2 * i)).collect::<Result<_>>()?;
-            let end = r.get(1) == Some(&-1);
-            records.push(r);
-            if end {
-                break;
-            }
-        }
+        let records = script_at(script)?;
         let (camera, pack) = files(e);
         scenes.push(json!({"arena": arena, "cast": members, "script": records, "camera_file": camera, "pack_file": pack,
             "camera": format!("ending_{e:02}_camera.bin"), "body": [format!("ending_{e:02}_0.glb"), format!("ending_{e:02}_1.glb")],
@@ -80,8 +87,20 @@ pub fn endings(elf: &[u8]) -> Result<Value> {
             break;
         }
     }
+    // the EMBU (0x3A9AB8): its two casts of six (0x437CE0), arena 4 for the first and 13 for the second (0x3A97CC,
+    // 0x3A9820), its script (0x519B90, interpreted by 0x3A9E48: table 0x519B50)
+    let casts: Vec<Vec<[i16; 2]>> = (0..2)
+        .map(|c| {
+            (0..6)
+                .map(|k| Ok([s16(a(0x437CE0) + 0x18 * c + 4 * k)?, s16(a(0x437CE0) + 0x18 * c + 4 * k + 2)?]))
+                .collect()
+        })
+        .collect::<Result<_>>()?;
+    let embu = json!({"casts": casts, "arenas": [4, 13], "script": script_at(a(0x519B90))?, "bgm": 1,
+        "camera_file": EMBU.0, "pack_file": EMBU.1, "camera": "embu_camera.bin", "body": [],
+        "face": "embu_face.bin", "hands": "embu_hands.bin"});
     Ok(json!({
-        "table": table, "endings": scenes,
+        "table": table, "endings": scenes, "embu": embu,
         "staff_roll": {"lines": roll, "cards": ["TEKKEN TAG TOURNAMENT", "NAMCO PRODUCTION STAFF"], "card_frames": 170,
             "frames": 4620, "scroll_px": 1.5, "line_px": 32, "start_y": 480, "bgm": 6},
         "playback": {"ending_bgm": 7, "fade_in": 45, "skip_fade": 4, "max_frames": 7200, "unknown": 37, "unknown_movie": 16},
@@ -92,14 +111,15 @@ pub fn endings(elf: &[u8]) -> Result<Value> {
 }
 
 /// A scene's motion pack: its three parts (body, face, hands), each a pack of tracks `u16 frames, u16 triples`, then
-/// the frames. The body tracks (19 triples, a motion's 57 channels) as clips `ending_EE_K` (K: the actor slot).
-pub fn body_clips(e: usize, d: &[u8]) -> Vec<Vec<u8>> {
+/// the frames. The body tracks (19 triples, a motion's 57 channels) as clips `NAME_K` (an ending's `ending_EE`, K
+/// the actor slot; the EMBU's `embu`, K the track its script names).
+pub fn body_clips(name: &str, d: &[u8]) -> Vec<Vec<u8>> {
     let parts = archive::pack(d).unwrap_or_default();
     let tracks = parts.first().and_then(|p| archive::pack(p)).unwrap_or_default();
     tracks
         .iter()
         .enumerate()
-        .filter_map(|(k, t)| Some(anim::clip_glb(&format!("ending_{e:02}_{k}"), &anim::raw(t)?)))
+        .filter_map(|(k, t)| Some(anim::clip_glb(&format!("{name}_{k}"), &anim::raw(t)?)))
         .collect()
 }
 
@@ -117,7 +137,7 @@ mod tests {
     fn scene_files_and_broken_data() {
         assert_eq!(files(0), (47, 48));
         assert_eq!(files(37), (121, 122));
-        assert!(body_clips(0, &[0; 40]).is_empty());
+        assert!(body_clips("ending_00", &[0; 40]).is_empty());
         assert!(endings(&[0; 64]).is_err());
     }
 }
