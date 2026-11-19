@@ -36,6 +36,12 @@ pub const CAMERA_FILE: usize = 12;
 const CAMERA_MOTIONS: usize = 0x508130 - VADDR; // u32 offsets of the camera motions in disc file 12, rising
 const INTRO_OFFSET: usize = 0x509c20 - VADDR; // s16 eye x, y, z
 const TEAM_SHOTS: (usize, usize) = (0x521140 - VADDR, 2); // 18 x s16: two turns, then four points (0x3D2330)
+/// The per-fighter situation cameras' lists 0x12C-0x177 (0x5095C0: {u32 entries, u32 count}; entries 0x14 bytes
+/// {s16, s16 weight, u32 script x 3}; a script 16 x s16), and by camera id the list numbers (12-byte rows, the list at
+/// +8): ids 0x1C-0x20 at 0x509700, 0x23-0x66 at 0x5096E8 (0x3943A8).
+const FIGHTER_LISTS: (usize, usize) = (0x5095c0 - VADDR, 0x4c);
+const FIGHTER_IDS: [(usize, std::ops::RangeInclusive<usize>); 2] =
+    [(0x509700 - VADDR, 0x1c..=0x20), (0x5096e8 - VADDR, 0x23..=0x66)];
 /// By character (+0x28, the 33 fighters): {s32 count, u32 list of (s16 alias, s16 frame)} (0x3D29E8).
 const START_FRAMES: (usize, usize) = (0x447480 - VADDR, 33);
 const TEAM_PAIRS: usize = 0x43a180 - VADDR; // 28 bytes: two {character, costume, alias, x, z, facing}, 2 x s16; -1 ends
@@ -783,6 +789,37 @@ pub fn camera(elf: &[u8], file12: &[u8]) -> Result<Value> {
                 .collect::<Vec<_>>())
         })
         .collect::<Result<Vec<_>>>()?;
+    let mut fighter_ids = Vec::new();
+    for (table, ids) in FIGHTER_IDS {
+        for id in ids {
+            fighter_ids.push(json!([id, w(bytes(elf, table + 12 * id, 12, "the per-fighter camera ids")?, 8)]));
+        }
+    }
+    let fighter_lists = (0..FIGHTER_LISTS.1)
+        .map(|k| {
+            let r = bytes(elf, FIGHTER_LISTS.0 + 8 * k, 8, "the per-fighter camera lists")?;
+            let (at, n) = (w(r, 0) as usize, w(r, 4) as usize);
+            ensure!(n <= MAX_LIST, "per-fighter camera list {k}: {n} entries");
+            let at = at.checked_sub(VADDR).with_context(|| format!("per-fighter camera list {k} at {at:#x}"))?;
+            bytes(elf, at, 0x14 * n, "a per-fighter camera list")?
+                .as_chunks::<0x14>()
+                .0
+                .iter()
+                .map(|e| {
+                    let scripts = (0..3)
+                        .map(|j| {
+                            s16s::<16>(
+                                elf,
+                                (w(e, 4 + 4 * j) as usize).checked_sub(VADDR).context("a per-fighter camera script")?,
+                                "a per-fighter camera script",
+                            )
+                        })
+                        .collect::<Result<Vec<_>>>()?;
+                    Ok(json!({"weight": h(e, 2) as i16, "scripts": scripts}))
+                })
+                .collect::<Result<Vec<_>>>()
+        })
+        .collect::<Result<Vec<_>>>()?;
     let mut replay_shots = Vec::new();
     for i in 0..REPLAY_SHOTS.1 {
         let [target, follow, p, y, r, pr, yr, rr, d, dr] = s16s(elf, REPLAY_SHOTS.0 + 20 * i, "the replay's shots")?;
@@ -870,6 +907,11 @@ pub fn camera(elf: &[u8], file12: &[u8]) -> Result<Value> {
         // variant arena)
         "win_pose": {"routine": "0x35BB58", "arc_from": 0x400 - 113, "arc_range": 227, "distance_per_h": [5200, 955],
             "radius_add": 1440, "eye_y": -850, "light_yaw": light_yaw},
+        // The per-fighter situation cameras (0x38DEA0, 0x3943A8, 0x394648): `ids` [camera id, list] and `lists` 0x12C
+        // on (weights made cumulative of 4096 at boot by 0x3941F0): entries {`weight`, three `scripts` of 16 s16 (the
+        // first for a move's id): kind, frames, blend in, blend out, s32 distance from / to, then by kind four pitches
+        // and four yaw offsets, or pitch from / to, the eye's lift, yaw from / to, the delay}; FIGHT_DATA.md 18.2
+        "fighter_cameras": {"ids": fighter_ids, "lists": fighter_lists},
         "situation_presets": {"address": "0x508908", "entries": situations},
         "move_camera_lists": {"address": "0x434C78", "note": "by camera id (move flags >> 23); weights out of the list's sum; type 1 = situation type, 2 = camera motion, 0 = none; the mirrored value when the orientation is set", "lists": lists},
         // The camera motions (disc file 12 at the offsets 0x508130, by motion - 1; 0x3923F0): `flag` the first byte

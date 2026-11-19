@@ -301,6 +301,13 @@ fn fight_data(pack: &Hashed) {
     assert_eq!(camera["team_intro"]["shots"][1]["eye_from"], serde_json::json!([0, 100, 6500]));
     assert_eq!(camera["team_intro"]["pairs"].as_array().unwrap().len(), 97);
     // the intros' start frames by character (0x447480): Paul's alias 4 at 255, his pair alias 4773 at 140
+    // the per-fighter cameras: 73 ids, 76 lists; id 0x29's list 0x13A: one script, kind 3, 100 frames
+    let fc = &camera["fighter_cameras"];
+    assert_eq!((fc["ids"].as_array().unwrap().len(), fc["lists"].as_array().unwrap().len()), (73, 76));
+    assert_eq!(
+        serde_json::json!(fc["lists"][0x13a - 0x12c][0]["scripts"][0].as_array().unwrap()[..4]),
+        serde_json::json!([3, 100, 30, 30])
+    );
     assert_eq!(camera["team_intro"]["start_frames"][0], serde_json::json!([[4, 255], [6, 255], [4773, 140]]));
     assert_eq!(camera["replay_shots"]["shots"][32]["follow"], 3);
     assert_eq!(camera["replay_shots"]["sequences"][13], serde_json::json!([33, 7, 26, 39]));
