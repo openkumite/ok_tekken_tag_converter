@@ -61,7 +61,7 @@ visible list by 0x3BD130; a locked entry shows only when its test is true. Choos
 | 1 | VS BATTLE | always | handicap health (FD 11) |
 | 2 | TEAM BATTLE | always | 1-8 per side; 15 % refill between rounds (FD 11 "mode 2") |
 | 3 | TIME ATTACK | always | the arcade ladder against the clock |
-| 4 | SURVIVAL | always | "WINS %d" |
+| 4 | SURVIVAL | always | "WINS %d"; a tag battle: its records keep two members (0x5203A0), 0x3C1620 gives both 15 % of full health back to health and cap after a win (the winning human side), the CPU side starts afresh |
 | 5 | 1 ON 1 (arcade) | always | the arcade ladder, one fighter per side |
 | 6 | 1 ON 1 VS | always | handicap health |
 | 7 | PRACTICE | always | FREESTYLE, VS CPU, CHAIN TRAINING, COMBO TRAINING (menus at 0x506528-0x507200) |
