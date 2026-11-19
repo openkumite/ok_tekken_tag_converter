@@ -64,8 +64,9 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 /// clips turn the fingers; 27: camera.json `win_pose`, the camera motions decoded, slot 1's centre drop and lift; 28:
 /// stages.json `weather`, the arenas' pictures in the effects' atlas, the people's scripts and `walk`; 29: front_end's
 /// GAME OPTIONS `modes` and values as printed, `backdrop`, `volumes`, the records' `defaults` and `more`, `ranking`;
-/// 30: bowl.json `texts` `bowl_style`, `switch_hands`, `help_messages`, `special_effects`).
-pub const FORMAT: i64 = 30;
+/// 30: bowl.json `texts` `bowl_style`, `switch_hands`, `help_messages`, `special_effects`; 31: ai.json
+/// `rules.wake_wait`, `per_moveset`).
+pub const FORMAT: i64 = 31;
 /// What a pack's manifest names it.
 pub const KIND: &str = "ttt";
 

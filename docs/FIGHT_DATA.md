@@ -188,7 +188,7 @@ New codes 0x48-0x5F:
 |---|---|---|
 | 0x48-0x4B | self +0x4C in [0x200,0x400), [0x400,0x600), [0xA00,0xC00), [0xC00,0xE00): where I stand from the opponent, camera-relative, 12-bit angle | 0 |
 | 0x4C-0x4F | the same and back turned | 0 |
-| 0x50 / 0x51 / 0x52 / 0x53 | self +0x54 == 1 / 2 / 0 / 3: which way I face on screen (quadrant against the camera's axis) | 0 |
+| 0x50 / 0x51 / 0x52 / 0x53 | self +0x54 == 1 / 2 / 0 / 3: which way I face on screen (quadrant against the camera's axis; PCSX2: 0 facing the screen's right, as the left fighter at the round start, 2 the right one) | 0 |
 | 0x54-0x57 | +0x54 == 1 / 2 / 0 / 3 and on_right(self) == 0 | 0x54: 18, 0x57: 18 |
 | 0x58-0x5B | the same and on_right(self) == 1 | 0x58: 18, 0x5B: 18 |
 | 0x5C | off screen: the three projected bone x values at +0x628/+0x62A/+0x62C all >= 0x215, or all < -0x14 (0x34FE7C) | 101 (tag-out runs end on it) |
@@ -1039,6 +1039,11 @@ Handler calls: step 6 / 7 when S+0xCC < 0 and rand < P3E. Returns: -1 nothing, -
 | 14 Ogre / True Ogre (vs) | 0x38B820 | his alias 0xBA9 or 0x1A6, by his frame: lock S+0xD0 = 8; 1/32 at frames 9-13 and my zone < 2 a sidestep; early: walk in / cooldown -4 / sidestep by stage side (0x38AF28); during the move: back off or cooldown 8; after: at my zone < 2 a punish pad from 0x507A08 {d/f+2, d/f+1, d/f+4, d/f+4}, at zone 2 d/f (0x6000), else 1/8 walk in. |
 | 25 Ganryu (vs) | 0x38B718 | his alias 0x1407, I am not attacking, not airborne, he faces me: at his frames 24-25 and distance < 3000 the sequence 0x507618 (n, d/f); else at distance < 4000 crouch guard d/b (0xC000). |
 | 27 Devil / Angel (vs) | 0x38AFC0 | Ogre's handler for his aliases 0x1459 / 0x1458, punish pads 0x507A00 (the same four). |
+
+Per move set, table 0x507620 (16 bytes, Tekken 3's 0x80022D14): +0 can parry, +4 / +8 the high-mid reversal and
+low parry inputs, +0xC the combo preludes {s16 prob, u16 alias, input pointer} to a negative prob. The neutral
+offence (0x386CD4) takes a prelude as Tekken 3 does, but draws rand() & 0xFFF anew for each one (Tekken 3 draws
+once). [C]
 
 Section 19's "opponent on moveset 14 in alias 0xBA9 or 0x1A6 sets S+0x294" stops movement (0x388530 returns 0)
 and the stance step during Ogre's move. [C]
