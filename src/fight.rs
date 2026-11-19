@@ -40,6 +40,10 @@ const TEAM_SHOTS: (usize, usize) = (0x521140 - VADDR, 2); // 18 x s16: two turns
 /// {s16, s16 weight, u32 script x 3}; a script 16 x s16), and by camera id the list numbers (12-byte rows, the list at
 /// +8): ids 0x1C-0x20 at 0x509700, 0x23-0x66 at 0x5096E8 (0x3943A8).
 const FIGHTER_LISTS: (usize, usize) = (0x5095c0 - VADDR, 0x4c);
+/// The per-fighter cameras' rows by character and alias (0x509820, 0x4D x 12 bytes {u32 character (+0x28), s16
+/// alias (+0x10C), s16, u32 list}), read when the looked-at fighter is down (+0x131).
+const FIGHTER_ROWS: (usize, usize) = (0x509820 - VADDR, 0x4d);
+const WORLD_TURN: usize = 0x417780 - VADDR;
 const FIGHTER_IDS: [(usize, std::ops::RangeInclusive<usize>); 2] =
     [(0x509700 - VADDR, 0x1c..=0x20), (0x5096e8 - VADDR, 0x23..=0x66)];
 /// By character (+0x28, the 33 fighters): {s32 count, u32 list of (s16 alias, s16 frame)} (0x3D29E8).
@@ -795,6 +799,12 @@ pub fn camera(elf: &[u8], file12: &[u8]) -> Result<Value> {
             fighter_ids.push(json!([id, w(bytes(elf, table + 12 * id, 12, "the per-fighter camera ids")?, 8)]));
         }
     }
+    let fighter_rows = (0..FIGHTER_ROWS.1)
+        .map(|k| {
+            let r = bytes(elf, FIGHTER_ROWS.0 + 12 * k, 12, "the per-fighter camera rows")?;
+            Ok(json!([w(r, 0) as i32, h(r, 4) as i16, w(r, 8)]))
+        })
+        .collect::<Result<Vec<_>>>()?;
     let fighter_lists = (0..FIGHTER_LISTS.1)
         .map(|k| {
             let r = bytes(elf, FIGHTER_LISTS.0 + 8 * k, 8, "the per-fighter camera lists")?;
@@ -835,7 +845,12 @@ pub fn camera(elf: &[u8], file12: &[u8]) -> Result<Value> {
         .collect::<Result<Vec<_>>>()?;
     // the win pose's reference (0x3D7DA8): light 0's direction by arena, L = -atan2(-x, -z) put in [0, 2 pi) by
     // 0x3D80E8 / 0x3D8088, * 65535 / 2 pi (gp-0x7B64 / -0x7B60) truncated; written L >> 4, 4096 a turn (0x35BC24).
-    // In a fight 0x353C88 also turns it by the world's turn gp-0x7278, which OpenKumite has none of
+    // (in a fight 0x353C88 also turns it by the background's turn gp-0x7278: `world_turn` below)
+    // the arenas whose far background turns with the camera's parallax (0x417780, u32 by arena; 0x366C18), and light
+    // 0 with it in a fight (0x353C88)
+    let world_turn = (0..crate::effects::ARENAS)
+        .map(|a| crate::u32le(elf, WORLD_TURN + 4 * a).map(|v| v != 0).context("the arenas' background turn"))
+        .collect::<Result<Vec<_>>>()?;
     let light_yaw = (0..crate::effects::ARENAS)
         .map(|a| {
             let at = |k: usize| crate::f32le(elf, crate::effects::LIGHTS + 0x54 * a + 4 * k - VADDR);
@@ -906,12 +921,17 @@ pub fn camera(elf: &[u8], file12: &[u8]) -> Result<Value> {
         // the view eased >> 5 (Tekken 3's camera A after; its aim without the 5800 minimum, the pitch not up on a
         // variant arena)
         "win_pose": {"routine": "0x35BB58", "arc_from": 0x400 - 113, "arc_range": 227, "distance_per_h": [5200, 955],
-            "radius_add": 1440, "eye_y": -850, "light_yaw": light_yaw},
-        // The per-fighter situation cameras (0x38DEA0, 0x3943A8, 0x394648): `ids` [camera id, list] and `lists` 0x12C
+            "radius_add": 1440, "eye_y": -850, "light_yaw": light_yaw,
+            // light 0 turned in a fight by the background's turn gp-0x7278 (0x366C18 each frame from the view: the
+            // angle from the eye to last frame's point 4096 ahead against the yaw, /0x22 at most 0xAA, kept while
+            // the yaw moves less than 1/256 turn; reset as a round starts, 0x366DB0)
+            "world_turn": world_turn, "turn_step": [0x22, 0xAA]},
+        // The per-fighter situation cameras (0x38DEA0, 0x3943A8, 0x394648): `ids` [camera id, list], `rows`
+        // [character, alias, list] (when the other fighter is down) and `lists` 0x12C
         // on (weights made cumulative of 4096 at boot by 0x3941F0): entries {`weight`, three `scripts` of 16 s16 (the
         // first for a move's id): kind, frames, blend in, blend out, s32 distance from / to, then by kind four pitches
         // and four yaw offsets, or pitch from / to, the eye's lift, yaw from / to, the delay}; FIGHT_DATA.md 18.2
-        "fighter_cameras": {"ids": fighter_ids, "lists": fighter_lists},
+        "fighter_cameras": {"ids": fighter_ids, "rows": fighter_rows, "lists": fighter_lists},
         "situation_presets": {"address": "0x508908", "entries": situations},
         "move_camera_lists": {"address": "0x434C78", "note": "by camera id (move flags >> 23); weights out of the list's sum; type 1 = situation type, 2 = camera motion, 0 = none; the mirrored value when the orientation is set", "lists": lists},
         // The camera motions (disc file 12 at the offsets 0x508130, by motion - 1; 0x3923F0): `flag` the first byte

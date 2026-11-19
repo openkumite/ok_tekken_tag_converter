@@ -680,9 +680,11 @@ throw latch +0x44 (the thrower's side) freed when that side's +0xE0 is 0; the st
 - A chain throw (the thrower's new move with camera id 0x71, 0xA1-0xA3, in a situation; 0x38D3D0) picks anew: a
   motion starts at once with yaw 0x400 - f/16 from the victim's root; a situation is held (state 2, w1 = 1).
 - 7-15: the per-fighter situation cameras (0x38DEA0, checked in states 1, 2 and 6; once a move, +0x7C / +0x80
-  holding the move that set one): 0x3943A8 looks at each fighter's move: when the other's +0x131 is clear, camera
-  ids 0x23-0x66 (35 moves; alias 5459 in every set has id 0x29), else also 0x1C-0x20 and the rows by character and
-  +0x10C (0x509820); the list (`fighter_cameras`) picks a script by rand & 0xFFF; the camera looks at the other
+  holding the move that set one): 0x3943A8 looks at each fighter's move: camera ids 0x23-0x66 (35 moves; alias
+  5459 in every set has id 0x29); once the other fighter is down (+0x131, set by the damage that K.O.s it at
+  0x372414 / 0x37271C, cleared at the round's set-up) also 0x1C-0x20 and the rows (`rows`) by the mover's character
+  (+0x28) and alias (+0x10C, the move's alias +0x184 copied as it starts), whose script is the entry's first, second
+  or third by +0x13A / +0x13B (set by the damage function); a kind-4 script of ids 0x23-0x66 only on a fighter down; the list (`fighter_cameras`) picks a script by rand & 0xFFF; the camera looks at the other
   fighter (its root; +0x39C for kinds 9 / 17). By the script's kind: 3 / 6 state 10, 11 / 14 state 13 (16 frames'
   delay, an id-3 move ends it), 10 state 14 / 15 (the fight camera blended into the view frozen at the delay's end),
   12-17 state 12 (from the frozen slot 4), 4-9 and the rest state 7 (from the fight camera): blended over the
@@ -716,7 +718,9 @@ a frame unless snapped (gp-0x6FA8).
   not used): eye at the winner's root + R (cos a, sin a), R = H * 5200 / 955 + 1440 (H the live projection gp-0x7420;
   4788 at H 615; Tekken 3 3978), a = 0x400 + rnd(+-113) - L / 16, where L (0x3D7DA8, 65536 a turn) is the angle of
   light 0's direction (0x353C88: entry 0 of the light table 0x1FC42A0, turned in game state 4) by atan2(-x, -z),
-  negated: the winner is shot from beside the key light, not by its facing; per frame the eye closes 8 units a frame
+  negated: the winner is shot from beside the key light, not by its facing (in a fight, game state 4, 0x353C88
+  turns light 0 by gp-0x7278, the far background's turn: 0x366C18 adds a share of each small change of the camera's
+  yaw on the arenas of 0x417780 (all but 8, 9, 17, 18, 24), so the angle also follows the fight's camera history); per frame the eye closes 8 units a frame
   while farther than H * 5200 / 955 and the view eases at >> 5 (0x35BA58, as Tekken 3's camera A); y = -850
   (0x35BCDC), chest - 290 on the variant arena; the aim (0x35BA58) is Tekken 3's camera A's without its 5800
   minimum distance, its pitch not up on the variant arena. Its random number is the LCG gp-0x73FC: x = (x + 1) * 69069, r = (x >> 16) *

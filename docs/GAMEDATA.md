@@ -208,9 +208,11 @@ and `attract` are not written (not decoded).
   root + R (cos a, sin a), a = `arc_from` + rand(`arc_range`) - the arena's `light_yaw` (light 0's direction by
   arena, 0x3D7DA8), R = H x `distance_per_h` + `radius_add`, at `eye_y` (on a variant arena the chest - 290); each
   frame 8 nearer while farther than H x `distance_per_h`, the view eased >> 5 (Tekken 3's camera A after, without
-  its 5800 minimum).
+  its 5800 minimum); **new** (format 38) `world_turn` (0x417780, by arena) and `turn_step`: light 0 is turned by the
+  far background's turn gp-0x7278, which follows the camera's parallax on those arenas (0x366C18).
 - **New** (format 33) `fighter_cameras` (0x38DEA0 / 0x3943A8 / 0x394648): the per-fighter situation cameras:
-  `ids` ([camera id, list]: ids 0x1C-0x20 from 0x509700, 0x23-0x66 from 0x5096E8, 12-byte rows, the list at +8) and
+  `ids` ([camera id, list]: ids 0x1C-0x20 from 0x509700, 0x23-0x66 from 0x5096E8, 12-byte rows, the list at +8),
+  **new** (format 38) `rows` ([character, alias, list], 0x509820: read when the looked-at fighter is down, +0x131) and
   `lists` 0x12C-0x177 (0x5095C0): entries `{weight, scripts}` (weights made cumulative of 4096 at boot by
   0x3941F0; three scripts of 16 s16, the first for a move's id: kind, frames, blend in, blend out, s32 distance from /
   to, then by kind four pitches and four yaw offsets, or pitch from / to, the eye's lift, yaw from / to, the delay).
