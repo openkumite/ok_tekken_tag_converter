@@ -325,7 +325,7 @@ no going back and one motion), `i8 back, i16 wait` (unseen first), `i16 start` (
 play; else to the end), each when not negative. As a motion ends the person moves on by the table's
 entry for it. Arenas 7 and 21 draw each person with the next character (0x3D86D8). A character file's
 `f32` at +4 / 1000 scales its root's motion and the table's distances. Law's junks (stored as characters)
-come out wrongly posed. OpenKumite's: GAMEDATA.md (format 20, the scripts since format 26).
+come out wrongly posed. OpenKumite's: GAMEDATA.md (format 20, the scripts since format 28).
 
 The four small files after an arena's geometry (`190 + 7n` ...) are camera paths:
 `u32 count`, then `f32 eye x, y, z, target x, y, z, field of view` per frame (y is down).

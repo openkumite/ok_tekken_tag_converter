@@ -154,7 +154,7 @@ ALPHA 0x44 with the vertex alpha the brightness x (1 - the fade), 1 Cs x FIX + C
 - 0x3A04B8 places its particle at the row + the path's frame (turned by +0x74, scaled) and steps through the slot's
   cells while its path's +0x34 is set (none here); gone at the path's end.
 
-Exported (format 26): stages.json `weather` (GAMEDATA.md), the pictures in the effects' atlas from cell 24. Not:
+Exported (format 28): stages.json `weather` (GAMEDATA.md), the pictures in the effects' atlas from cell 24. Not:
 the particles' depth bias (+0x4C), the offscreen count that ends one (+0x96), the paused frames.
 
 **The lens flare** (0x3A1C78) [H]: on the arenas its jump table 0x519730 (by arena - 1, 16) names: 1 Law-A, 7
@@ -176,7 +176,7 @@ brightness x the level x the arena's strength. Exported: stages.json `flare`, `p
 whose +0x20 < 0 (Nina 18, King 60): u16 kind, +0x10 the place (m), +0x20 the period (frames), +0x24 the size. Each a
 3D object 0x3A1298 of texture slot 6 (kinds 0, 1: brightness 160) or 10 (kind 2: 240), added, +0x4C 10 (a depth bias,
 not a cell); its fade (cos(phase) + 1) / 2, the phase growing 2 pi / period a frame from pi (kind 1, and a period of
-0: always lit) or rand x pi (kind 0). Slots 6 and 10: the arena's entries 0 and 2 (above). Exported (format 26):
+0: always lit) or rand x pi (kind 0). Slots 6 and 10: the arena's entries 0 and 2 (above). Exported (format 28):
 stages.json `weather.beacons`.
 The arenas' additive strips (ALPHA 0x48, Cs x As + Cd: lights, neon, floor gloss) and darkening strips (0x89,
 Cd x As: painted shadows, dirt) are in the stages since format 14, in materials named `additive` and `shade`
