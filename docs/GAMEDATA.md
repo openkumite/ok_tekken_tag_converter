@@ -481,5 +481,6 @@ the partner's `side`, the reaction slot, the camera), `records` (TOP 5 BOWLERS, 
 `score`; `bonus`: the scores that keep JUKEBOX and the 300 flag), `texts` (the results', records' and pause menu's
 words without their printf control codes: `replay`, `king`, `top`, `new`, `record`, `thanks`, `draw`, `losers`,
 `winners`, `score_sheet`, `your_score`, `rank`, `summary`, `bonus`, `jukebox`, `top_bowlers`, `exit`,
-`summary_rows`, `ordinals`).
+`summary_rows`, `ordinals`). **New** (format 30, BOWL_ENDINGS.md 2, 6): `texts` `bowl_style`, `switch_hands` (its
+`%C` the hand, R or L), `help_messages`, `special_effects` (BOWLING OPTIONS' rows; `%c%s` their value).
 
