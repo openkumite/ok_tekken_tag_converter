@@ -164,6 +164,8 @@ pub fn convert(ctx: &Ctx, src: &dyn DiscFile, research: bool) -> Result<Value> {
     let mut atlas = vec![];
     // the fighters' shadow meshes, and the effect files' pictures (files 4-8)
     let (mut shadows, mut effect_pics, mut effect_paths) = (vec![], vec![vec![]; 5], vec![vec![]; 4]);
+    // the fighters' own effects (effects.json `characters`) and their pictures' sheets
+    let (mut fx_characters, mut fx_sheets) = (serde_json::Map::new(), vec![]);
     // each arena's effect entries (geometry part 1: its weather's pictures and paths)
     let mut weather = BTreeMap::new();
     // and its people's models' scale of their motions (a character file's f32 at +4 / 1000: 0x3D87A8)
@@ -317,6 +319,16 @@ pub fn convert(ctx: &Ctx, src: &dyn DiscFile, research: bool) -> Result<Value> {
                         // its shadow: the low-detail model, part 8
                         if let Some(low) = pack.as_ref().and_then(|p| model::parse_low(p.get(8)?)) {
                             shadows.push(effects::shadow(&low, i));
+                        }
+                        // its own effect (part 0), its pictures' sheet once for the fighters sharing it
+                        let own = pack.as_ref().and_then(|p| p.first().copied()).unwrap_or_default();
+                        if let Some((png, mut e)) = effects::character(&a.elf, body * 8 + costume, body, own) {
+                            let k = fx_sheets.iter().position(|s| *s == png).unwrap_or_else(|| {
+                                fx_sheets.push(png);
+                                fx_sheets.len() - 1
+                            });
+                            e["sheet"]["file"] = json!(format!("character_{k:02}.png"));
+                            fx_characters.insert(i.to_string(), e);
                         }
                     }
                     None => ctx.log(&format!("[ttt] {name} (file {i}): not a fighter OpenKumite can read")),
@@ -686,7 +698,11 @@ pub fn convert(ctx: &Ctx, src: &dyn DiscFile, research: bool) -> Result<Value> {
         .collect();
     assets.write("gamedata/stages.json", serde_json::to_string(&effects::stages(&a.elf, &fx, &scales))?.as_bytes())?;
     match effects::atlas(&effect_pics, &effect_paths, &arena_pics) {
-        Some((png, json)) => {
+        Some((png, mut json)) => {
+            json["characters"] = Value::Object(fx_characters);
+            for (k, s) in fx_sheets.iter().enumerate() {
+                assets.write(&format!("pictures/effects/character_{k:02}.png"), s)?;
+            }
             assets.write("pictures/effects/atlas.png", &png)?;
             assets.write("pictures/effects/effects.json", serde_json::to_string(&json)?.as_bytes())?;
         }
