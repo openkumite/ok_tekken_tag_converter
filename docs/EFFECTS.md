@@ -197,10 +197,22 @@ Searched again (format 32) [H]:
 - **Screen flashes**: the one full-screen fade (0x3A67D0: from a colour over n frames) is called only by the
   ending / attract script ops (0x3A9AB8's white flash), the transitions 0x3AC018 and 0x3BB310 and the title
   (0x3BCC88); nothing in a fight (rounds, K.O.) calls it, and the K.O. path has no slow motion (FIGHT_DATA.md).
-- **Animated textures**: every arena object routine (the rows' +0x30 / +0x34 of table 0x520FC0, all arenas) is
-  listed in section 7 and moves matrices only (Lei's 0x3D21F8 keeps one); the arena's own draw (0x3DE6C0) sends
-  fixed packets; the texture slots change only at load (0x345070, 0x345410). No UV scroll or palette cycling in a
-  fight. Paul's train's routine 0x3D5998 only sets the pad's rumble and the train's sound by its distance (0x3758F0).
+- **Animated textures** (texture channels, as a fighter's, BOWL_ENDINGS.md 7.4) [H]: an arena's table of up to 8
+  channels `{s16 channel, u16 dbp, x, y, w, h, dbw, psm}` closes geometry part 4 (after its light records; 0x356D40
+  keeps it at gp-0x60A8), their frames are geometry part 2's pack [0][channel][frame] (an image and its palette; the
+  image alone goes, 0x3A6EB0 makes a packet a frame). Records 0x8C9D30 (16 bytes a channel: +0 state, +4 frame << 8,
+  +8 speed, +0xC frames); each frame 0x3A6C80 sends the frame shown of every channel in state 2 or more, then state 3
+  goes on by +8 and stops on frame 0 past the last (0x3A73F8 starts it), state 4 loops (0x3A7430: from a start, back to
+  0 past the last, the fraction dropped), state 2 holds (0x3A7490). By the arena (0x3A7198, table 0x519940): 1 channel
+  0 at 0x40 (256 = a frame a frame); 2 0 at 0xC0; 3 0-1 at 0xC0, 2 at 0xC0 from 16; 4 the lightning (0-3 held on
+  frame 1, cleared at the set-up (0x3A70C0), 4-6 on frame 3; task 0x3A76C0 flashes them: four bolts by rand() (6 in
+  1000 a frame while their point 0x437C80 is on screen) through three frame lists, with thunder 0x1072 / 0x1074 /
+  0x1075 and 0x353C78; not started on screen 11); 6 0 at 0x80, 1-2 at 0x100; 8, 17, 20 0 at 0x100; 9, 18 0 at 0x100,
+  1 at 0x100 from 8; 11 0 at 0x80; 12 three tasks 0x3A7590 (channel 0-2 held on 0, played once at 0x80 at a 7 in 1000
+  chance a frame); 14 0-1 at 0x80. Exported (format 56): the looping ones as the arena's scene extras `channels`, the
+  still ones as they stand (arena 4's lightning and arena 12's signs not played). Every arena object routine (the
+  rows' +0x30 / +0x34 of table 0x520FC0) moves matrices only; no UV scroll or palette cycling in a fight. Paul's
+  train's routine 0x3D5998 only sets the pad's rumble and the train's sound by its distance (0x3758F0).
 - **The particles' depth**: arena effects (flag 4) are drawn only behind the farther fighter (0x346830 passes
   max(player +0x620) to 0x345A00, which skips a nearer particle; +0x620, 0x347DF0, a fighter's depth in view).
 

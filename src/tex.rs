@@ -66,36 +66,60 @@ pub fn uploads(d: &[u8]) -> Vec<Upload> {
 }
 
 /// Texture channel `k` showing its frame `f` (0x3A82C8 sets a fighter's channels up, 0x3A80E8 uploads the frame shown):
-/// `model` is the fighter's model part, whose channel table follows its nodes (a u32 count, then at +0x14 16 bytes
-/// `{s16 channel, u16 dbp, x, y, w, h, dbw, psm}` each: where the frame goes, from the fighter's first texture block);
-/// `frames` its pack part 1 (channel k's frame f at [0][k][f], an image and its palette). Only Jin has one: his
-/// face with and without the mark (`k` 0, frames 0 and 1).
+/// `model` is the fighter's model part, whose channel table ([`channels`]) follows its nodes (where the frame goes,
+/// from the fighter's first texture block); `frames` its pack part 1 ([`put_frame`]). Only Jin has one: his face with
+/// and without the mark (`k` 0, frames 0 and 1).
 pub fn channel_frame(ups: &mut [Upload], model: &[u8], frames: &[u8], k: usize, f: usize) -> Option<()> {
     let t = u32le(model, 0x14)? as usize;
-    let e = (0..u32le(model, t.checked_sub(4)?)?.min(8) as usize)
-        .map(|e| t + 16 * e)
-        .find(|&o| u16le(model, o) == Some(k as u16))?;
-    let [dbp, x, y, w, h, dbw, psm] = [2, 4, 6, 8, 10, 12, 14].map(|i| u16le(model, e + i).unwrap_or(0) as usize);
+    let e = channels(model.get(t.checked_sub(4)?..)?).into_iter().find(|e| e[0] as usize == k)?;
+    put_frame(ups, e, frames, f, false)
+}
+
+/// A texture channel table: a u32 count (at most 8), then 16 bytes `{s16 channel, u16 dbp, x, y, w, h, dbw, psm}`
+/// each.
+pub fn channels(d: &[u8]) -> Vec<[u16; 8]> {
+    let n = u32le(d, 0).filter(|&n| n <= 8).unwrap_or(0) as usize;
+    (0..n).map_while(|e| Some([0, 2, 4, 6, 8, 10, 12, 14].map(|i| u16le(d, 4 + 16 * e + i).unwrap_or(0)))).collect()
+}
+
+/// Channel entry `e` showing its frame `f`: `frames` is a pack whose part 0 holds channel k's frames at [0][k][f]
+/// (an image and its palette; the image alone goes), put at the entry's block and place, or its texels cleared to 0
+/// (`blank`: arena 4's lightning off, 0x3A70C0). PSMT8 (pages of 128 x 64) and PSMT4 (128 x 128), in a sheet its own
+/// width from a page boundary.
+pub fn put_frame(ups: &mut [Upload], e: [u16; 8], frames: &[u8], f: usize, blank: bool) -> Option<()> {
+    let [k, dbp, x, y, w, h, dbw, psm] = e.map(usize::from);
     fn pack(d: &[u8], i: usize) -> Option<&[u8]> {
         crate::archive::pack(d)?.get(i).copied()
     }
-    let src =
-        uploads(pack(pack(pack(frames, 0)?, k)?, f)?).into_iter().find(|u| u.psm == 0x13 && u.w >= w && u.h >= h)?;
-    // shortcut: PSMT8 only (Jin's), in a sheet its own width from a page boundary; others would need the GS's swizzle
-    let at = |u: &&mut Upload| {
-        u.psm == 0x13
-            && psm == 0x13
-            && u.dbw == dbw * 64
-            && u.dbp as usize <= dbp
-            && (dbp - u.dbp as usize).is_multiple_of(32)
+    let src = uploads(pack(pack(pack(frames, 0)?, k)?, f)?)
+        .into_iter()
+        .find(|u| u.psm as usize == psm && u.w >= w && u.h >= h)?;
+    // shortcut: a sheet its own width from a page boundary; others would need the GS's swizzle
+    let (page_h, nibbles) = match psm {
+        0x13 => (64, false),
+        0x14 => (128, true),
+        _ => return None,
     };
-    let dst = ups.iter_mut().find(at)?;
-    let p = (dbp - dst.dbp as usize) / 32; // pages of 128 x 64 texels, across the buffer then down
-    let across = (dst.dbw / 128).max(1);
-    let (px, py) = (p % across * 128 + x, p / across * 64 + y);
+    let place = |u: &Upload| {
+        let p = dbp.checked_sub(u.dbp as usize).filter(|d| d.is_multiple_of(32))? / 32; // pages across, then down
+        let across = (u.dbw / 128).max(1);
+        Some((p % across * 128 + x, p / across * page_h + y)).filter(|&(_, py)| py + h <= u.h)
+    };
+    // (the last upload there, as [`image`] reads it)
+    let dst = ups
+        .iter_mut()
+        .filter(|u| u.psm as usize == psm && u.dbw == dbw * 64 && place(u).is_some())
+        .max_by_key(|u| u.dbp)?;
+    let (px, py) = place(dst)?;
+    // (bytes: a texel each, or two)
+    let b = |n: usize| if nibbles { n / 2 } else { n };
+    if nibbles && (px | w | src.w) % 2 != 0 {
+        return None;
+    }
     for r in 0..h {
-        let row = src.data.get(r * src.w..r * src.w + w)?;
-        dst.data.get_mut((py + r) * dst.w + px..(py + r) * dst.w + px + w)?.copy_from_slice(row);
+        let row = src.data.get(b(r * src.w)..b(r * src.w + w))?;
+        let to = dst.data.get_mut(b((py + r) * dst.w + px)..b((py + r) * dst.w + px + w))?;
+        if blank { to.fill(0) } else { to.copy_from_slice(row) }
     }
     Some(())
 }

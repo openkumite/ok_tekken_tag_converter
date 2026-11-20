@@ -319,7 +319,7 @@ pub fn convert(ctx: &Ctx, src: &dyn DiscFile, research: bool) -> Result<Value> {
                 }
             }
             models.push(json!({"id": i, "name": name, "body": who.map(|w| w.0), "moveset": moveset, "file": file, "nodes": m.nodes.len(), "triangles": tris}));
-        } else if let Some((mut b, mut objects, floors, banks)) = pack
+        } else if let Some((mut b, mut objects, floors, mut banks)) = pack
             .as_ref()
             .map(|_| a.read(i - 1))
             .transpose()?
@@ -344,7 +344,7 @@ pub fn convert(ctx: &Ctx, src: &dyn DiscFile, research: bool) -> Result<Value> {
                 for (name, m) in [("ball", ball), ("pin", pin), ("deck", deck)] {
                     assets.write(
                         &format!("stages/bowl_{name}.glb"),
-                        &stage::game_glb(name, &m, &[], &[], &banks, None, light.as_ref()),
+                        &stage::game_glb(name, &m, &[], &[], &banks, None, light.as_ref(), &[]),
                     )?;
                 }
                 b.append(&mut objects);
@@ -425,17 +425,56 @@ pub fn convert(ctx: &Ctx, src: &dyn DiscFile, research: bool) -> Result<Value> {
                     .map(|m| m.into_iter().map(|b| stage::Batch { bank, ..b }).collect())
                     .collect();
                 let things = if i == BOWL { vec![] } else { objects::objects(&a.elf, n, &blocks)? };
+                // its texture channels: the table at geometry part 4's end, the frames in part 2; the still ones as
+                // they stand, the looping ones played
+                let table = raw.get(4).map(|p| stage::channel_table(p)).unwrap_or_default();
+                for &(_, k, f, blank) in stage::STILLS.iter().filter(|s| s.0 == n) {
+                    if let (Some(&e), Some(frames)) = (table.iter().find(|e| e[0] as usize == k), raw.get(2)) {
+                        for ups in &mut banks {
+                            let _ = tex::put_frame(ups, e, frames, f, blank);
+                        }
+                    }
+                }
+                let anims: Vec<stage::Anim> = (stage::LOOPS.iter().filter(|l| l.0 == n))
+                    .filter_map(|&(_, k, speed, start)| {
+                        let (e, frames) = (*table.iter().find(|e| e[0] as usize == k)?, *raw.get(2)?);
+                        let count = archive::pack(archive::pack(frames)?.first()?)?
+                            .get(k)
+                            .and_then(|c| archive::pack(c))?
+                            .len();
+                        let frames = (0..count)
+                            .map(|f| {
+                                let mut b = banks.clone();
+                                let put = b
+                                    .iter_mut()
+                                    .map(|ups| tex::put_frame(ups, e, frames, f, false).is_some())
+                                    .fold(false, |a, x| a | x);
+                                put.then_some(b)
+                            })
+                            .collect::<Option<Vec<_>>>()?;
+                        Some(stage::Anim { frames, speed, start })
+                    })
+                    .collect();
                 // the objects ending op 25 holds at a hand, each at its own origin
                 for &(_, k) in bowl::PROPS.iter().filter(|p| p.0 == n) {
                     if let Some(m) = bowl::object_model(&a.elf, n, k)?.and_then(|m| blocks.get(m)) {
-                        let glb = stage::game_glb(&format!("prop {k}"), m, &[], &[], &banks, None, light.as_ref());
+                        let glb = stage::game_glb(&format!("prop {k}"), m, &[], &[], &banks, None, light.as_ref(), &[]);
                         assets.write(&format!("stages/stage_{n:02}_prop_{k}.glb"), &glb)?;
                     }
                 }
                 weather.insert(n, effects::entries(raw.get(1).copied().unwrap_or_default()));
                 assets.write(
                     &format!("stages/{file}"),
-                    &stage::game_glb(&name, &bare, &floors, &things, &banks, stage::levels(&a.elf, n), light.as_ref()),
+                    &stage::game_glb(
+                        &name,
+                        &bare,
+                        &floors,
+                        &things,
+                        &banks,
+                        stage::levels(&a.elf, n),
+                        light.as_ref(),
+                        &anims,
+                    ),
                 )?;
                 arenas.push(json!({"id": n, "name": name, "file": file}));
             }
