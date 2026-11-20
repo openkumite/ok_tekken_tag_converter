@@ -371,16 +371,17 @@ impl Model {
         nodes.push(json!({"name": "part_0", "mesh": 0, "skin": 0}));
         roots.push(nodes.len() - 1);
         let pbr = json!({"baseColorTexture": {"index": 0}, "metallicFactor": 0.0, "roughnessFactor": 1.0});
-        let mut doc = json!({"scene": 0, "scenes": [{"nodes": roots}], "nodes": nodes,
+        let mut texture = json!({"source": 0, "sampler": 0});
+        if let Some(m) = mark {
+            glb::set(&mut texture, "extras", json!({"mark": m}));
+        }
+        let doc = json!({"scene": 0, "scenes": [{"nodes": roots}], "nodes": nodes,
             "meshes": [{"name": "part_0", "primitives": prims}],
             "materials": [{"name": "opaque", "pbrMetallicRoughness": pbr, "doubleSided": true, "alphaMode": "MASK", "alphaCutoff": 0.5},
                           {"name": "blend", "pbrMetallicRoughness": pbr, "doubleSided": true, "alphaMode": "BLEND"}],
             "skins": [{"joints": (0..skeleton).collect::<Vec<_>>(), "inverseBindMatrices": ibm}],
-            "images": [{"bufferView": png, "mimeType": "image/png"}], "textures": [{"source": 0, "sampler": 0}],
+            "images": [{"bufferView": png, "mimeType": "image/png"}], "textures": [texture],
             "samplers": [{"magFilter": 9729, "minFilter": 9729, "wrapS": 33071, "wrapT": 33071}]});
-        if let Some(m) = mark {
-            glb::set(&mut doc["textures"][0], "extras", json!({"mark": m}));
-        }
         Some(g.finish(doc))
     }
 
