@@ -492,7 +492,8 @@ changes in his picture too (format 48: the texture's extras `mark`, `[x, y, w, h
 +0xB058 of the fighter pack's part 1 (`u16 frames, u16 triples` 6, then frames x 6 x 3 s16: files 591-600 202
 frames, 663-669 47) turns and scales 6 nodes (0x3DE4E0; the model's nodes whose +0x1C is 0x1F-0x24, table 0x46B010):
 the first three as a motion's joints (0x3DD788), the other three mirrored (0x3DE428), each pair from the same 12
-bytes. Not exported. [H]
+bytes. Exported (format 54): the skeleton reaches the wing nodes, the skin's extras `wings` (`nodes` by slot,
+`frames`: each node's local turn and scale, `model::wing_frames`). [H]
 
 Typical: ops 0-4 at frame 0, fade in over 45, effects, fade out over 60-120, end at camera frames - 1. No op plays
 sound: the only audio is the music [M]. The background characters are a set of 0x114FC8 by the scene, not

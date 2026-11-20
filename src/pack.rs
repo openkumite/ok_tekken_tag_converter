@@ -75,8 +75,8 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 /// `command_list`, its icons; 50: `command_list.lists[].training`, front_end `practice.chain`; 51: rules.json
 /// `joints`, the joint places the strikes and spheres are posed with; 52: the fighters' hand poses,
 /// `characters/hands_NNN.glb` and movesets/index.json `hands`; 53: `practice.hud.capture`'s states, PLAY keys
-/// and limit).
-pub const FORMAT: i64 = 53;
+/// and limit; 54: the wings, skins' extras `wings`).
+pub const FORMAT: i64 = 54;
 /// What a pack's manifest names it.
 pub const KIND: &str = "ttt";
 
@@ -282,7 +282,7 @@ pub fn convert(ctx: &Ctx, src: &dyn DiscFile, research: bool) -> Result<Value> {
             };
             // OpenKumite's character: a fighter of the roster, with its moveset
             if let (Some((body, costume)), Some(set)) = (who, moveset) {
-                match m.fighter_glb(&ups, &marked) {
+                match m.fighter_glb(&ups, &marked, pack.as_ref().and_then(|p| p.get(1).copied()).unwrap_or_default()) {
                     Some(glb) => {
                         let file = format!("model_{i:03}.glb");
                         assets.write(&format!("characters/{file}"), &glb)?;
@@ -357,7 +357,7 @@ pub fn convert(ctx: &Ctx, src: &dyn DiscFile, research: bool) -> Result<Value> {
                 if research {
                     out.write(&file, &m.glb(&own))?;
                 }
-                if let (Some(n), Some(glb)) = (listed, m.fighter_glb(&own, &[])) {
+                if let (Some(n), Some(glb)) = (listed, m.fighter_glb(&own, &[], &[])) {
                     assets.write(&format!("stages/stage_{n:02}_p{}.glb", k - 1), &glb)?;
                 }
                 people.push(json!({"id": k - 1, "file": file}));
