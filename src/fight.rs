@@ -23,6 +23,12 @@ const CURVES: (usize, usize) = (0x523fa0 - VADDR, 74); // 24 bytes each, up to t
 const LIFE: usize = 0x51f5a0 - VADDR; // 8 x u32 health, 20.12 fixed point; then a percent per body
 const HURT: (usize, usize) = (0x42f060 - VADDR, 14); // u32 bone slot per sphere, then a pointer per body to s16 radii
 const PUSH: (usize, usize) = (0x42efb8 - VADDR, 8);
+/// The joints' places (0x3AFAA0): by body (+0x2A) a pointer to 24 x {s16 x, y, z, pad} in the parent joint's axes;
+/// the costume file 0x6B (+0x2E, Angel's) has its own at 0x4396C0.
+const JOINTS: usize = 0x439a80 - VADDR;
+const ANGEL_JOINTS: (usize, usize) = (0x4396c0 - VADDR, 0x6b);
+/// Each of the 18 slots' parent slot (the model's node tree through 0x437E70, as 0x3AFAA0 links them).
+const SLOT_PARENTS: [i8; 18] = [-1, 0, 1, 1, 3, 4, 5, 1, 7, 8, 9, 0, 11, 12, 13, 11, 15, 16];
 const RECOVERABLE: usize = 0x5f5168 - VADDR; // f32 0.6, f32 1.4: the part of a hit's damage the recoverable cap loses
 const ANGER: (usize, usize) = (0x5207f0 - VADDR, 76); // 5 x s8: partner body, its variant mask, active body, its mask, effect
 // air reactions of 28 bytes (0x374010): entries 0-7 in the first table, entry k >= 8 at the second + 28 * k
@@ -427,6 +433,30 @@ fn spheres((base, n): (usize, usize), elf: &[u8], lift: &[(usize, i32)], names: 
     )
 }
 
+/// The 24 joint places (x, y, z) of the table at file offset `at`.
+fn joint_places(elf: &[u8], at: usize) -> Result<Vec<[i16; 3]>> {
+    (0..24)
+        .map(|k| {
+            let w = |c: usize| u16_at(elf, at.saturating_add(8 * k + 2 * c), "the joints' places").map(|v| v as i16);
+            Ok([w(0)?, w(1)?, w(2)?])
+        })
+        .collect()
+}
+
+/// rules.json `joints`: the slots' parents and each body's joint places, which 0x3AFAA0 builds the matrix slots with
+/// (the strikes, the hurt and push spheres and the drawing all take those slots).
+fn joints(elf: &[u8], names: &[(String, usize)]) -> Result<Value> {
+    let mut bodies = Vec::with_capacity(BODIES);
+    for (body, name) in names.iter().enumerate() {
+        let p = (u32_at(elf, JOINTS + 4 * body, "the joints' places")? as usize).wrapping_sub(VADDR);
+        bodies.push(json!({"character": body, "name": name.0, "places": joint_places(elf, p)?}));
+    }
+    let angel = json!({"file_slot": ANGEL_JOINTS.1, "model_record": 345 + 3 * ANGEL_JOINTS.1,
+        "places": joint_places(elf, ANGEL_JOINTS.0)?});
+    Ok(json!({"table": "0x439A80 (34 x pointer -> 24 x {s16 x, y, z, pad})", "parents": SLOT_PARENTS,
+        "per_character": bodies, "per_model": [angel]}))
+}
+
 /// rules.json: health, and the hurt and push spheres.
 pub fn rules(elf: &[u8]) -> Result<Value> {
     let names = moves::roster(elf)?;
@@ -457,6 +487,7 @@ pub fn rules(elf: &[u8]) -> Result<Value> {
         // sphere 8 (the head) is lifted 120, sphere 11 (the root) 60: y is down
         "hurt_spheres": spheres(HURT, elf, &[(8, -120), (11, -60)], &names)?,
         "push_spheres": spheres(PUSH, elf, &[], &names)?,
+        "joints": joints(elf, &names)?,
         // constants of the damage code (0x3720C8, docs/FIGHT_DATA.md section 9)
         "counter_hit": {"multiplier": [12, 10], "bonus_tenths": [3],
             "bonus": "3 * |victim move damage| / 10 * f / startup; 3 * damage / 10 when a ki timer caused it"},
@@ -1238,6 +1269,12 @@ mod tests {
             elf[HURT.0 + 4 * (14 + body)..][..4].copy_from_slice(&p.to_le_bytes());
             elf[PUSH.0 + 4 * (8 + body)..][..4].copy_from_slice(&p.to_le_bytes());
         }
+        // joint places: every body's at one table, slot 13 (shin A) at (390, 0, -1)
+        let places = 0x1c7200;
+        put(&mut elf, places + 8 * 13, &[390, 0, 0xffff]);
+        for body in 0..BODIES {
+            elf[JOINTS + 4 * body..][..4].copy_from_slice(&((places + VADDR) as u32).to_le_bytes());
+        }
         elf[HURT.0 + 4 * 8] = 2;
         elf[LIFE..LIFE + 4].copy_from_slice(&(125u32 << 12).to_le_bytes());
         elf[LIFE + 32 + 4 * 11] = 120;
@@ -1262,6 +1299,11 @@ mod tests {
         assert_eq!(
             (v["health"]["life_options"][0].as_u64(), v["health"]["percent_per_character"][11].as_u64()),
             (Some(125), Some(120))
+        );
+        assert_eq!(v["joints"]["per_character"][21]["places"][13], json!([390, 0, -1]));
+        assert_eq!(
+            (v["joints"]["parents"][14].as_i64(), v["joints"]["per_model"][0]["model_record"].as_u64()),
+            (Some(13), Some(666))
         );
         assert_eq!(v["health"]["recoverable"]["damage_factor"]["bits"], 0x3f19_999a);
         assert_eq!(v["tag"]["anger"]["relations"].as_array().unwrap().len(), 76);

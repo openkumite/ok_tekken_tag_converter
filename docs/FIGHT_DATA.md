@@ -114,6 +114,17 @@ Hit volumes are not baked paths. They are bare segments between bone positions, 
 - A second segment exists when `end1` is non-zero.
 - Bones use Tekken 3's slot numbers. Bone 0x13 becomes 6 for body 14; 0x18 and 0x19 take the segment from a
   projectile object.
+- The bones are the matrix slots player +0x630 + 0x50 x slot (world translation at +0x38). 0x3AFAA0 builds slots
+  0-17 from the joint places of 0x439A80 by body (+0x2A; costume file 0x6B has its own at 0x4396C0), not from the
+  model's nodes: Jack-2's, P.Jack's and Gun Jack's knee is 390 down the thigh where their model has 440, Ogre's and
+  Armor King's arms differ too. The hurt and push spheres use the same slots, and so does the drawing (0x3478F0:
+  every joint takes its slot's matrix, the clavicles less node 2's offset, the head its turn only); the glbs keep
+  the model's nodes (not done).
+- Slots 18-23 (checked in PCSX2): 0x34F3D8 sets, before the strikes, for moveset (+0x28) 4 slot 22 = hand B x (100,
+  0, 720) and 23 = hand B x (100, 0, 360) (the sword), for movesets 26 and 32 slot 22 = hand A x (100, 0, -400), for
+  moveset 14 on bodies 20 and 15 slot 23 = head x (800, 0, 600) (vectors at 0x5F5E50). 0x3AFAA0 adds joints for
+  bodies 17 (18 on the head, 19, 20) and 20 (18 on thigh A, 19 on 18, 20 on the head), swayed by 0x34C508. Every
+  other slot past 17 stays cleared: a strike to it runs to the world's origin.
 - The test (0x376CF8) is Tekken 3's: box reject, clip to the sphere's height band, horizontal distance against
   radius.
 

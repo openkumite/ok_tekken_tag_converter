@@ -155,6 +155,10 @@ Tekken 3's throw victims and close-range tables are not here: not found as table
   up, as Tekken 3's) and `per_character` (`character`: the body number, `name`, `radii`). Tekken 3's keys; a
   character here is a body (0-33). Costume bodies 34-38 are not in the tables; they are assumed to use their host
   body's (8, 11, 15, 17, 29).
+- **new** (format 51) `joints` (FIGHT_DATA.md section 3): `parents` (each of the 18 slots' parent slot, -1 for the
+  root) and the 24 joint places of each body, `per_character` (`character`, `name`, `places`: `[x, y, z]` in game
+  units in the parent's axes) and `per_model` (`model_record` 666, Angel's costume file, its own `places`). The game
+  poses the strike bones and the spheres with these, not with the glbs' nodes.
 
 - `counter_hit`: `multiplier` [12, 10] (D x 12 / 10) and `bonus_tenths` [3]: the bonus is the victim's move
   damage times each tenth in turn (truncating), then x its frame / its startup (Tekken 3's would be [3, 3]).
