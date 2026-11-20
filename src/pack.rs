@@ -79,8 +79,10 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 /// `select.quick.faces`; 57: the joints drawn at the game's places, skins' extras `cloth`; 58: the arena effects'
 /// quads as the arena's projection sizes them; 59: the arenas' texture channels, scene extras `channels`; 60:
 /// decal strips (TFX 1) at their texels' colour, the hit effects' quads by their projection, weather `lightning` and
-/// `signs`; 61: weather `snow`).
-pub const FORMAT: i64 = 61;
+/// `signs`; 61: weather `snow`; 62: front_end `practice.combo` and the COMBO TRAINING rows, `chain.result.backdrop`,
+/// `select.quick.faces.frame` and `names`, `command_buttons_lit.png`, `ranking.arena`, `003_110_p84.png`, TRAINING
+/// DUMMY's `icons`).
+pub const FORMAT: i64 = 62;
 /// What a pack's manifest names it.
 pub const KIND: &str = "ttt";
 
@@ -530,7 +532,7 @@ pub fn convert(ctx: &Ctx, src: &dyn DiscFile, research: bool) -> Result<Value> {
                 atlas = tex::uploads(&d);
                 for (name, png) in front::angry_strips(&atlas)
                     .into_iter()
-                    .chain(front::cursor_2p(&atlas))
+                    .chain(front::repainted(&atlas))
                     .chain(front::font_colours(&atlas))
                 {
                     assets.write(&format!("pictures/{name}"), &png)?;
