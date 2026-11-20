@@ -470,10 +470,10 @@ scene; hard cap 7200 frames. [H]
 | 22 | an iris (0x3AC8B0 -> 0x3CF850(x a, y b, r)): black outside a circle (15-step fans and two bands), r from 640 down by (640 - (c & 0xFF)) / (c >> 8) a frame to c & 0xFF, then held to the scene's end | [H] |
 | 23 | an oval (0x3AC978 -> 0x3CFAD8(220, 133, 0xC0)): black outside the ellipse about (320, 224) of half-height 220, half-width 220 x 1.33, for a frames | [H] |
 | 24 | a screen fill (0x3ACAB0 -> 0x3AC9D8(a)) for b frames from table 0x437D10 (16 bytes: r, g, b, a, ALPHA's A B C D): 0 (255, 255, 255) and 1 (205, 157, 200) with (Cs - Cd) x Ad (the colour less the picture, the frame's alpha taken as 1 [M]), 2 (162, 51, 50) at 64 / 128 over | [H] |
-| 25 | an arena prop (0x3ACB08 -> 0x3D10D0(b & 0x3FFF, matrix)) on arenas 3, 5 and 7 by b, at actor a's node matrix (fighter +0x2A30 or +0x3CF0; flag 0x20 the other actor) for c frames; its matrix 0x444CD0 is ops 17 / 18's node 0x4002 [M] | [M] |
+| 25 | the arena's object b & 0x3FFF (0x3ACB08 -> 0x3D10D0(object, matrix)) for c frames at actor a's (side 1 when a != 0) node: arena 7 object 0 node 63 (fighter +0x3CF0), objects 1, 2 node 38 (+0x2A30); arena 5 object 0 and arena 3 object 19 node 38, or with b's 0x4000 the matrix 0x8D7E00 (turned -0.349 about x, 0.785 about y, at z 1500); other objects end the task. Exported (format 48) as `stages/stage_NN_prop_K.glb` | [H] |
 | 26 / 31 | gp-0x6E84 = a & 1 (cleared with the arena's people, 0x390E74); 0x34CB38(0 / 1) by bits of a, its result unused: nothing drawn | [H] |
 | 27 | 0x3465E0: gp-0x6420 \|= 3 (also op 4's: a camera cut) | [H] |
-| 28 | actor a & 1's +0xB052 = b when it is Kuma or Panda (characters 20 / 29 at +0x2A): the face state 0x363330 reads | [M] |
+| 28 | actor a & 1's +0xB052 = b when it is True Ogre or Devil (characters 20 / 29 at +0x2A): their wings (below) | [H] |
 | 29 / 30 / 32 | 0x3AA4B8 for a frames; every other frame for a frames an object 0x3ACF50 (0x3AD1D8); gp-0x6E78 = 1 for a frames (0x3AA410, read by 0x3ABD1C) | [L] |
 | 7-9, 11, 13, 14 | no-op | [H] |
 
@@ -483,7 +483,16 @@ palette); the model part's table after its nodes (u32 count, then at its +0x14 1
 w, h, dbw, psm}`) says where a frame goes, from the fighter's first texture block. Only Jin's packs have one: channel 0,
 his face with the mark (frame 0, the face the textures load with) and without (frame 1). His set-up shows frame 1
 (0x3A85E4, character 9; not on screen 5 when 0x43B800 is set); in a fight the mark shows while the move's +0x24 bit 17
-is set (0x370E20), in a scene by op 12. The converter bakes frame 1 into his textures. [H]
+is set (0x370E20), in a scene by op 12. The converter bakes frame 1 into his textures and keeps the texels frame 0
+changes in his picture too (format 48: the texture's extras `mark`, `[x, y, w, h, from x, from y]`). [H]
+
+**The wings** (0x3632E0 each frame for a fighter with +0xB130 bit 2: models 0x52-0x55 and 0x6A-0x6C, 0x3ADAA0): state
++0xB052 (0 folded, 1 open and held, 2 beating; a fight sets 1 while +0x135, else 0, 0x370C94), phase +0xB056, step
++0xB054 through byte lists 0x4161A0 (0-16, opening) and 0x4161B8 (18 on, a beat; both end at 0xFF); the frame
++0xB058 of the fighter pack's part 1 (`u16 frames, u16 triples` 6, then frames x 6 x 3 s16: files 591-600 202
+frames, 663-669 47) turns and scales 6 nodes (0x3DE4E0; the model's nodes whose +0x1C is 0x1F-0x24, table 0x46B010):
+the first three as a motion's joints (0x3DD788), the other three mirrored (0x3DE428), each pair from the same 12
+bytes. Not exported. [H]
 
 Typical: ops 0-4 at frame 0, fade in over 45, effects, fade out over 60-120, end at camera frames - 1. No op plays
 sound: the only audio is the music [M]. The background characters are a set of 0x114FC8 by the scene, not
@@ -555,6 +564,15 @@ gp-0x7F74 1.2, gp-0x7F70 0.8). Seen in PCSX2: at EMBU frame 1100, path 6 frame 5
 4 on all 1254 frames read (1036-2289), one frame late at each cut. A window capture lands about 10 frames after the
 counter it was taken at: compare captures with frames ~10 later. Screen 11 also starts no arena-4 task 0x3A76C0
 (0x3A72A8) and takes the people set of 0x3D85D8 (none on arena 4). [H]
+
+**Its arena turned half round** (0x36712C): on screen 11 the arena's matrix 0x8794A0 is a turn of pi about y (gp-0x7F94);
+in a fight it turns by the far background's gp-0x7278 (0x366C18), elsewhere (the endings) it is the identity. In
+PCSX2 the camera (eye and angles, view 0x415808) and both actors' root and head nodes (fighter 0x879640 + 0xB8A0 x
+side + 0xDB0 + 0xC0 x node, +0x30: x, y, z as OpenKumite's metres x 1000) matched the paths frame by frame, but path
+0 at counter 420 shows the pagoda and the gate's steps, which stand behind the camera when the arena is not turned.
+**The picture's height**: 0x38DA28 makes the projection with x and y both H x 1.25 (0x34AFB0, then 1.25 at
+0x38DB30): square pixels on the 640 x 448 screen, which the television shows 4:3, so 480 / 448 as high as a square-pixel
+picture of the same width. Two EMBU captures fit best at that stretch (of 1, 1.036, 1.071, 1.11). [H]
 
 ## 8. Theater and Gallery
 

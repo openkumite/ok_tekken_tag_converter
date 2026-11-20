@@ -70,8 +70,9 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 /// moveset 28; 36: Law-A's lanterns and leaves in stages.json `objects`, the leaves' and their shadows' copies; 37:
 /// front_end `practice.hud`; 38: camera.json `fighter_cameras.rows`, `win_pose.world_turn`; 44: the arenas' strips lit
 /// and their texture coordinates made as the VU1 microcode does, stage::colour; 45: flags 4 and 0x400's panorama, the arenas' fog;
-/// 46: front_end `fonts.small`: the button icons in each text colour; 47: Eddy's grass in stages.json `objects`).
-pub const FORMAT: i64 = 47;
+/// 46: front_end `fonts.small`: the button icons in each text colour; 47: Eddy's grass in stages.json `objects`; 48: Jin's
+/// texture's extras `mark`, the props of ending op 25 `stages/stage_NN_prop_K.glb`).
+pub const FORMAT: i64 = 48;
 /// What a pack's manifest names it.
 pub const KIND: &str = "ttt";
 
@@ -248,8 +249,11 @@ pub fn convert(ctx: &Ctx, src: &dyn DiscFile, research: bool) -> Result<Value> {
             let tris: usize = m.sections.iter().flatten().map(|s| s.verts.len().saturating_sub(2)).sum();
             let slot = i.checked_sub(FIGHTERS).filter(|s| s % 3 == 0).map(|s| s / 3);
             let who = slot.map(|s| moves::fighter(&a.elf, s)).transpose()?.flatten();
-            // Jin's set-up shows his texture channel 0's frame 1, the face without the mark (0x3A85E4: character 9)
+            // Jin's set-up shows his texture channel 0's frame 1, the face without the mark (0x3A85E4: character 9);
+            // frame 0, the face the textures load with, is the mark's (shown by ending op 12)
+            let mut marked = vec![];
             if let (Some((9, _)), Some(p)) = (who, pack.as_ref()) {
+                marked = ups.clone();
                 p.iter()
                     .find(|c| c.starts_with(b"PS2TagA"))
                     .zip(p.get(1))
@@ -263,7 +267,7 @@ pub fn convert(ctx: &Ctx, src: &dyn DiscFile, research: bool) -> Result<Value> {
             };
             // OpenKumite's character: a fighter of the roster, with its moveset
             if let (Some((body, costume)), Some(set)) = (who, moveset) {
-                match m.fighter_glb(&ups) {
+                match m.fighter_glb(&ups, &marked) {
                     Some(glb) => {
                         let file = format!("model_{i:03}.glb");
                         assets.write(&format!("characters/{file}"), &glb)?;
@@ -331,7 +335,7 @@ pub fn convert(ctx: &Ctx, src: &dyn DiscFile, research: bool) -> Result<Value> {
                 if research {
                     out.write(&file, &m.glb(&own))?;
                 }
-                if let (Some(n), Some(glb)) = (listed, m.fighter_glb(&own)) {
+                if let (Some(n), Some(glb)) = (listed, m.fighter_glb(&own, &[])) {
                     assets.write(&format!("stages/stage_{n:02}_p{}.glb", k - 1), &glb)?;
                 }
                 people.push(json!({"id": k - 1, "file": file}));
@@ -383,6 +387,13 @@ pub fn convert(ctx: &Ctx, src: &dyn DiscFile, research: bool) -> Result<Value> {
                     .map(|m| m.into_iter().map(|b| stage::Batch { bank, ..b }).collect())
                     .collect();
                 let things = if i == BOWL { vec![] } else { objects::objects(&a.elf, n, &blocks)? };
+                // the objects ending op 25 holds at a hand, each at its own origin
+                for &(_, k) in bowl::PROPS.iter().filter(|p| p.0 == n) {
+                    if let Some(m) = bowl::object_model(&a.elf, n, k)?.and_then(|m| blocks.get(m)) {
+                        let glb = stage::game_glb(&format!("prop {k}"), m, &[], &[], &banks, None, light.as_ref());
+                        assets.write(&format!("stages/stage_{n:02}_prop_{k}.glb"), &glb)?;
+                    }
+                }
                 weather.insert(n, effects::entries(raw.get(1).copied().unwrap_or_default()));
                 assets.write(
                     &format!("stages/{file}"),

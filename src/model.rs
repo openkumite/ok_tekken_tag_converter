@@ -253,8 +253,10 @@ impl Model {
     /// they do (`ups`: the uploads its TEX0 registers refer to). A vertex on a node past the skeleton (cloth, hair)
     /// is on its nearest ancestor in it instead: no motion moves those nodes, so it stays where it was. The blended
     /// strips are a primitive of their own after the opaque ones, their texture's alpha kept. None when the model has
-    /// fewer nodes, a skeleton node hangs from one past it, or its textures do not fit one picture.
-    pub fn fighter_glb(&self, ups: &[tex::Upload]) -> Option<Vec<u8>> {
+    /// fewer nodes, a skeleton node hangs from one past it, or its textures do not fit one picture. `alt`: the uploads
+    /// with another texture channel frame (Jin's mark, BOWL_ENDINGS.md 7.4), or none: the texels it changes go in the
+    /// picture too, the texture's extras `mark` `[x, y, w, h, from x, from y]` (the rectangle, where its other texels are).
+    pub fn fighter_glb(&self, ups: &[tex::Upload], alt: &[tex::Upload]) -> Option<Vec<u8>> {
         let n = self.nodes.len();
         // (an arena's background character: the 18 joints of `RIG` alone)
         let skeleton = if n == RIG.len() { n } else { SKELETON };
@@ -269,7 +271,7 @@ impl Model {
         let strips: Vec<&Strip> = self.sections.iter().flatten().collect();
         // each texture in its palette once: (TEX0's texture, size and palette pointers, blended) -> picture (width,
         // height, pixels, how far its strips reach: low x, y, high x, y), the picture's part of TW x TH
-        let (mut pics, mut pic_of) = (vec![], BTreeMap::new());
+        let (mut pics, mut pic_of, mut alts) = (vec![], BTreeMap::new(), vec![]);
         // each strip's picture (none: the white one), its coordinates in pictures, moved by whole pictures to
         // start in the first one (the GS repeats a texture)
         let mut placed = vec![];
@@ -277,6 +279,7 @@ impl Model {
             let t = tex::tex0(s.tex0);
             let pic = *pic_of.entry((s.tex0 & 0x000f_ffe3_ffff_ffff, s.blend)).or_insert_with(|| {
                 let (w, h, px) = tex::image(ups, &t, s.blend).filter(|p| p.0 > 0 && p.1 > 0)?;
+                alts.push(tex::image(alt, &t, s.blend).filter(|a| (a.0, a.1) == (w, h) && a.2 != px).map(|a| a.2));
                 pics.push((w, h, px, [f32::MAX, f32::MAX, 0.0, 0.0]));
                 Some((pics.len() - 1, [t.tw as f32 / w as f32, t.th as f32 / h as f32]))
             });
@@ -299,10 +302,32 @@ impl Model {
             a..((hi * n as f32).ceil() as usize).clamp(a + 1, a + REACH.max(n))
         };
         let cuts: Vec<_> = pics.iter().map(|(w, h, _, r)| (span(r[0], r[2], *w), span(r[1], r[3], *h))).collect();
-        let cut: Vec<(usize, usize, Vec<u8>)> = (pics.iter().zip(&cuts))
+        let mut cut: Vec<(usize, usize, Vec<u8>)> = (pics.iter().zip(&cuts))
             .map(|((w, h, px, _), (x, y))| (x.len(), y.len(), tex::cut(*w, *h, px, x.clone(), y.clone())))
             .collect();
+        // the texels `alt` changes in a picture: their rectangle (x, y, w, h in the cut) as a picture of its own
+        let mut marks = vec![];
+        for (i, a) in alts.iter().enumerate().filter_map(|(i, a)| Some((i, a.as_ref()?))) {
+            let (&(w, h, ..), (cx, cy), (cw, _, px)) = (pics.get(i)?, cuts.get(i)?, cut.get(i)?);
+            let (cw, other) = (*cw, tex::cut(w, h, a, cx.clone(), cy.clone()));
+            let diff: Vec<(usize, usize)> = (0..px.len() / 4)
+                .filter(|&k| px.get(4 * k..4 * k + 4) != other.get(4 * k..4 * k + 4))
+                .map(|k| (k % cw, k / cw))
+                .collect();
+            let (Some(x0), Some(y0)) = (diff.iter().map(|d| d.0).min(), diff.iter().map(|d| d.1).min()) else {
+                continue;
+            };
+            let (x1, y1) =
+                (diff.iter().map(|d| d.0).max().unwrap_or(x0) + 1, diff.iter().map(|d| d.1).max().unwrap_or(y0) + 1);
+            let rows = (y0..y1).flat_map(|y| other.get(4 * (y * cw + x0)..4 * (y * cw + x1)).unwrap_or_default());
+            cut.push((x1 - x0, y1 - y0, rows.copied().collect()));
+            marks.push((i, [x0, y0, x1 - x0, y1 - y0], cut.len() - 1));
+        }
         let atlas = tex::atlas(&cut)?;
+        let mark = marks.iter().find_map(|&(i, [x, y, w, h], m)| {
+            let (&(px, py), &(mx, my)) = (atlas.place.get(i)?, atlas.place.get(m)?);
+            Some([px + x, py + y, w, h, mx, my])
+        });
         let (aw, ah) = (atlas.w as f32, atlas.h as f32);
         // the opaque strips and the blended ones, each a primitive with vertices of its own
         type Part = (Vec<[f32; 3]>, Vec<[f32; 3]>, Vec<f32>, Vec<u8>, Vec<f32>, Vec<u32>);
@@ -346,12 +371,16 @@ impl Model {
         nodes.push(json!({"name": "part_0", "mesh": 0, "skin": 0}));
         roots.push(nodes.len() - 1);
         let pbr = json!({"baseColorTexture": {"index": 0}, "metallicFactor": 0.0, "roughnessFactor": 1.0});
+        let mut texture = json!({"source": 0, "sampler": 0});
+        if let Some(m) = mark {
+            glb::set(&mut texture, "extras", json!({"mark": m}));
+        }
         let doc = json!({"scene": 0, "scenes": [{"nodes": roots}], "nodes": nodes,
             "meshes": [{"name": "part_0", "primitives": prims}],
             "materials": [{"name": "opaque", "pbrMetallicRoughness": pbr, "doubleSided": true, "alphaMode": "MASK", "alphaCutoff": 0.5},
                           {"name": "blend", "pbrMetallicRoughness": pbr, "doubleSided": true, "alphaMode": "BLEND"}],
             "skins": [{"joints": (0..skeleton).collect::<Vec<_>>(), "inverseBindMatrices": ibm}],
-            "images": [{"bufferView": png, "mimeType": "image/png"}], "textures": [{"source": 0, "sampler": 0}],
+            "images": [{"bufferView": png, "mimeType": "image/png"}], "textures": [texture],
             "samplers": [{"magFilter": 9729, "minFilter": 9729, "wrapS": 33071, "wrapT": 33071}]});
         Some(g.finish(doc))
     }
@@ -580,7 +609,7 @@ mod tests {
         clut[4..8].copy_from_slice(&[255, 0, 0, 0x80]);
         let up = |dbp, psm, w, h, data| tex::Upload { set: 0, dbp, dbw: 128, psm, w, h, data };
         let ups = [up(0x100, 0x14, 16, 16, vec![0x11; 128]), up(0x200, 0, 8, 2, clut)];
-        let (doc, buffers, images) = gltf::import_slice(m.fighter_glb(&ups).unwrap()).unwrap();
+        let (doc, buffers, images) = gltf::import_slice(m.fighter_glb(&ups, &[]).unwrap()).unwrap();
         // as OpenKumite reads it: the first mesh, the first skin, the first image
         let skin = doc.skins().next().unwrap();
         let joints: Vec<_> = skin.joints().map(|j| j.name().unwrap().to_string()).collect();
@@ -604,11 +633,25 @@ mod tests {
             (px(1, 1), px(40, 16), px(41, 16), px(42, 1)),
             (&[255, 0, 0, 255][..], &[255, 0, 0, 255][..], &[255, 0, 0, 255][..], &[255; 4][..])
         );
+        // another channel frame with texels (3, 3) and (4, 4) changed (to colour 0): their rectangle, over the three
+        // copies, in the picture too, as the texture's extras say (atlas texels)
+        let mut other = vec![0x11; 128];
+        (other[3 * 8 + 1], other[4 * 8 + 2]) = (0x01, 0x10);
+        let alt = [up(0x100, 0x14, 16, 16, other), ups[1].clone()];
+        let (doc, _, images) = gltf::import_slice(m.fighter_glb(&ups, &alt).unwrap()).unwrap();
+        let extras = doc.textures().next().unwrap().extras().as_ref().unwrap().get().to_string();
+        let mark: serde_json::Value = serde_json::from_str(&extras).unwrap();
+        let [x, y, w, h, sx, sy] = serde_json::from_value::<[usize; 6]>(mark["mark"].clone()).unwrap();
+        assert_eq!([x, y, w, h], [4, 4, 34, 2]);
+        let px = |x: usize, y: usize| &images[0].pixels[(y * images[0].width as usize + x) * 4..][..4];
+        let red = &[255, 0, 0, 255][..];
+        let black = &[0, 0, 0, 255][..];
+        assert_eq!((px(sx, sy), px(sx + 1, sy), px(sx + 1, sy + 1), px(x, y)), (black, red, black, red));
         // fewer nodes than the skeleton, or a skeleton node hanging from one past it: not a fighter
-        assert!(Model { nodes: (0..97).map(node).collect(), sections: vec![] }.fighter_glb(&ups).is_none());
+        assert!(Model { nodes: (0..97).map(node).collect(), sections: vec![] }.fighter_glb(&ups, &[]).is_none());
         let mut bad = Model { nodes: (0..99).map(node).collect(), sections: vec![] };
         bad.nodes[7].parent = 98;
-        assert!(bad.fighter_glb(&ups).is_none());
+        assert!(bad.fighter_glb(&ups, &[]).is_none());
     }
 
     #[test]
