@@ -272,7 +272,7 @@ STCYCL 4,2   UNPACK V3-32 x2N   normal, position
 | 2 | 0x195 | white (the I register, 128), alpha 128 | the normal in the camera's axes (block rows 12-14) x 0.25 + the stored ones |
 | 1 | 0x16E | white, alpha 128 | the normal in the camera's axes x 0.25 + 0.5 |
 | 0x10 | 0xB6 | as stored | as stored |
-| 4, 0x400 | 0x1BC | white, alpha 128 | from the way to the eye through EATANxy / EATANxz (not decoded) |
+| 4, 0x400 | 0x1BC | white, alpha 128 | a panorama of the reflection R = 2n(V.n) - V (V the way to the eye, normalised, not scaled): EATANxz / EATANxy on \|R\| and the signs make atan2(R.z, R.x) / pi, s = that / 2 + 0.5 (+ 1 with flag 4 alone: the same, repeated), t = -(R.y / 2 + 0.5) |
 | 0x20 | 0xDC | as stored + the ambient | as stored |
 | 0x40, none | 0x8B | lit: the stored colour x the sum of each light's colour / 128 x max(0, n . towards it), + the ambient, each to 255, truncated; the alpha the stored one x the ambient's w (1) | as stored |
 | 0x100 | 0x102 | as stored (z 0) | as stored |
@@ -284,7 +284,7 @@ ambient (11), the camera's rotation (12-14) and the eye (15, the model's axes); 
 colour and OpenKumite's fog are not done]. The lights are geometry part 4's first light record (after its strips:
 `u32 3, f32 ambient[3]`, then three `{f32 towards[3], f32 colour[3]}`), the blocks' ambient half the record's (seen in
 PCSX2 on arenas 4, 8 and the bowl); a second record, where there is one, is the fighters' (0x455180 + 0x80 x arena,
-0x353F14). OpenKumite's (since format 44): GAMEDATA.md.
+0x353F14). OpenKumite's (since format 44; flags 4 and 0x400 since format 45): GAMEDATA.md.
 
 Blending, when the strip's PRIM has ABE: ALPHA `0x44` ordinary, `0x48` additive (lights, floor
 gloss; uses the vertex alpha), `0x89` a darkening decal. `TEX0.TCC` says whether the texture's

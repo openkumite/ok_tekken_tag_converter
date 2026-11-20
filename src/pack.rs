@@ -69,8 +69,8 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 /// pitching boats; 33: camera.json `team_intro.start_frames`, `fighter_cameras`; 34: front_end `practice`; 35: Unknown's
 /// moveset 28; 36: Law-A's lanterns and leaves in stages.json `objects`, the leaves' and their shadows' copies; 37:
 /// front_end `practice.hud`; 38: camera.json `fighter_cameras.rows`, `win_pose.world_turn`; 44: the arenas' strips lit
-/// and their texture coordinates made as the VU1 microcode does, stage::colour).
-pub const FORMAT: i64 = 44;
+/// and their texture coordinates made as the VU1 microcode does, stage::colour; 45: flags 4 and 0x400's panorama).
+pub const FORMAT: i64 = 45;
 /// What a pack's manifest names it.
 pub const KIND: &str = "ttt";
 

@@ -321,7 +321,7 @@ pub fn light(part: &[u8]) -> Option<Light> {
 
 /// Vertex `i`'s colour as the arena's VU1 microcode makes it (GS units, 128 = 1), and how its texture coordinates
 /// are made: 0 as stored, 1 or 2 from its normal in the camera's axes (2: added to the stored ones), 8 from its
-/// reflection. 0x54 dispatches on the batch's flags, the first of 8, 2, 1, 0x10, 4, 0x400, 0x20, 0x40, 0x100 set:
+/// reflection, 4 (flags 4 and 0x400) from its reflection's bearing and height (a panorama). 0x54 dispatches on the batch's flags, the first of 8, 2, 1, 0x10, 4, 0x400, 0x20, 0x40, 0x100 set:
 /// 8 (0x128) the stored colour, the reflection; 2 (0x195), 1 (0x16E), 4 and 0x400 (0x1BC) white (the I register,
 /// 128, alpha too); 0x10 (0xB6) and 0x100 (0x102) the stored colour; 0x20 (0xDC) the stored colour + the ambient; 0x40
 /// and none (0x8B) lit: the stored colour x the sum of each light's colour / 128 x max(0, n . towards it), + the
@@ -330,7 +330,11 @@ pub fn colour(b: &Batch, i: usize, light: Option<&Light>) -> ([f32; 4], u8) {
     let c = b.col.get(i).copied().unwrap_or([128; 4]).map(f32::from);
     let f = b.flags;
     let first = [8, 2, 1, 0x10, 4, 0x400, 0x20, 0x40, 0x100].into_iter().find(|k| f & k != 0).unwrap_or(0x40);
-    let env = if matches!(first, 1 | 2 | 8) { first as u8 } else { 0 };
+    let env = match first {
+        1 | 2 | 8 => first as u8,
+        4 | 0x400 => 4,
+        _ => 0,
+    };
     let rgb = match (first, light) {
         (2 | 1 | 4 | 0x400, _) => return ([128.0; 4], env),
         (0x20, Some(l)) => [c[0] + l.ambient[0], c[1] + l.ambient[1], c[2] + l.ambient[2]],
@@ -826,6 +830,8 @@ mod tests {
         assert_eq!(colour(&b, 0, Some(&l)).0, [120.0, 70.0, 20.0, 64.0]);
         b.flags = 0x201;
         assert_eq!(colour(&b, 0, Some(&l)), ([128.0; 4], 1));
+        b.flags = 0x600;
+        assert_eq!(colour(&b, 0, Some(&l)), ([128.0; 4], 4));
         b.flags = 0x208;
         assert_eq!(colour(&b, 0, Some(&l)), ([100.0, 50.0, 0.0, 64.0], 8));
     }
