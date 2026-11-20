@@ -176,6 +176,16 @@ fn hand(t: &[u8], b: bool) -> Vec<(String, Vec<[f32; 4]>)> {
         .collect()
 }
 
+/// A fighter's hand poses (its pack's part 4, a track of 15 triples a pose: 0 open to 16 the fist, then its own; the
+/// fight reads pose +0x306C of it, 0x364390) as clip `hands` of a key a pose: hand_A's nodes and hand_B's as a
+/// scene's two tracks turn them (the body's channels at rest). None without a pose.
+pub fn hands_glb(t: &[u8]) -> Option<Vec<u8>> {
+    let mut fingers = hand(t, false);
+    fingers.extend(hand(t, true));
+    let poses = fingers.first().map_or(0, |f| f.1.len());
+    (poses > 0).then(|| anim::clip_glb_with("hands", &vec![[0; anim::CHANNELS]; poses], &fingers))
+}
+
 /// Part `k` (1: the face, 2: the hands) of a scene's motion pack, as on the disc.
 pub fn part(d: &[u8], k: usize) -> Option<&[u8]> {
     archive::pack(d)?.get(k).copied()
@@ -209,5 +219,13 @@ mod tests {
         assert!(near(b[0].1[0], [-h, h, 0.0, 0.0]) || near(b[0].1[0], [h, -h, 0.0, 0.0]), "{:?}", b[0].1);
         assert!(near(a[1].1[0], [0.0, 0.0, 0.0, 1.0]) && near(b[1].1[0], [0.0, 0.0, 0.0, 1.0]));
         assert!(hand(&t[..50], false).iter().all(|(_, q)| q.is_empty()));
+        // a fighter's poses: 30 finger nodes, a key a pose
+        let (doc, _, _) = gltf::import_slice(hands_glb(&t).unwrap()).unwrap();
+        let a = doc.animations().next().unwrap();
+        assert_eq!(
+            (a.name(), a.channels().filter(|c| c.target().node().name().unwrap().starts_with("node_")).count()),
+            (Some("hands"), 30)
+        );
+        assert!(hands_glb(&t[..50]).is_none());
     }
 }
