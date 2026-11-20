@@ -365,8 +365,8 @@ pub const LOOPS: [(usize, usize, u32, u32); 18] = [
 
 /// The arenas' texture channels that stand still unless a task of the arena plays them (0x3A7198): (arena,
 /// channel, frame, cleared). Arena 4's lightning (0x3A7254: channels 0-3 on frame 1, cleared at the set-up, 4-6 on
-/// frame 3; task 0x3A76C0 flashes them, not played), arena 12's neon (three tasks 0x3A7590 from frame 0, now and then
-/// played once, not played).
+/// frame 3; task 0x3A76C0 flashes them), arena 12's neon (three tasks 0x3A7590 from frame 0, now and then played
+/// once): OpenKumite plays them (scene extras `channels` with their `channel`, stages.json `weather`).
 pub const STILLS: [(usize, usize, usize, bool); 10] = [
     (4, 0, 1, true),
     (4, 1, 1, true),
@@ -385,6 +385,8 @@ pub struct Anim {
     pub frames: Vec<Vec<Vec<tex::Upload>>>,
     pub speed: u32,
     pub start: u32,
+    /// A still channel an arena task plays ([`STILLS`]): its number.
+    pub channel: Option<usize>,
 }
 
 /// The lights the arena's VU1 blocks carry for its geometry: the first light record of geometry part 4 (after its
@@ -634,7 +636,8 @@ pub fn glb(scenery: &[Batch], objects: &[Batch], banks: &[Vec<tex::Upload>]) -> 
 /// with extras `env` (1, 2 or 8) and NORMAL, its picture whole.
 /// - scene extras `channels` (`anims`, the looping texture channels): for each picture one changes, its `image`, the
 ///   `rect` (x, y, w, h) of it the frames change and the `frames` images from `first`, each that rectangle's texels,
-///   played from `start` at `speed` / 256 a frame (0x3A6C80, state 4).
+///   played from `start` at `speed` / 256 a frame (0x3A6C80, state 4); a still one an arena task plays (`Anim::channel`)
+///   with its `channel`, speed 0, resting on `start`. Channels sharing a picture each change their own rectangle.
 #[allow(clippy::too_many_arguments)]
 pub fn game_glb(
     name: &str,
@@ -703,7 +706,7 @@ pub fn game_glb(
         let visible = |p: &[u8]| -> Vec<[u8; 4]> {
             p.as_chunks::<4>().0.iter().map(|&t| if t[3] == 0 { [0; 4] } else { t }).collect()
         };
-        let mut frames = None;
+        let mut frames = vec![];
         let mut px: std::borrow::Cow<[u8]> = px.into();
         for a in anims {
             let f: Vec<Vec<u8>> = (a.frames.iter())
@@ -718,12 +721,20 @@ pub fn game_glb(
             if f.iter().all(|x| visible(x) == visible(first)) {
                 px = first.clone().into();
             } else {
-                frames = Some((f, a));
-                break;
+                frames.push((f, a));
             }
         }
-        if let Some(first) = frames.as_ref().and_then(|(f, a)| f.get(a.start as usize)) {
-            px = first.clone().into();
+        // (each channel's first frame where its frames change the picture: channels share pictures)
+        let loaded = px.to_vec();
+        for (f, a) in &frames {
+            let Some(first) = f.get(a.start as usize) else { continue };
+            for i in (0..loaded.len()).step_by(4) {
+                if f.iter().any(|x| x.get(i..i + 4) != loaded.get(i..i + 4))
+                    && let (Some(d), Some(s)) = (px.to_mut().get_mut(i..i + 4), first.get(i..i + 4))
+                {
+                    d.copy_from_slice(s);
+                }
+            }
         }
         let span = |lo: f32, hi: f32, n: usize| {
             let inside = lo >= 0.0 && hi <= 1.0;
@@ -737,7 +748,7 @@ pub fn game_glb(
         images.push(json!({"bufferView": g.view(&tex::png(x.len(), y.len(), &base)), "mimeType": "image/png"}));
         place.insert(*k, (images.len() - 1, *scale, [fx, fy]));
         // a channel's frames: the rectangle they change, each frame's texels there as an image after the others
-        if let Some((f, a)) = &frames {
+        for (f, a) in &frames {
             let cuts: Vec<Vec<u8>> = f.iter().map(|px| tex::cut(*w, *h, px, x.clone(), y.clone())).collect();
             let cw = x.len();
             // (a texel clear in both is the same, whatever its colour)
@@ -759,8 +770,12 @@ pub fn game_glb(
                         .collect();
                     images.push(json!({"bufferView": g.view(&tex::png(x1 - x0 + 1, y1 - y0 + 1, &rows)), "mimeType": "image/png"}));
                 }
-                animated.push(json!({"image": image, "rect": [x0, y0, x1 - x0 + 1, y1 - y0 + 1], "first": image + 1,
-                    "frames": cuts.len(), "speed": a.speed, "start": a.start}));
+                let mut c = json!({"image": image, "rect": [x0, y0, x1 - x0 + 1, y1 - y0 + 1], "first": image + 1,
+                    "frames": cuts.len(), "speed": a.speed, "start": a.start});
+                if let Some(k) = a.channel {
+                    glb::set(&mut c, "channel", json!(k));
+                }
+                animated.push(c);
             }
         }
     }

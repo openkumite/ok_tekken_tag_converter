@@ -437,6 +437,24 @@ fn openkumite(pack: &Hashed) {
         (king["beacons"].as_array().map(Vec::len), &stages["stages"][0]["weather"]),
         (Some(60), &serde_json::Value::Null)
     );
+    // arena 4's lightning (op 7's nine lists, the bolts' points, a flicker's bolt) and arena 12's three signs
+    let lt = &hw["lightning"];
+    assert_eq!(
+        (
+            &lt["lists"][4],
+            &lt["bolts"][1],
+            &lt["flickers"][1]["bolt"],
+            &lt["near"],
+            &stages["stages"][12]["weather"]["signs"]
+        ),
+        (
+            &serde_json::json!([1, 1, 1, -1]),
+            &serde_json::json!([-749.42, 290.0, -893.12]),
+            &3.into(),
+            &serde_json::json!([625.0, 312.5]),
+            &serde_json::json!([0, 1, 2])
+        )
+    );
     let effects = load("pictures/effects/effects.json");
     assert_eq!((&effects["atlas"]["rows"], &effects["strips"]["spark"]["life"]), (&4.into(), &35.into()));
     sound(&load, count("audio/sfx"), count("audio/music"));

@@ -78,7 +78,7 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 /// and limit; 54: the wings, skins' extras `wings`; 55: front_end `hud.chicken`'s thresholds; 56:
 /// `select.quick.faces`; 57: the joints drawn at the game's places, skins' extras `cloth`; 58: the arena effects'
 /// quads as the arena's projection sizes them; 59: the arenas' texture channels, scene extras `channels`).
-pub const FORMAT: i64 = 59;
+pub const FORMAT: i64 = 60;
 /// What a pack's manifest names it.
 pub const KIND: &str = "ttt";
 
@@ -435,26 +435,36 @@ pub fn convert(ctx: &Ctx, src: &dyn DiscFile, research: bool) -> Result<Value> {
                         }
                     }
                 }
-                let anims: Vec<stage::Anim> = (stage::LOOPS.iter().filter(|l| l.0 == n))
+                // (channel k's frames, each in the arena's uploads as they stand)
+                let frames_of = |k: usize| -> Option<Vec<Vec<Vec<tex::Upload>>>> {
+                    let (e, frames) = (*table.iter().find(|e| e[0] as usize == k)?, *raw.get(2)?);
+                    let count =
+                        archive::pack(archive::pack(frames)?.first()?)?.get(k).and_then(|c| archive::pack(c))?.len();
+                    (0..count)
+                        .map(|f| {
+                            let mut b = banks.clone();
+                            let put = b
+                                .iter_mut()
+                                .map(|ups| tex::put_frame(ups, e, frames, f, false).is_some())
+                                .fold(false, |a, x| a | x);
+                            put.then_some(b)
+                        })
+                        .collect()
+                };
+                let mut anims: Vec<stage::Anim> = (stage::LOOPS.iter().filter(|l| l.0 == n))
                     .filter_map(|&(_, k, speed, start)| {
-                        let (e, frames) = (*table.iter().find(|e| e[0] as usize == k)?, *raw.get(2)?);
-                        let count = archive::pack(archive::pack(frames)?.first()?)?
-                            .get(k)
-                            .and_then(|c| archive::pack(c))?
-                            .len();
-                        let frames = (0..count)
-                            .map(|f| {
-                                let mut b = banks.clone();
-                                let put = b
-                                    .iter_mut()
-                                    .map(|ups| tex::put_frame(ups, e, frames, f, false).is_some())
-                                    .fold(false, |a, x| a | x);
-                                put.then_some(b)
-                            })
-                            .collect::<Option<Vec<_>>>()?;
-                        Some(stage::Anim { frames, speed, start })
+                        Some(stage::Anim { frames: frames_of(k)?, speed, start, channel: None })
                     })
                     .collect();
+                // the still ones the arena's tasks play: their frames (a cleared one with its texels cleared, as the
+                // set-up clears it, 0x3A70C0), resting where they stand
+                anims.extend(stage::STILLS.iter().filter(|s| s.0 == n).filter_map(|&(_, k, f, blank)| {
+                    let mut frames = frames_of(k)?;
+                    if blank {
+                        *frames.get_mut(f)? = banks.clone();
+                    }
+                    Some(stage::Anim { frames, speed: 0, start: f as u32, channel: Some(k) })
+                }));
                 // the objects ending op 25 holds at a hand, each at its own origin
                 for &(_, k) in bowl::PROPS.iter().filter(|p| p.0 == n) {
                     if let Some(m) = bowl::object_model(&a.elf, n, k)?.and_then(|m| blocks.get(m)) {

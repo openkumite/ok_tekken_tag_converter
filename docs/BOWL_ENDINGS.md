@@ -559,7 +559,7 @@ The script: 81 records `{s16 frame, op, a, b, c}`, ops by table 0x519B50:
 | 2 / 3 | slot 0 / 1 plays track a from frame b to c (state 2); 0x3A9898 shows frame +0xA, then +1, and past c the slot goes back to state 0 and is not drawn (+0x127 = 0) [M on +0x127] |
 | 4 | camera path a from frame b (c 999 unused); the path's frame +1 a frame (0x392F80) |
 | 5 / 6 | from / to white over a frames (0x3A67D0 / 0x3A6770) |
-| 7 | arena 4 only: 0x3A7FA8(a, b) [L: its lightning] |
+| 7 | arena 4 only: 0x3A7FA8(a, b): channel a flashes list b of the lightning's (EFFECTS.md, arena 4's lightning) [H] |
 | 8, 9, 11 | 0x363628(a); 0x3A6BC0(); 0x3A68D0(a, white) [L] |
 | 12 | slot a & 1's Jin: the mark off (b = 0, 0x3A88A0) or on (0x3A8890) |
 | 10 | an effect at slot a & 1's joint b (0x3A2BC0) [M] |

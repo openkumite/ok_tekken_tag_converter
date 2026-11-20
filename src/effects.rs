@@ -157,6 +157,13 @@ const JIN_A: usize = 0x43_6A30;
 const JIN_B: usize = 0x43_6AC0;
 const BEACONS_NINA: usize = 0x43_6B50;
 const BEACONS_KING: usize = 0x43_6EE0;
+/// Arena 4's lightning (task 0x3A76C0): the bolts' points (channels 0-3) and the flickers' (channels 4-6), 16 bytes
+/// each (x, y, z, 1); the frame lists (s16 frames, one a frame, to a negative) in the order of EMBU op 7's table
+/// 0x519B00 (its cases 0x3A800C.. load these).
+const BOLTS: usize = 0x43_7C80;
+const FLICKERS: usize = 0x43_7C50;
+const FLASH_LISTS: [usize; 9] =
+    [0x51_9990, 0x51_99A8, 0x51_99C0, 0x51_99D8, 0x51_99F0, 0x51_9A08, 0x51_9A20, 0x51_9A68, 0x51_9AB0];
 /// The arenas' wind (0x3D3630: 12 bytes an arena, `u32 waves, *waves, u32`; a wave 32 bytes: `i32 step, f32 speed,
 /// f32 strength, u32, f32 direction[4]`).
 const WIND: usize = 0x44_7EC0;
@@ -317,7 +324,32 @@ pub fn weather(elf: &[u8], arena: usize, entries: &[Entry], cells: &[Option<usiz
         beacons.push(json!({"set": if kind < 2 { 0 } else { 2 }, "at": [f(r + 0x10)?, f(r + 0x14)?, f(r + 0x18)?], "period": period,
             "phase": phase, "size": f(r + 0x24)? * QUAD, "level": if kind < 2 { 160.0 } else { 240.0 } / 128.0}));
     }
-    if streams.is_empty() && wisps.is_empty() && beacons.is_empty() {
+    // 0x3A76C0 (arena 4): the lists op 7 names, the
+    // bolts' points and the flickers' (each with the bolt it lights: 0x3A7D64's channel 4 -> 0, 5 -> 3, 6 -> 1), the
+    // thunder (0x1072, 0x1074, 0x1075 with the bolt lists 6-8; 0x1073 with the long flicker, list 0), how near the
+    // screen's centre (pixels) a point is heard and lights the fighters (gp-0x7DF0, gp-0x7DEC: GS units of 1/16)
+    let lightning = (arena == 4).then(|| -> Option<Value> {
+        let lists: Vec<Vec<i16>> = (FLASH_LISTS.iter())
+            .map(|&list| {
+                let mut out = vec![];
+                for i in 0..64 {
+                    let v = i16::from_le_bytes([*elf.get(list + 2 * i - VADDR)?, *elf.get(list + 2 * i + 1 - VADDR)?]);
+                    out.push(v);
+                    if v < 0 {
+                        break;
+                    }
+                }
+                Some(out)
+            })
+            .collect::<Option<_>>()?;
+        let bolts: Vec<Vec<f64>> = (0..4).map(|k| at(BOLTS + 16 * k)).collect::<Option<_>>()?;
+        let flickers: Vec<Value> = [0, 3, 1].iter().enumerate().map(|(k, b)| Some(json!({"at": at(FLICKERS + 16 * k)?, "bolt": b}))).collect::<Option<_>>()?;
+        Some(json!({"lists": lists, "bolts": bolts, "flickers": flickers, "thunder": [0x1072, 0x1074, 0x1075], "roll": 0x1073,
+            "near": [gp(0x7DF0)? / 16.0, gp(0x7DEC)? / 16.0]}))
+    }).flatten();
+    // 0x3A7380 (arena 12): three tasks 0x3A7590, one a channel, now and then playing their signs' frames once
+    let signs = (arena == 12).then(|| json!([0, 1, 2]));
+    if streams.is_empty() && wisps.is_empty() && beacons.is_empty() && lightning.is_none() && signs.is_none() {
         return None;
     }
     let round = |v: f64| (v * 1000.0).round() / 1000.0;
@@ -327,7 +359,9 @@ pub fn weather(elf: &[u8], arena: usize, entries: &[Entry], cells: &[Option<usiz
             json!({"cell": cell, "paths": paths})
         })
         .collect();
-    Some(json!({"sets": sets, "streams": streams, "wind": wind, "wisps": wisps, "beacons": beacons}))
+    Some(
+        json!({"sets": sets, "streams": streams, "wind": wind, "wisps": wisps, "beacons": beacons, "lightning": lightning, "signs": signs}),
+    )
 }
 
 /// Arena `arena`'s wind (0x3D3630, the waves 0x3D3D08 sums; [`weather`]'s `wind`): `dt`, `beta`, `reach` and its
