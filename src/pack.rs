@@ -82,7 +82,7 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 /// `signs`; 61: weather `snow`; 62: front_end `practice.combo` and the COMBO TRAINING rows, `chain.result.backdrop`,
 /// `select.quick.faces.frame` and `names`, `command_buttons_lit.png`, `ranking.arena`, `003_110_p84.png`, TRAINING
 /// DUMMY's `icons`).
-pub const FORMAT: i64 = 62;
+pub const FORMAT: i64 = 63;
 /// What a pack's manifest names it.
 pub const KIND: &str = "ttt";
 

@@ -719,7 +719,10 @@ pub fn game_glb(
                 continue;
             }
             if f.iter().all(|x| visible(x) == visible(first)) {
-                px = first.clone().into();
+                // (a still channel rests as the uploads stand: a picture its frames all leave alike is not its own)
+                if a.channel.is_none() {
+                    px = first.clone().into();
+                }
             } else {
                 frames.push((f, a));
             }
