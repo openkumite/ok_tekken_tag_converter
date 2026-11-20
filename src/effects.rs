@@ -142,8 +142,11 @@ pub type Entry = (Option<(usize, usize, Vec<u8>)>, Vec<Vec<[f64; 5]>>);
 pub fn entries(part: &[u8]) -> Vec<Entry> {
     (archive::pack(part).unwrap_or_default().iter())
         .map(|e| {
-            let tex = archive::pack(e).and_then(|p| archive::pack(p.first()?));
-            let pic = tex.and_then(|t| tex::pictures(&tex::uploads(t.first()?), &|_| None).into_iter().next());
+            let tex = archive::pack(e).and_then(|p| archive::pack(p.first()?)).and_then(|t| t.first().copied());
+            // (its texture pack is a pack of pictures; Yoshimitsu's arenas hold two uploaded to the same place, image
+            // and palette, so the second is what the GS holds: a white disc in its alpha, the snow's flake)
+            let tex = tex.map(|t| archive::pack(t).and_then(|p| p.last().copied()).unwrap_or(t));
+            let pic = tex.and_then(|t| tex::pictures(&tex::uploads(t), &|_| None).into_iter().next());
             (pic, paths(e))
         })
         .collect()
@@ -196,6 +199,11 @@ const QUAD: f64 = 1024.0 / 400.0 * ARENA_QUAD;
 ///   (sin(f) + 1) / 2 (f from rand x `fade`[0], + rand x `fade`[1] a frame), size `size`[0] + the fade x `size`[1];
 /// - `beacons` (0x3A1378, 0x3A1298): added, each at `at`, `size`, `level`, their fade (cos(phase) + 1) / 2, the
 ///   phase going 2pi / `period` a frame from `phase` (null: rand x pi); a period of 0 always lit.
+/// - `snow` (0x3E6DA0, VU1 program 0x708; null on most): set `set`'s picture at alpha `level` less `fade` a metre of
+///   depth, in `layers` of `count` flakes: each from x and z at random in a box `box` across and from `top`, falling
+///   `fall` a frame and drifting up to `drift` a frame along a heading at random, from a frame at random of its
+///   `frames`; the box `ahead` of the eye along its heading, a flake's start moved by whole boxes into it; drawn
+///   `size` across at four places `copies` aside in x and z.
 // (the sizes and colours the code writes are constants in it)
 #[allow(clippy::too_many_lines)]
 pub fn weather(elf: &[u8], arena: usize, entries: &[Entry], cells: &[Option<usize>]) -> Option<Value> {
@@ -349,7 +357,32 @@ pub fn weather(elf: &[u8], arena: usize, entries: &[Entry], cells: &[Option<usiz
     }).flatten();
     // 0x3A7380 (arena 12): three tasks 0x3A7590, one a channel, now and then playing their signs' frames once
     let signs = (arena == 12).then(|| json!([0, 1, 2]));
-    if streams.is_empty() && wisps.is_empty() && beacons.is_empty() && lightning.is_none() && signs.is_none() {
+    // 0x3E6DA0 on arenas 2, 19 (heavy: 0x82 and 0x46 batches) and 22 (5 and 2), VU1 program 0x708 (from 0x357D38,
+    // 0x3E7270): two layers of flakes, 8 a batch (0x3E6B10), each in a box `box` across `ahead` of the eye (gp-0x77C4,
+    // gp-0x77C0) from `top`, `fall` (385 / 16 mm) a frame, drifting up to 12 mm a frame, their frames 512 (box over
+    // 10 m, gp-0x7810) or 256, drawn four times `copies` aside (gp-0x77FC, gp-0x77E0); the picture of entry 0,
+    // colour 128, alpha 0x60 less 9.6e-5 (gp-0x7808) of the depth (mm), half 24000 / w GS pixels (0.0312 m at 0x4334C0's
+    // 768.75 pixels a unit at w)
+    let snow = match arena {
+        2 | 19 | 22 => {
+            let heavy = arena == 19;
+            let layer = |batches: u32, box_: f64, top: f64, ahead: f64, copies: f64| {
+                json!({"count": 8 * batches, "box": box_ * SCALE, "top": top * SCALE, "ahead": ahead * SCALE, "copies": copies * SCALE,
+                    "fall": 385.0 / 16.0 * SCALE, "drift": 12.0 * SCALE, "frames": if box_ > 10_000.0 { 512 } else { 256 }, "size": 2.0 * 24_000.0 / 768.75 * SCALE})
+            };
+            json!({"set": 0, "level": 96.0 / 128.0, "fade": gp(0x7808)? / SCALE / 128.0, "layers": [
+                layer(if heavy { 0x82 } else { 5 }, gp(0x77F8)?, 12_288.0, gp(0x77C4)?, gp(0x77FC)?),
+                layer(if heavy { 0x46 } else { 2 }, gp(0x77DC)?, 6_144.0, gp(0x77C0)?, gp(0x77E0)?)]})
+        }
+        _ => Value::Null,
+    };
+    if streams.is_empty()
+        && wisps.is_empty()
+        && beacons.is_empty()
+        && lightning.is_none()
+        && signs.is_none()
+        && snow.is_null()
+    {
         return None;
     }
     let round = |v: f64| (v * 1000.0).round() / 1000.0;
@@ -360,7 +393,7 @@ pub fn weather(elf: &[u8], arena: usize, entries: &[Entry], cells: &[Option<usiz
         })
         .collect();
     Some(
-        json!({"sets": sets, "streams": streams, "wind": wind, "wisps": wisps, "beacons": beacons, "lightning": lightning, "signs": signs}),
+        json!({"sets": sets, "streams": streams, "wind": wind, "wisps": wisps, "beacons": beacons, "lightning": lightning, "signs": signs, "snow": snow}),
     )
 }
 
