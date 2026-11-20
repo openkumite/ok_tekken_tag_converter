@@ -448,11 +448,24 @@ back); the bytes go to the config's +0x38 / +0x39 at the select's end (0x3CB6CC;
 centred by the width at foot 40, size 5) and white lines (0x3BE8C0: 4 high, 6 to 2 above the points of 0x440708,
 TEAM BATTLE 0x440728, 1 ON 1 the first two 10 higher; the even ones fading leftwards from 4 right of the point to 160
 left of it, the odd ones rightwards), the grid 52 lower (0x3CC6D4, 0x3CCA28) with a panel per slot (0x3BE038, not
-followed). CHICKEN MARKING (settings +0xE, with settings +0x1A = 2): 0x3D2B88, called from the round's end (0x36E4CC,
-0x36FAE0), compares the team's per-member counters (+0x5C / +0x60 of the side's 0x60 bytes at 0x440940) with table
-0x521190's percentages (25, 33, 50, 75, 83 / 17, 22, 33, 50, 55 by settings +0xB) scaled by the rounds played; a side
-marked gets gp-0x7428 = 1 and voice 0x1046, and the HUD (0x3C21DC) draws sprites 0x47 / 0x48 for it; what the counters
-count is not followed. [M]
+followed).
+
+**CHICKEN MARKING** (settings +0xE, format 55 `hud.chicken`) [H, the counters followed in the code]:
+- The counters (0x3D2A38, at each move a fighter starts, 0x36A7CC): for the side's member in front (fighter +0),
+  +0x5C[member] += 1 for a move with flag 0x4000 at +0x24, += 2 for one with 0x8000; a move with a first active
+  frame (an attack: +0x2C) goes into the member's last 20 aliases (fighter +0x64 + 0x28 x member), and when two or
+  more of the other 19 are the same alias, +0x60[member] += 1 (the same attack again and again). Both reset with the
+  match (0x36D480).
+- The check (0x3D2B88, at the round's end, 0x36E4CC / 0x36FAE0): only with settings +0x1A = 2 (seen 1 in practice;
+  by the life code, the match of two players) and +0xE on, for the side ahead in rounds won (+0x5A; none on a tie)
+  when no CPU plays it (+0x418). With r the rounds won by both (0-9) and the column c the ROUND TIME option (+0xB, at
+  most 4): not marked yet, the side is marked when either member's +0x5C >= A[c] x r x s(r) / 4096 or its +0x60 >=
+  B[c] x r x s(r) / 4096 (A = 25, 33, 50, 75, 83 and B = 17, 22, 33, 50, 55: table 0x521190, its two rows the same;
+  s = 0x447590: 4096, 4096, 3686, 3686, 3276, 3276, 2867, 2867, 2457, 2457); marked, it stays so while either
+  counter is over A[c] x r x 6 / 10 x (T - t) / T (resp. B), T the round's frames by the option (2160, 2820, 4260,
+  5640, 6960) and t the timer gp-0x74C0 left. Marked: gp-0x7428[side] = 1 and voice 0x1046 (again each round it
+  stays); the HUD (0x3C21DC) draws sprite 0x47 (palette 0x48) at (13, 400) / (595, 400); gp-0x7428 is cleared with
+  the match (0x3B7A58).
 
 **The help line** (0x3E5268 -> 0x3E06A0, when HELP MESSAGES is on: 0x3B1468): a band (0, 389, 640 x 48) RGBA
 0x18181860 (0x3DBCF0), the text at (30, 390) (its top) in the help font of the executable's archive 0x457380 entry 0

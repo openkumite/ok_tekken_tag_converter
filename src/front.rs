@@ -508,7 +508,12 @@ pub fn front_end(elf: &[u8], ups: &[Upload], clips: &[Option<String>]) -> Result
             // (0x3C1F08: 8 higher (+0x24) when the side has no partner)
             "lamps": {"lit": sprite(67), "unlit": sprite(69), "x": [250, 364], "dx": 22, "y": 60, "blink": [180, 11], "solo_dy": -8},
             "team_icon": {"picture": sprite(73), "x": [272, 348], "dx": 16, "y": 60},
-            "chicken": {"picture": sprite(71), "x": [13, 595], "y": 400},
+            // (CHICKEN MARKING, FRONTEND.md 8: the counters' thresholds by ROUND TIME, their scale by rounds won)
+            "chicken": {"picture": sprite(71), "x": [13, 595], "y": 400,
+                "flagged": (0..5).map(|k| u32_at(elf, 0x521190 - VADDR + 4 * k, what)).collect::<Result<Vec<_>>>()?,
+                "repeats": (0..5).map(|k| u32_at(elf, 0x5211A4 - VADDR + 4 * k, what)).collect::<Result<Vec<_>>>()?,
+                "scale": (0..10).map(|k| u32_at(elf, 0x447590 - VADDR + 4 * k, what)).collect::<Result<Vec<_>>>()?,
+                "flags": [0x4000, 0x8000], "history": 20, "voice": 0x1046, "keep": [6, 10]},
             // (0x3C6738 at (320, 6): the tens 39 left of the ones, 40 x 47; INFINITY at x 285)
             "timer": {"digits": sprite(0), "digit_w": 40, "y": 6, "x": 320, "tens_dx": -39, "infinity": sprite(7), "infinity_x": 285},
             "stage": {"text": string(elf, 0x51ED10), "final": string(elf, 0x51ED28), "alternate": 32},

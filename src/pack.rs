@@ -75,8 +75,8 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 /// `command_list`, its icons; 50: `command_list.lists[].training`, front_end `practice.chain`; 51: rules.json
 /// `joints`, the joint places the strikes and spheres are posed with; 52: the fighters' hand poses,
 /// `characters/hands_NNN.glb` and movesets/index.json `hands`; 53: `practice.hud.capture`'s states, PLAY keys
-/// and limit; 54: the wings, skins' extras `wings`).
-pub const FORMAT: i64 = 54;
+/// and limit; 54: the wings, skins' extras `wings`; 55: front_end `hud.chicken`'s thresholds).
+pub const FORMAT: i64 = 55;
 /// What a pack's manifest names it.
 pub const KIND: &str = "ttt";
 
