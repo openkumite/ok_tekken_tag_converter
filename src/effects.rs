@@ -100,31 +100,37 @@ pub fn stages(
             let row = DUST + 12 * a - VADDR;
             let dust = json!({"count": u32le(elf, row)?, "scale": f32le(elf, row + 4)?,
                 "colour": elf.get(row + 8..row + 11)?});
-            let cast = moves::cast(elf, a).unwrap_or_default();
-            // (0x3D86D8: arenas 7 and 21 draw each person with the model after its own)
-            let next = usize::from(a == 7 || a == 21);
-            let people: Vec<Value> = (cast.iter())
-                .map(|p| {
-                    let script: Vec<Value> = (p.script.iter())
-                        .map(|s| json!({"motions": s.motions, "model": s.model, "repeat": s.repeat, "back": s.back, "wait": s.wait, "start": s.start, "frames": s.frames}))
-                        .collect();
-                    json!({"model": p.model + next, "at": p.pos.map(|v| (v as f64 * SCALE) as f32), "heading": p.heading, "motions": p.motions,
-                        "wait": p.wait, "start": p.start, "repeat": p.repeat, "script": script, "stop": p.stop})
-                })
-                .collect();
-            // how far each of their motions takes them (metres, degrees)
-            let mut walk = serde_json::Map::new();
-            for m in cast.iter().flat_map(|p| p.motions.iter().copied()) {
-                if let Some([x, z, turn]) = moves::walk(elf, a, m) {
-                    walk.insert(m.to_string(), json!([x as f64 * SCALE, z as f64 * SCALE, turn]));
-                }
-            }
+            let (people, walk) = people(elf, a, a);
             Some(json!({"id": a, "shadow": {"toward": [x * s, y * s, z * s], "colour": [0, 0, 0], "alpha": alpha as f64 / 128.0},
                 "lights": {"toward": [v(0), v(1), v(2)], "colour": [v(3), v(4), v(5)], "ambient": v(6)}, "dust": dust, "people": people, "walk": walk, "scales": scales.get(&a), "objects": crate::objects::motion(elf, a), "flare": flare(a),
                 "weather": fx.get(&a).and_then(|(e, cells)| weather(elf, a, e, cells))}))
         })
         .collect();
     json!({"stages": stages})
+}
+
+/// People set `set` of 0x114FC8 (an arena's own; 23-30 some endings', 0x3D85D8) on arena `arena`: stages.json's
+/// `people` and their `walk` (how far each of their motions takes them: metres, degrees).
+pub fn people(elf: &[u8], set: usize, arena: usize) -> (Vec<Value>, serde_json::Map<String, Value>) {
+    let cast = moves::cast(elf, set).unwrap_or_default();
+    // (0x3D86D8: arenas 7 and 21 draw each person with the model after its own)
+    let next = usize::from(arena == 7 || arena == 21);
+    let people: Vec<Value> = (cast.iter())
+        .map(|p| {
+            let script: Vec<Value> = (p.script.iter())
+                .map(|s| json!({"motions": s.motions, "model": s.model, "repeat": s.repeat, "back": s.back, "wait": s.wait, "start": s.start, "frames": s.frames}))
+                .collect();
+            json!({"model": p.model + next, "at": p.pos.map(|v| (v as f64 * SCALE) as f32), "heading": p.heading, "motions": p.motions,
+                "wait": p.wait, "start": p.start, "repeat": p.repeat, "script": script, "stop": p.stop})
+        })
+        .collect();
+    let mut walk = serde_json::Map::new();
+    for m in cast.iter().flat_map(|p| p.motions.iter().copied()) {
+        if let Some([x, z, turn]) = moves::walk(elf, set, m) {
+            walk.insert(m.to_string(), json!([x as f64 * SCALE, z as f64 * SCALE, turn]));
+        }
+    }
+    (people, walk)
 }
 
 /// An arena's effect entry (its geometry pack's part 1 is a pack of up to three, each a pack of a texture pack and a

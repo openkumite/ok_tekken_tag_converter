@@ -463,7 +463,7 @@ scene; hard cap 7200 frames. [H]
 | 17 | a burst 0x3A2758(kind (a >> 1) & 3, at, 0, 0) at actor a & 1's node b (its matrix +0x30, fighter 0x8796C0 + 0xB8A0 x side + 0xDB0 + 0xC0 x node; y, z negated), turned away from the other actor's node c (at +0x10: the difference); b = 0x4002: the matrix 0x444CD0 instead (0x3D2270) | [H] |
 | 18 | the dust 0x3A2758(3, at, flag 1, c x 2 pi / 4096) at actor a & 1's node b: spinning c x 2 pi / 4096 a frame (+0x84 into +0x74 each frame, 0x3A06F0); b = 0x62: the actor's place on the floor (fighter +0x510 x, z; y 0), flag 0; 0x4000: twenty objects 0x3ACCD0 (0x3ACEE0) instead; 0x4001: the point gp-struct 0x415808 +0x14 (y - 800), flag 0; 0x4002: as op 17's. With the flag, dust more than 500 mm up is 3 particles at the set's own size and colour 0x808080, not the arena's row | [H] |
 | 10 | the character effect 0x3A2BC0(side c & 1, 0, at) at actor c & 1's node b (0x4003: the point 0x5F6280 through the actor's +0x974 matrix, plus +0x988): particles of the side's own set (4 + side, the character's effect file by 0x35C970 -> table 0x519438) [M] | [M] |
-| 12 | actor a & 1's texture channel 0 (0x8D5E20, 4 players x 2 x 16 bytes) to frame 1 (b = 0) or 0 (0x3A86D8) [M: what the channel animates] | [M] |
+| 12 | actor a & 1's texture channel 0 (0x8D5E20, 4 players x 2 x 16 bytes) to frame 1 (b = 0) or 0 (0x3A86D8): Jin's mark (below) | [H] |
 | 15 | True Ogre's fire (0x3A6440 -> 0x3A4EE8, character 20 only) from actor a & 1 for b frames (task 0x3AC558) | [H] |
 | 16 | 0x378368: table 0x8A7B70[a & 1] = {b, ?, c} (6 bytes; its reader not followed) | [L] |
 | 21 | full-screen quad 0x43FD10 entry 9 (black, a 0 / 1) or 10 (white, a 2 / 3) at alpha b / 128 for c frames (0x3AC7C0) | [H] |
@@ -477,9 +477,20 @@ scene; hard cap 7200 frames. [H]
 | 29 / 30 / 32 | 0x3AA4B8 for a frames; every other frame for a frames an object 0x3ACF50 (0x3AD1D8); gp-0x6E78 = 1 for a frames (0x3AA410, read by 0x3ABD1C) | [L] |
 | 7-9, 11, 13, 14 | no-op | [H] |
 
+**Texture channels** (0x3A82C8 at a fighter's set-up, 0x3A80E8 each frame; records 0x8D5E20, 2 a player: +0 state,
++4 frame << 8, +8 speed, +0xC frames): a fighter pack's part 1 holds channel k's frames at [0][k][f] (an image and its
+palette); the model part's table after its nodes (u32 count, then at its +0x14 16 bytes `{s16 channel, u16 dbp, x, y,
+w, h, dbw, psm}`) says where a frame goes, from the fighter's first texture block. Only Jin's packs have one: channel 0,
+his face with the mark (frame 0, the face the textures load with) and without (frame 1). His set-up shows frame 1
+(0x3A85E4, character 9; not on screen 5 when 0x43B800 is set); in a fight the mark shows while the move's +0x24 bit 17
+is set (0x370E20), in a scene by op 12. The converter bakes frame 1 into his textures. [H]
+
 Typical: ops 0-4 at frame 0, fade in over 45, effects, fade out over 60-120, end at camera frames - 1. No op plays
-sound: the only audio is the music [M]. Thirteen endings swap the arena's background-character set (0x3D85D8,
-table 0x521C30): 2, 4, 7, 9, 10, 12, 15, 16, 23, 24, 30, 33, 36 [M].
+sound: the only audio is the music [M]. The background characters are a set of 0x114FC8 by the scene, not
+the arena's (0x3D85D8, the people set gp-0x6170): ending e takes case e - 2 of jump table 0x521C30: 2 -> 23, 4 -> 27,
+7 -> 22, 9 / 16 / 24 -> 29, 10 -> 25, 12 -> 13, 15 -> 30, 23 -> 28, 30 -> 26, 33 -> 24, 36 -> 21; every other
+ending shows none. On the EMBU's screen arena 13 takes set 30, any other none. Sets 23-30 use the arena's models and
+motions (their motion table is an arena's); arenas 7 and 21 still draw each person with the next model. [H]
 
 ### 7.5 Playback and staff roll (0x3AA8A8, table 0x51B7B0) [H unless marked]
 
@@ -529,7 +540,8 @@ The script: 81 records `{s16 frame, op, a, b, c}`, ops by table 0x519B50:
 | 4 | camera path a from frame b (c 999 unused); the path's frame +1 a frame (0x392F80) |
 | 5 / 6 | from / to white over a frames (0x3A67D0 / 0x3A6770) |
 | 7 | arena 4 only: 0x3A7FA8(a, b) [L: its lightning] |
-| 8, 9, 11, 12 | 0x363628(a); 0x3A6BC0(); 0x3A68D0(a, white); 0x3A88A0 / 0x3A8890 on slot a & 1 by b [L] |
+| 8, 9, 11 | 0x363628(a); 0x3A6BC0(); 0x3A68D0(a, white) [L] |
+| 12 | slot a & 1's Jin: the mark off (b = 0, 0x3A88A0) or on (0x3A8890) |
 | 10 | an effect at slot a & 1's joint b (0x3A2BC0) [M] |
 | 13 | the music: 0x39A0C0(1), BGM 1 (EMBU) |
 
@@ -562,7 +574,7 @@ to convert.
 
 Ranked by how much a player would notice:
 
-1. Ending effect ops 10, 12, 16, 25, 28-30, 32 (the props, the character effects, Kuma's face), op 15's fire.
+1. Ending effect ops 10, 16, 25, 28-30, 32 (the props, the character effects, Kuma's face), op 15's fire.
 2. The face part's joint mapping (33 triples; section 7.3's outline).
 3. What a spectator the ball hits plays (0x3DB860).
 4. Whether the staff roll draws over the ending scene (its texts are 7.5's); the flash / fade colours (table 0x43FD10, 9 and 10).

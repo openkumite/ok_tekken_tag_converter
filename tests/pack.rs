@@ -648,6 +648,11 @@ fn endings(pack: &Hashed) {
     let king = &all[4];
     assert_eq!((&king["arena"], &king["cast"]), (&11.into(), &serde_json::json!([[3, -1], [26, 0], [15, 6]])));
     assert_eq!(king["script"].as_array().unwrap().last().unwrap(), &serde_json::json!([1799, -1, 0, 0, 0]));
+    // the people: 13 endings show a set (set 27 in King's), the rest none; the EMBU's second cast set 30
+    let sets: Vec<i64> = all.iter().filter_map(|d| d["people"]["set"].as_i64()).collect();
+    assert_eq!(sets, [23, 27, 22, 29, 25, 13, 30, 29, 28, 29, 26, 24, 21]);
+    assert!(king["people"]["people"].as_array().is_some_and(|p| !p.is_empty()) && all[3]["people"].is_null());
+    assert!(e["embu"]["people"][0].is_null() && e["embu"]["people"][1]["set"] == 30);
     let camera = pack.read("assets/endings/ending_04_camera.bin").unwrap();
     assert_eq!((u32::from_le_bytes(camera[..4].try_into().unwrap()), camera.len()), (1800, 4 + 1800 * 28));
     for (k, d) in all.iter().enumerate() {
