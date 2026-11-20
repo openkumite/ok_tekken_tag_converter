@@ -1,7 +1,7 @@
 //! "PS2TagA" skinned models: a node tree with its bind pose, and triangle strips whose vertices
 //! carry up to four (node, normal, position, weight) influences in node-local space.
 use crate::glb::{self, Glb, M4};
-use crate::{f32le, tex, u32le};
+use crate::{f32le, tex, u16le, u32le};
 use serde_json::{Value, json};
 use std::collections::{BTreeMap, HashMap};
 
@@ -28,6 +28,36 @@ pub struct Strip {
 pub struct Model {
     pub nodes: Vec<Node>,
     pub sections: Vec<Vec<Strip>>,
+    /// True Ogre's and Devil's wings: the nodes whose +0x1C is 0x1F, 0x22, 0x25 (one wing: its root, middle and tip)
+    /// and 0x20, 0x23, 0x26 (the other), the order of the six slots of table 0x46B010 (0x3565D8).
+    pub wings: Option<[usize; 6]>,
+}
+
+/// A wing track (a fighter pack's part 1 for a winged fighter: `u16 frames, u16 triples` 6, then 6 s16 a wing node a
+/// frame) as each frame's six wing nodes' local turn and scale (x, y, z, w, sx, sy, sz), slot by slot ([`Model::wings`]):
+/// 0x3DE4E0 takes node pair k % 3's 12 bytes, scales (1/4096, 0x3DD800 the matrix's rows) then a turn (65536 a turn,
+/// 0x349D70 as a joint's): the first wing (-x, -y, z) as a motion's joints (0x3DD788), the other (x, y, z) (0x3DE428).
+pub fn wing_frames(t: &[u8]) -> Vec<Vec<[f32; 7]>> {
+    if u16le(t, 2) != Some(6) {
+        return vec![];
+    }
+    let frames = (u16le(t, 0).unwrap_or(0) as usize).min(t.len().saturating_sub(4) / 36);
+    let at = |f: usize, i: usize| u16le(t, 4 + 2 * (18 * f + i)).unwrap_or(0);
+    let k = std::f64::consts::TAU / 65536.0;
+    (0..frames)
+        .map(|f| {
+            (0..6)
+                .map(|slot| {
+                    let b = 6 * (slot % 3);
+                    let [x, y, z] = [3, 4, 5].map(|i| at(f, b + i) as i16 as f64 * k);
+                    let r = if slot < 3 { [-x, -y, z] } else { [x, y, z] };
+                    let [qx, qy, qz, qw] = glb::quat(&glb::joint(r, [0.; 3]));
+                    let s = [0, 1, 2].map(|i| at(f, b + i) as f32 / 4096.0);
+                    [qx, qy, qz, qw, s[0], s[1], s[2]]
+                })
+                .collect()
+        })
+        .collect()
 }
 
 /// The nodes every fighter shares: the first of its table.
@@ -85,6 +115,9 @@ pub fn parse(c: &[u8]) -> Option<Model> {
     for o in (0..count).map(|i| 0x7c + 0x20 * i) {
         nodes.push(Node { parent: u32le(c, o)? as i32, pos: v3(c, o + 4)?, rot: v3(c, o + 16)? });
     }
+    let wing = |k: u32| (0..count).find(|i| u32le(c, 0x7c + 0x20 * i + 0x1c) == Some(k));
+    let wings = [0x1f, 0x22, 0x25, 0x20, 0x23, 0x26].map(wing);
+    let wings = wings.iter().all(Option::is_some).then(|| wings.map(|w| w.unwrap_or(0)));
     let mut sections = Vec::new();
     // 2 passes x 2 halves (upper body, legs) x 5 section offsets (the loader at 0x3AF624 relocates them all)
     for s in 0..20 {
@@ -143,7 +176,7 @@ pub fn parse(c: &[u8]) -> Option<Model> {
         }
         sections.push(strips);
     }
-    Some(Model { nodes, sections })
+    Some(Model { nodes, sections, wings })
 }
 
 /// A background character of an arena, or a fighter's low-detail model (its shadow, pack part 8): 18 nodes, which
@@ -199,7 +232,7 @@ pub fn parse_low(c: &[u8]) -> Option<Model> {
     // shortcut: a model with parts metres from their node is not a person (Law's junks); those come
     // out wrongly posed, so they are left out until what moves them is decoded
     let person = strips.iter().flat_map(|s| &s.verts).flat_map(|v| &v.1).all(|i| i.p.iter().all(|x| x.abs() < 4000.0));
-    (person && !strips.is_empty()).then_some(Model { nodes, sections: vec![strips] })
+    (person && !strips.is_empty()).then_some(Model { nodes, sections: vec![strips], wings: None })
 }
 
 impl Model {
@@ -256,10 +289,17 @@ impl Model {
     /// fewer nodes, a skeleton node hangs from one past it, or its textures do not fit one picture. `alt`: the uploads
     /// with another texture channel frame (Jin's mark, BOWL_ENDINGS.md 7.4), or none: the texels it changes go in the
     /// picture too, the texture's extras `mark` `[x, y, w, h, from x, from y]` (the rectangle, where its other texels are).
-    pub fn fighter_glb(&self, ups: &[tex::Upload], alt: &[tex::Upload]) -> Option<Vec<u8>> {
+    /// A winged fighter's skeleton reaches its last wing node, and `wing_track` (its pack's part 1) goes in the skin's
+    /// extras `wings` ([`wing_frames`]).
+    pub fn fighter_glb(&self, ups: &[tex::Upload], alt: &[tex::Upload], wing_track: &[u8]) -> Option<Vec<u8>> {
         let n = self.nodes.len();
         // (an arena's background character: the 18 joints of `RIG` alone)
-        let skeleton = if n == RIG.len() { n } else { SKELETON };
+        let wings = self.wings.filter(|w| w.iter().all(|&i| i < 128));
+        let skeleton = match wings {
+            _ if n == RIG.len() => n,
+            Some(w) => w.iter().max().map_or(SKELETON, |&m| (m + 1).max(SKELETON)),
+            None => SKELETON,
+        };
         if n < skeleton || (0..skeleton).any(|i| self.parent(i).is_some_and(|p| p >= skeleton)) {
             return None;
         }
@@ -367,6 +407,10 @@ impl Model {
         if prims.is_empty() {
             return None;
         }
+        let mut skin = json!({"joints": (0..skeleton).collect::<Vec<_>>(), "inverseBindMatrices": ibm});
+        if let Some(w) = wings.filter(|_| !wing_track.is_empty()) {
+            glb::set(&mut skin, "extras", json!({"wings": {"nodes": w, "frames": wing_frames(wing_track)}}));
+        }
         let png = g.view(&tex::png(atlas.w, atlas.h, &atlas.rgba));
         nodes.push(json!({"name": "part_0", "mesh": 0, "skin": 0}));
         roots.push(nodes.len() - 1);
@@ -379,7 +423,7 @@ impl Model {
             "meshes": [{"name": "part_0", "primitives": prims}],
             "materials": [{"name": "opaque", "pbrMetallicRoughness": pbr, "doubleSided": true, "alphaMode": "MASK", "alphaCutoff": 0.5},
                           {"name": "blend", "pbrMetallicRoughness": pbr, "doubleSided": true, "alphaMode": "BLEND"}],
-            "skins": [{"joints": (0..skeleton).collect::<Vec<_>>(), "inverseBindMatrices": ibm}],
+            "skins": [skin],
             "images": [{"bufferView": png, "mimeType": "image/png"}], "textures": [texture],
             "samplers": [{"magFilter": 9729, "minFilter": 9729, "wrapS": 33071, "wrapT": 33071}]});
         Some(g.finish(doc))
@@ -604,12 +648,12 @@ mod tests {
         let tex0 = 0x100 | 2 << 14 | 0x14 << 20 | 4 << 26 | 4 << 30 | 0x200 << 37;
         // the strip again in a second section (as the legs are): in the same primitive
         let section = || vec![Strip { tex0, blend: false, verts: verts().into() }];
-        let m = Model { nodes: (0..99).map(node).collect(), sections: vec![section(), section()] };
+        let m = Model { nodes: (0..99).map(node).collect(), sections: vec![section(), section()], wings: None };
         let mut clut = vec![0u8; 64];
         clut[4..8].copy_from_slice(&[255, 0, 0, 0x80]);
         let up = |dbp, psm, w, h, data| tex::Upload { set: 0, dbp, dbw: 128, psm, w, h, data };
         let ups = [up(0x100, 0x14, 16, 16, vec![0x11; 128]), up(0x200, 0, 8, 2, clut)];
-        let (doc, buffers, images) = gltf::import_slice(m.fighter_glb(&ups, &[]).unwrap()).unwrap();
+        let (doc, buffers, images) = gltf::import_slice(m.fighter_glb(&ups, &[], &[]).unwrap()).unwrap();
         // as OpenKumite reads it: the first mesh, the first skin, the first image
         let skin = doc.skins().next().unwrap();
         let joints: Vec<_> = skin.joints().map(|j| j.name().unwrap().to_string()).collect();
@@ -638,7 +682,7 @@ mod tests {
         let mut other = vec![0x11; 128];
         (other[3 * 8 + 1], other[4 * 8 + 2]) = (0x01, 0x10);
         let alt = [up(0x100, 0x14, 16, 16, other), ups[1].clone()];
-        let (doc, _, images) = gltf::import_slice(m.fighter_glb(&ups, &alt).unwrap()).unwrap();
+        let (doc, _, images) = gltf::import_slice(m.fighter_glb(&ups, &alt, &[]).unwrap()).unwrap();
         let extras = doc.textures().next().unwrap().extras().as_ref().unwrap().get().to_string();
         let mark: serde_json::Value = serde_json::from_str(&extras).unwrap();
         let [x, y, w, h, sx, sy] = serde_json::from_value::<[usize; 6]>(mark["mark"].clone()).unwrap();
@@ -648,16 +692,36 @@ mod tests {
         let black = &[0, 0, 0, 255][..];
         assert_eq!((px(sx, sy), px(sx + 1, sy), px(sx + 1, sy + 1), px(x, y)), (black, red, black, red));
         // fewer nodes than the skeleton, or a skeleton node hanging from one past it: not a fighter
-        assert!(Model { nodes: (0..97).map(node).collect(), sections: vec![] }.fighter_glb(&ups, &[]).is_none());
-        let mut bad = Model { nodes: (0..99).map(node).collect(), sections: vec![] };
+        assert!(
+            Model { nodes: (0..97).map(node).collect(), sections: vec![], wings: None }
+                .fighter_glb(&ups, &[], &[])
+                .is_none()
+        );
+        let mut bad = Model { nodes: (0..99).map(node).collect(), sections: vec![], wings: None };
         bad.nodes[7].parent = 98;
-        assert!(bad.fighter_glb(&ups, &[]).is_none());
+        assert!(bad.fighter_glb(&ups, &[], &[]).is_none());
+    }
+
+    #[test]
+    fn a_wing_track_turns_one_wing_mirrored() {
+        // one frame: node pair 0 a quarter turn about z at scale 1.25 (5120), the others still at 1
+        let mut t = vec![1, 0, 6, 0];
+        for v in [5120i16, 5120, 5120, 0, 0, 16384, 4096, 4096, 4096, 0, 0, 0, 4096, 4096, 4096, 0, 0, 0] {
+            t.extend(v.to_le_bytes());
+        }
+        let f = wing_frames(&t);
+        let h = std::f32::consts::FRAC_1_SQRT_2;
+        // z is not negated on either wing: both +90 degrees about z
+        assert!((f[0][0][2] - h).abs() < 1e-6 && (f[0][3][2] - h).abs() < 1e-6 && f[0][0][4] == 1.25, "{:?}", f[0]);
+        assert_eq!(f[0][1], [0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0]);
+        // a cut frame, or not six triples: none
+        assert!(wing_frames(&t[..20]).is_empty() && wing_frames(&[1, 0, 15, 0]).is_empty());
     }
 
     #[test]
     fn parents_in_a_loop_end() {
         let node = |parent| Node { parent, pos: [1000.0, 0.0, 0.0], rot: [0.; 3] };
-        let m = Model { nodes: vec![node(1), node(2), node(0), node(7), node(3)], sections: vec![] };
+        let m = Model { nodes: vec![node(1), node(2), node(0), node(7), node(3)], sections: vec![], wings: None };
         let w = m.world();
         assert_eq!(w.len(), 5);
         assert_eq!((w[3][0][3], w[4][0][3]), (1.0, 2.0)); // a parent that is not there: a root
