@@ -202,7 +202,7 @@ The arenas' additive strips (ALPHA 0x48, Cs x As + Cd: lights, neon, floor gloss
 Cd x As: painted shadows, dirt) are in the stages since format 14, in materials named `additive` and `shade`
 (GAMEDATA.md).
 
-## 5b. Devil's beam and the character effects (read 2026-11-21, not exported yet)
+## 5b. Devil's beam and the character effects (read 2026-11-21; exported, format 65)
 
 - **Devil's beam** [H unless marked]: in a fight 0x378150 (each frame, Devil only: character 0x1D at fighter +0x2A,
   drawn +0x127): while the move (+0xC0) has attack bone 0x18 in one of its slots +0x28..+0x2B and its frame +0xC4 is
@@ -228,8 +228,31 @@ Cd x As: painted shadows, dirt) are in the stages since format 14, in materials 
   record's byte 8) selects 0x347730's row (0x51B3B8 + 8 x index, 36 rows: `u32 the particle routine, light`); a
   particle on each path of set 4 + side, texture slot 14 + 3 x side + the path's +0x36, its +0x34 cells. Characters
   0x13, 0x1D, 0x0F, 0x21 on their moves 0x25 / 0x26 take set 9 instead (0x3A2E20; 0x344BE0 points set 9 and slot 12
-  at True Ogre's or Devil's own part, 0x8BF2C0 / 0x8BF308). Where sets 4-5 and slots 14-25 are loaded from the
-  fighter's files is not yet found.
+  at True Ogre's or Devil's own part, 0x8BF2C0 / 0x8BF308). **Where they come from** [H]: the fighter's set-up 0x367600 keeps its
+  pack's parts in record 0x8794C0 + 0x2C x n (n the loaded fighter, fighter +0x22; 0x367250 reads part 0) and calls
+  0x344EA8: fighter-pack **part 0** is a pack of its pictures (texture slots, each a pack of frames: one GS upload,
+  image and palette, a frame) and its particle paths (section 3's; `+0x34` 1 when the particle's frame runs, `+0x36`
+  its slot); True Ogre's, Devil's and Unknown's (+0x2A 0x14, 0x1D, 0x21) a pack of that and their special part
+  (part 0: more slots). 0x344EA8 keeps them by n at 0x8BF2C0 + 0x18 (paths), 0x8BF308 + 0x18 (pictures) and 0x8BF308 +
+  0x38 (the special slots); a fight's set-up (0x344318) points set 4 + side and slots 14 + 3 x side (17-19), 20 + 3 x
+  side at the side's fighter's, sending every frame of a slot (0x354120 packets at 0x1688A30 + 0x8A0 x slot + 0x30 x
+  frame); the draw (0x3469D8) sends the frame a particle's +0x1E names (0x344030, clamped to the slot's last) before
+  the particles of that frame (46 lists a slot).
+- **The rows' routines** (0x5193B8, 0x347730) [H]: 0x346BB8 (most rows): the row 0x436688[row] (scale x 3, blend,
+  brightness, the size's divisor), the frame +0x1E on by 1 while the path's frame runs and its fade is under 1, held
+  on the slot's last; 0x346DA8 (rows 5, 16, 20) the same, round the slot; 0x346FA0 (Paul) scale 1.5, added,
+  brightness 128, divisor 800 (a running path) or 1600, held; 0x347178 (Xiaoyu) 2.0, 300, still; 0x3472B8 (Eddy) 1.5,
+  400, still; 0x3473F0 (Jin) 1.0, divisor gp-0x7F50 (533), round the slot every frame; 0x347568 (Jun) 1.5, 400 or 800,
+  held. The row's colour lights the fighters from the effect for 54 frames (0x3531F0: gp-0x60B6 = 0x36, strength
+  frames / 54). Exported (format 65): effects.json `characters` (GAMEDATA.md).
+- **The beam's draw, completed** [H]: 0x378600 passes 0x3A8D08 the width only (the colour it makes is not used: the
+  quads are drawn at 0x80), 100 x t + 50, or 130 x t + 70 when the record's +0xC is 1 (types 2 and 4: 0x378A28,
+  0x378E70); t is 1 in a scene (0x3ABCD0). The segments run from the end back (the first, the end's, slot + 2). The
+  flare's frame (gp-0x63D8 + 2 x side) and the jitters (18 of 36 set to rand() & 7) start at 0 with the beam
+  (0x3A8C50), which also lights the fighters pink (gp-0x6EA8, ff 80 ff) from the head. The half widths are GS units
+  over w as the hit effects' (0x433440). In a scene 0x378398 starts the beam the frame after op 16 and runs the type's
+  routine (table 0x506230) with the op's count as its frame and the head's heading (0x378760: the head matrix's
+  point (-100, 0, 0) from its origin) for the op's frames.
 
 ## 6. Not found or not read
 

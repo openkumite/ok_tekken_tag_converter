@@ -100,7 +100,7 @@ sheet, row `y = TBP0`. `TW`/`TH` often exceed what was uploaded; UVs are relativ
 
 | Part | Content | Status |
 |---|---|---|
-| 0 | pack: 30 uploads of 128x128 4-bit images, and 81 records of 0x3BC bytes (floats) — probably face animation | not decoded |
+| 0 | the fighter's own effect (EFFECTS.md 5b): a pack of its pictures (texture slots, each a pack of frames) and its particle paths (EFFECTS.md 3); True Ogre's, Devil's and Unknown's a pack of that and their special part | exported (format 65) |
 | 2 | pack of 6: section 0 the help font (uploads), 1-5 the command list (the same English text in each; FRONTEND.md 8) | section 1 exported (format 49) |
 | 3 | the training data (FRONTEND.md 8: CHAIN / COMBO TRAINING's entries and steps) | exported (format 50) |
 | 4 | the hand poses: `u16 poses, u16 15`, then 15 s16 triples a pose (FIGHT_DATA.md 3.1) | exported (format 52) |

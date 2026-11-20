@@ -501,6 +501,129 @@ pub fn atlas(
     Some((tex::png(w, h, &rgba), json))
 }
 
+/// The model table (0x415840: a record a selection, character x 8 + costume; its byte 8 the effect row, 0x35C970).
+const MODELS: usize = 0x41_5840;
+/// The character effects' rows (0x347730: 0x5193B8, 8 bytes: `u32 the particle routine, u8 r, g, b` the hit light's
+/// colour, 0x3531F0) and their particles' (0x343F38: 0x436688, 0x18 bytes: `f32 scale[3], u32 blend, f32 brightness,
+/// f32 the size's divisor`).
+const ROWS: usize = 0x51_93B8;
+const PARTICLES: usize = 0x43_6688;
+
+/// Frames as a sheet: square cells of the largest frame's side, `COLS` a row, each frame scaled up to its cell
+/// (nearest texel). Returns the PNG, its rows and the cell's side.
+fn sheet(pics: &[&(usize, usize, Vec<u8>)]) -> Option<(Vec<u8>, usize, usize)> {
+    let cell = pics.iter().map(|p| p.0.max(p.1)).max()?;
+    let rows = pics.len().div_ceil(COLS);
+    let (w, h) = (COLS * cell, rows * cell);
+    let mut rgba = vec![0u8; w * h * 4];
+    for (n, (pw, ph, px)) in pics.iter().enumerate() {
+        let (cx, cy) = (n % COLS * cell, n / COLS * cell);
+        for (y, x) in (0..cell).flat_map(|y| (0..cell).map(move |x| (y, x))) {
+            let at = (y * ph / cell * pw + x * pw / cell) * 4;
+            let to = ((cy + y) * w + cx + x) * 4;
+            if let (Some(s), Some(d)) = (px.get(at..at + 4), rgba.get_mut(to..to + 4)) {
+                d.copy_from_slice(s);
+            }
+        }
+    }
+    Some((tex::png(w, h, &rgba), rows, cell))
+}
+
+/// A fighter's own effect (EFFECTS.md 5b): fighter-pack part 0 (0x367600 keeps it, 0x344EA8 points the side's set
+/// 4 + side and texture slots 14-16 / 17-19 at it): a pack of its pictures (a pack of texture slots, each a pack of
+/// frames) and its particle paths (EFFECTS.md 3's; `+0x34` 1 when the particle's frame runs, `+0x36` its slot);
+/// True Ogre's, Devil's and Unknown's (bodies 20, 29, 33) a pack of that and their special part, whose part 0 is
+/// more slots (slots 20-22 / 23-25: Devil's beam, 0x3A8D08). `selection` (character x 8 + costume) picks the effect
+/// row (0x3A2BC0). Returns the pictures' sheet (PNG) and `effects.json` `characters`' entry: `light` (the hit light's
+/// colour, 0-255, for `light_frames`, 0x3531F0), `sheet` (its layout), `burst` (a particle on each path, as
+/// `bursts`, each frame's 6th value its cell: the routine's frame counter, 0x346BB8 and its kin) and `special` (the
+/// special part's slots' cells). None when the part is not so.
+pub fn character(elf: &[u8], selection: usize, body: usize, part: &[u8]) -> Option<(Vec<u8>, Value)> {
+    let parts = archive::pack(part)?;
+    let (own, special) = match body {
+        20 | 29 | 33 => (archive::pack(parts.first()?)?, Some(archive::pack(parts.get(1)?)?.first().copied()?)),
+        _ => (parts, None),
+    };
+    type Pic = (usize, usize, Vec<u8>);
+    let slots = |d: &[u8]| -> Option<Vec<Vec<Pic>>> {
+        (archive::pack(d)?.iter())
+            .map(|s| {
+                (archive::pack(s)?.iter())
+                    .map(|f| tex::pictures(&tex::uploads(f), &|_| None).into_iter().next())
+                    .collect()
+            })
+            .collect()
+    };
+    let mine = slots(own.first()?)?;
+    let extra = match special {
+        Some(d) => slots(d)?,
+        None => vec![],
+    };
+    // each slot's first cell, the special part's after the fighter's
+    let (mut firsts, mut pics) = (vec![], vec![]);
+    for s in mine.iter().chain(&extra) {
+        firsts.push(pics.len());
+        pics.extend(s);
+    }
+    let (png, rows, cell) = sheet(&pics)?;
+    let rec = u32le(elf, MODELS + 4 * selection - VADDR)? as usize;
+    let row = *elf.get(rec.checked_sub(VADDR)? + 8)? as usize;
+    let routine = u32le(elf, ROWS + 8 * row - VADDR)?;
+    let light = elf.get(ROWS + 8 * row + 4 - VADDR..ROWS + 8 * row + 7 - VADDR)?;
+    let p = |k: usize| f32le(elf, PARTICLES + 0x18 * row + 4 * k - VADDR).map(f64::from);
+    // the routine's scale, blend (1 added), brightness and the size's divisor (by whether the path's frame runs), and
+    // how its frame counter goes: 0 not at all; 1 on to the slot's last frame while the fade is under 1; 2 round the
+    // slot so; 3 round the slot every frame
+    let (scale, add, level, div, count) = match routine {
+        0x34_6FA0 => (1.5, true, 128.0, [1600.0, 800.0], 1), // Paul's
+        0x34_7178 => (2.0, true, 128.0, [300.0; 2], 0),      // Xiaoyu's
+        0x34_72B8 => (1.5, true, 128.0, [400.0; 2], 0),      // Eddy's
+        0x34_73F0 => (1.0, true, 128.0, [f64::from(f32le(elf, GP - 0x7F50 - VADDR)?); 2], 3), // Jin's
+        0x34_7568 => (1.5, true, 128.0, [800.0, 400.0], 1),  // Jun's
+        r => {
+            let blend = u32le(elf, PARTICLES + 0x18 * row + 12 - VADDR)?;
+            (p(0)?, blend != 0, p(4)?, [p(5)?; 2], if r == 0x34_6DA8 { 2 } else { 1 })
+        }
+    };
+    let round = |v: f64| (v * 10000.0).round() / 10000.0;
+    // (up to 95 paths)
+    let paths: Vec<Vec<[f64; 6]>> = (archive::parts(own.get(1)?, 256)?.iter())
+        .filter_map(|e| {
+            let (frames, runs) = ((u32le(e, 0)? as usize).min(1000), u16le(e, 0x34)? != 0);
+            let slot = u16le(e, 0x36)? as usize;
+            let (first, n) = (*firsts.get(slot)?, mine.get(slot)?.len().max(1));
+            let size = 128.0 / if runs { div[1] } else { div[0] } * HIT_QUAD;
+            let at = |o: usize| f32le(e, o).map(f64::from).filter(|v| v.is_finite());
+            let mut c = 0;
+            (0..frames)
+                .map(|k| 0x38 + 20 * k)
+                .map(|o| {
+                    let fade = at(o + 16)?;
+                    // (the routine counts before the frame is drawn)
+                    c = match count {
+                        1 if runs && fade < 1.0 => (c + 1).min(n - 1),
+                        2 if runs && fade < 1.0 => (c + 1) % n,
+                        3 => (c + 1) % n,
+                        _ => c,
+                    };
+                    let [x, y, z] = [at(o)?, at(o + 4)?, at(o + 8)?].map(|v| v * scale * SCALE);
+                    Some([x, y, z, at(o + 12)? * size, fade, (first + c) as f64].map(round))
+                })
+                .collect()
+        })
+        .collect();
+    let special: Vec<Vec<usize>> =
+        extra.iter().zip(firsts.iter().skip(mine.len())).map(|(s, &f)| (f..f + s.len()).collect()).collect();
+    let json = json!({
+        "light": light,
+        "light_frames": 54,
+        "sheet": {"cols": COLS, "rows": rows, "cell": cell},
+        "burst": {"cell": 0, "size": 1.0, "level": round(level / 128.0), "blend": if add { "add" } else { "alpha" }, "random": false, "paths": paths},
+        "special": special,
+    });
+    Some((png, json))
+}
+
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::indexing_slicing)]
 mod tests {
