@@ -420,7 +420,8 @@ CAPTURE / SELECT + O = REC. The menus' layout is as seen [M]; their code (0x3790
   training entry, +8 a combo training entry (the 19-step 10-hit combos), +0xE a time, +0x12 eight entries shown before
   it, +0x22 sixteen aliases that count as done); m steps of 8 bytes (the command list's tokens, drawn by 0x3DD188).
   The chain entries are listed at +0x3ED8 (up to 128), the combo entries at +0x3E94 (16).
-- **CHAIN TRAINING** (0x37EB04, state 0x8B8010): 0 the first entry (+4 = 0), its aliases, the count; 1 "READY!"
+- **CHAIN TRAINING** (0x37EB04, state 0x8B8010; format 50 `practice.chain`, the line's place checked in PCSX2; the
+  training entry e is move e of the command list, the chain's are those with +6 set, at most 128 (0x37D0F8)): 0 the first entry (+4 = 0), its aliases, the count; 1 "READY!"
   (0x506DD8) at (192, 220) size 10 colour 2 for 90 frames, voice 0x105A at its start, 0x105B at its end; 2 the
   entry's commands with those before it (0x37B8D8: from y 100, 60 apart, at x 320), the time running (to 216000,
   "%02d'%02d\"%02d" at (240, 60) size 4 colour 19 with TIME DISPLAY), "COMBO n:m" at (400, 80) size 4 colour 10;

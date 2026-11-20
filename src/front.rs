@@ -112,6 +112,18 @@ pub fn command_list(part: &[u8]) -> Option<Value> {
     Some(json!({"name": name, "moves": moves}))
 }
 
+/// A fighter file's training data (part 3; 0x3672B0 -> 0x37D0F8): u16 n, u16 m, n entries of 33 u16, one a move of
+/// the command list (+0 its steps, +2 its first step, +6 a CHAIN TRAINING entry, +8 a COMBO TRAINING one, +0xE a
+/// time, +0x12 eight entries (1 + the move) shown before it, +0x22 sixteen aliases that count as done), then m steps of
+/// four u16: `{entries, steps}` as those numbers.
+pub fn training(part: &[u8]) -> Option<Value> {
+    let u16s = |at: usize, n: usize| (0..n).map(|k| crate::u16le(part, at + 2 * k)).collect::<Option<Vec<_>>>();
+    let (n, m) = (crate::u16le(part, 0)? as usize, crate::u16le(part, 2)? as usize);
+    let entries = (0..n).map(|e| u16s(4 + 0x42 * e, 33)).collect::<Option<Vec<_>>>()?;
+    let steps = (0..m).map(|k| u16s(4 + 0x42 * n + 8 * k, 4)).collect::<Option<Vec<_>>>()?;
+    Some(json!({"entries": entries, "steps": steps}))
+}
+
 /// The command list's icons (the executable's archive 0x4567A0, uploaded under the help font at 0x3B40 by 0x3DE930):
 /// entry 0 the arrows (64 x 16, four 16-wide cells, 4 bits) and entry 1 the buttons (20 x 20) with their 16-colour
 /// palettes (16-bit; row r at the GS's row 238 + r), one row each: `command_arrows.png` (the arrows in palette rows
@@ -682,7 +694,27 @@ pub fn front_end(elf: &[u8], ups: &[Upload], clips: &[Option<String>]) -> Result
                 "damage": {"xy": [32, 58], "size": 4, "colour": 0}, "mode": {"xy": [18, 427], "size": 4, "colour": 0},
                 "capture": {"text": string(elf, 0x5072B0), "xy": [360, 410], "size": 4, "colour": 23,
                     "keys": {"xy": [400, 430], "select": "SELECT", "size": 4, "colour": 7,
-                        "small": [["+", small_colour(6)?], ["o", small_colour(8)?], ["=REC", small_colour(6)?]], "button": 3}}}},
+                        "small": [["+", small_colour(6)?], ["o", small_colour(8)?], ["=REC", small_colour(6)?]], "button": 3}}},
+            // CHAIN TRAINING (0x37EB04, state 0x8B8010; the moves are `command_list.lists[body].training`'s entries with
+            // +6 set, in order, at most 128): 0 the first; 1 READY! (0x506DD8) at (192, 220) size 10 colour 2 for 90
+            // frames, voice 0x105A at its start, 0x105B at its end; 2 the move's line with the lines of the moves its
+            // +0x12 names before it (0x37B8D8, 0x3DD188: from (320, 100) 60 apart, the group's two bands 300 wide, 18 and
+            // 42 high, the name at (x + 8, y + 1), the keys right-aligned in 280 from x + 8 at y + 21, the help font at
+            // level 0x73), the time counting (to 216000; with TIME DISPLAY "%02d'%02d\"%02d" (0x506E08) at (240, 80)
+            // size 4 colour 19: minutes, seconds, hundredths), "COMBO n:m" (0x506E28; 0x506E40 "COMBO 0:0" with no
+            // moves) at (400, 80) size 4 colour 10 (0x37EEF8); the player's move entered by one of the move's aliases
+            // (+0x10C, 0x37EE18): sound 0x103D, the next move, after the last 3: 180 frames, voice 0x1058 at 120, then
+            // under 120 the result (0x3DD5B8: CONGRATULATIONS! (0x522C00) at (50, 100) size 8 colour 11, the face at
+            // (294, 174), the name centred at 250 size 6 colour 19, the time at (220, 320) size 6 colour 23); START, or
+            // a face button after the 180, starts again
+            "chain": {"ready": {"text": format(elf, 0x506DD8), "x": 192, "y": 220, "colour": 2, "size": 10, "frames": 90,
+                    "voices": [0x105A, 0x105B]},
+                "lines": {"xy": [320, 100], "dy": 60, "w": 300, "bands": [18, 42], "name_xy": [8, 1], "keys_xy": [8, 21], "width": 280, "level": 0x73},
+                "time": {"text": format(elf, 0x506E08), "x": 240, "y": 80, "size": 4, "colour": 19, "max": 216000},
+                "count": {"text": format(elf, 0x506E28), "none": format(elf, 0x506E40), "x": 400, "y": 80, "size": 4, "colour": 10},
+                "done_sound": 0x103D, "end": {"frames": 180, "voice": 0x1058, "result": 120},
+                "result": {"text": format(elf, 0x522C00), "xy": [50, 100], "size": 8, "colour": 11, "face_xy": [294, 174],
+                    "name_y": 250, "name_size": 6, "name_colour": 19, "time_xy": [220, 320], "time_size": 6, "time_colour": 23}}},
     }))
 }
 
