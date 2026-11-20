@@ -410,8 +410,10 @@ drawn at every level; the floor's count of levels, level 0's included); scene ex
 0x340408): a cell shows the level of the mean depth of its square's corners in front of the camera (the square the
 cell `cell` times `corner`, table 0x521700 +0xC), past `limits[k]` level k + 2 if the floor has it (from the last
 down), else level 1. The floor is laid as the game lays it (0x341218), when its floors' cells are one size and
-tile: node `floor` holds one mesh, a window of `window` cells (table 0x521700 +0, +2) with no `floor_period`: cell
-(j, i) at ((j - N / 2) x width, (i - M / 2) x depth) shows cell (j mod n, i mod m) of each floor of n x m cells; the
+tile: node `floor` holds a window of `window` cells (table 0x521700 +0, +2) with no `floor_period`: cell (j, i), a
+node `floor_K` at ((j - N / 2) x width, (i - M / 2) x depth), shows cell (j mod n, i mod m) of each floor of n x m
+cells (**new** (format 42) a mesh `floor_cell_K` each, centred on its node, shared by the cells that show the same:
+the stage files no bigger than before); the
 engine moves each cell by whole windows into the window starting at the fight's cell, and draws none further than
 `reach` (table +8) from the fight. Every strip
 is there: since format 14 the additive ones (lights, floor gloss) in materials named `additive`, the darkening ones
