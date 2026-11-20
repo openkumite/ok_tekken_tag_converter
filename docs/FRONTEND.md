@@ -379,7 +379,7 @@ colour 5, the cursor's 11 over the bar 0x3BB680 (from x 180 to 40 past the text,
 the printf's "{" / "}" (shown as the gold arrows `003_067` / `003_068`) at (320, 250) towards the choice; NO first;
 left / right choose (sound 3), YES takes the reset (0x35A518, sound 4), NO or START back to the entries (sound 3).
 
-**COMMAND LIST** (format 47, `front_end.command_list`; checked against PCSX2 captures of an arcade fight's pause:
+**COMMAND LIST** (format 48, `front_end.command_list`; checked against PCSX2 captures of an arcade fight's pause:
 Xiaoyu's first page and the page four down after three downs and a right): the pause's COMMAND LIST (0x3B7F74) and
 practice's (0x379A98) call 0x3DD098, which for each side a player plays (gp-0x7440) uploads the side's font and draws
 its list (0x3DC9C8) from the fighter's command text (0x3DC870 keeps part 2 section 1 of the character's file, by

@@ -605,9 +605,9 @@ fn front_end(pack: &Hashed) {
     pictures(fe, &mut named);
     // (format 16: the small font's 36 colours, the VS screen's fire and logo, and its colours' picture; format 24:
     // the help font; format 29: the records' up / down marks, the ranking's banners, separator and face frame; format
-    // 47: the command list's arrows and buttons)
+    // 48: the command list's arrows and buttons)
     assert_eq!(named.len(), 284);
-    // (format 47: each body's command list, Xiaoyu's as PCSX2 shows it)
+    // (format 48: each body's command list, Xiaoyu's as PCSX2 shows it)
     let xiaoyu = &fe["command_list"]["lists"][7];
     assert_eq!(
         (&xiaoyu["name"], &xiaoyu["moves"][1]),
