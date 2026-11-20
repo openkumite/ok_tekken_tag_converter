@@ -463,6 +463,20 @@ fn openkumite(pack: &Hashed) {
     );
     let effects = load("pictures/effects/effects.json");
     assert_eq!((&effects["atlas"]["rows"], &effects["strips"]["spark"]["life"]), (&4.into(), &35.into()));
+    // (format 65) every fighter's own effect, 36 sheets: Paul's 81 paths, the one of his 30-frame slot counting from
+    // its frame 1, his orange light; Devil's beam's slots (the eye flare's 15 frames, the strip's and the end's 8)
+    let chars = effects["characters"].as_object().unwrap();
+    assert_eq!((chars.len(), count("pictures/effects") - 4), (127, 36));
+    let paul = &chars["351"];
+    let paths = paul["burst"]["paths"].as_array().unwrap();
+    let runs = paths.iter().find(|p| p[1][5] != p[0][5]).unwrap();
+    assert_eq!(
+        (paths.len(), &paul["light"], &runs[0][5], &runs[1][5]),
+        (81, &serde_json::json!([255, 140, 0]), &1.0.into(), &2.0.into())
+    );
+    let lens: Vec<usize> =
+        chars["663"]["special"].as_array().unwrap().iter().map(|s| s.as_array().unwrap().len()).collect();
+    assert_eq!(lens, [15, 8, 8]);
     sound(&load, count("audio/sfx"), count("audio/music"));
     let rules = load("gamedata/rules.json");
     assert_eq!((&rules["dialect"], &rules["hurt_spheres"]["layout"][8]["gltf_joint"]), (&"ttt".into(), &"head".into()));

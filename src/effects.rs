@@ -544,7 +544,8 @@ pub fn character(elf: &[u8], selection: usize, body: usize, part: &[u8]) -> Opti
         20 | 29 | 33 => (archive::pack(parts.first()?)?, Some(archive::pack(parts.get(1)?)?.first().copied()?)),
         _ => (parts, None),
     };
-    let slots = |d: &[u8]| -> Option<Vec<Vec<(usize, usize, Vec<u8>)>>> {
+    type Pic = (usize, usize, Vec<u8>);
+    let slots = |d: &[u8]| -> Option<Vec<Vec<Pic>>> {
         (archive::pack(d)?.iter())
             .map(|s| {
                 (archive::pack(s)?.iter())
@@ -578,7 +579,7 @@ pub fn character(elf: &[u8], selection: usize, body: usize, part: &[u8]) -> Opti
         0x34_7178 => (2.0, true, 128.0, [300.0; 2], 0),      // Xiaoyu's
         0x34_72B8 => (1.5, true, 128.0, [400.0; 2], 0),      // Eddy's
         0x34_73F0 => (1.0, true, 128.0, [f64::from(f32le(elf, GP - 0x7F50 - VADDR)?); 2], 3), // Jin's
-        0x34_7568 => (1.5, true, 128.0, [800.0, 400.0], 1), // Jun's
+        0x34_7568 => (1.5, true, 128.0, [800.0, 400.0], 1),  // Jun's
         r => {
             let blend = u32le(elf, PARTICLES + 0x18 * row + 12 - VADDR)?;
             (p(0)?, blend != 0, p(4)?, [p(5)?; 2], if r == 0x34_6DA8 { 2 } else { 1 })
@@ -591,7 +592,7 @@ pub fn character(elf: &[u8], selection: usize, body: usize, part: &[u8]) -> Opti
             let (frames, runs) = ((u32le(e, 0)? as usize).min(1000), u16le(e, 0x34)? != 0);
             let slot = u16le(e, 0x36)? as usize;
             let (first, n) = (*firsts.get(slot)?, mine.get(slot)?.len().max(1));
-            let size = 128.0 / div[usize::from(runs)] * HIT_QUAD;
+            let size = 128.0 / if runs { div[1] } else { div[0] } * HIT_QUAD;
             let at = |o: usize| f32le(e, o).map(f64::from).filter(|v| v.is_finite());
             let mut c = 0;
             (0..frames)
@@ -612,7 +613,7 @@ pub fn character(elf: &[u8], selection: usize, body: usize, part: &[u8]) -> Opti
         })
         .collect();
     let special: Vec<Vec<usize>> =
-        extra.iter().zip(&firsts[mine.len()..]).map(|(s, &f)| (f..f + s.len()).collect()).collect();
+        extra.iter().zip(firsts.iter().skip(mine.len())).map(|(s, &f)| (f..f + s.len()).collect()).collect();
     let json = json!({
         "light": light,
         "light_frames": 54,

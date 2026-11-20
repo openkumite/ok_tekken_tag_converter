@@ -82,7 +82,7 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 /// `signs`; 61: weather `snow`; 62: front_end `practice.combo` and the COMBO TRAINING rows, `chain.result.backdrop`,
 /// `select.quick.faces.frame` and `names`, `command_buttons_lit.png`, `ranking.arena`, `003_110_p84.png`, TRAINING
 /// DUMMY's `icons`; 64: front_end `survival_results`).
-pub const FORMAT: i64 = 64;
+pub const FORMAT: i64 = 65;
 /// What a pack's manifest names it.
 pub const KIND: &str = "ttt";
 
@@ -327,7 +327,9 @@ pub fn convert(ctx: &Ctx, src: &dyn DiscFile, research: bool) -> Result<Value> {
                                 fx_sheets.push(png);
                                 fx_sheets.len() - 1
                             });
-                            e["sheet"]["file"] = json!(format!("character_{k:02}.png"));
+                            if let Some(s) = e.get_mut("sheet").and_then(Value::as_object_mut) {
+                                s.insert("file".into(), json!(format!("character_{k:02}.png")));
+                            }
                             fx_characters.insert(i.to_string(), e);
                         }
                     }
@@ -699,7 +701,9 @@ pub fn convert(ctx: &Ctx, src: &dyn DiscFile, research: bool) -> Result<Value> {
     assets.write("gamedata/stages.json", serde_json::to_string(&effects::stages(&a.elf, &fx, &scales))?.as_bytes())?;
     match effects::atlas(&effect_pics, &effect_paths, &arena_pics) {
         Some((png, mut json)) => {
-            json["characters"] = Value::Object(fx_characters);
+            if let Some(j) = json.as_object_mut() {
+                j.insert("characters".into(), Value::Object(fx_characters));
+            }
             for (k, s) in fx_sheets.iter().enumerate() {
                 assets.write(&format!("pictures/effects/character_{k:02}.png"), s)?;
             }
