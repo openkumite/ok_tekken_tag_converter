@@ -154,10 +154,24 @@ ALPHA 0x44 with the vertex alpha the brightness x (1 - the fade), 1 Cs x FIX + C
 - 0x3A04B8 places its particle at the row + the path's frame (turned by +0x74, scaled) and steps through the slot's
   cells while its path's +0x34 is set (none here); gone at the path's end.
 
+**Yoshimitsu's snow** [H] (arenas 2, 19, 22; not a task): the arena's load (0x367A84) builds a VU1 packet
+(0x3E6DA0, gp-0x6528) and 0x357D38 sends it each frame after the arena (0x3E7270, view-projection 0x4334C0, texture
+slot 6: entry 0's picture). Two layers of flakes, 8 a batch (0x3E6B10: x and z (rand - 0.5) x the box, y 12288 or
+6144 mm, a move of (r cos a, -385 / 16, r sin a) mm a frame, a from -pi to pi and r 0-12 at random, a first frame
+rand & 0x1FF or & 0xFF): arena 19 0x82 batches of a 35 m box and 0x46 of a 6 m one, arenas 2 and 22 5 and 2. Each
+frame the eye's heading (0x415808: +4 the yaw, +0x14 / +0x1C the eye) puts each box's corner (gp-0x6078, gp-0x6074)
+half a box past a point 30 m (6 m) ahead (gp-0x77C4, gp-0x77C0). VU1 program 0x708 (MPG at 0x4FA38C) moves a flake's
+start by whole boxes to within the box, adds its move times (its first frame + the count gp-0x6084) & 0x1FF (0xFF),
+and draws it at four places 7 m (3 m) aside in +x, +z, -x, -z (no flake at its own place): a screen square of half
+24000 / w GS pixels (0.0312 m at 768.75 pixels a unit at w), colour 128, alpha 0x60 - 9.6e-5 x w (w the depth, mm;
+gp-0x7808), ALPHA 0x44, TEST without z writes. Checked in a PCSX2 arena-19 fight: the boxes' corners against the eye
+and the yaw. Exported (format 61): stages.json `weather.snow`.
+
 **Their size** [H]: 0x345C10 makes a particle's half 0x90 x size x z / 4 / 0x48 GS units (a sixteenth of a pixel), z
 its depth: the arena effects (flag 4) through the arena's view 0x879420 (0x346A24, projection 0x433480: z =
 12586753 / w - 64), the others through 0x433440 x the view (0x346A40: z = 16782424 / w - 85). At the screen's 768.75
-pixels a unit at w, an arena effect's quad is 0x90 / 0x48 x size x 0.5117 m across (0.6822 m for the others).
+pixels a unit at w, an arena effect's quad is 0x90 / 0x48 x size x 0.5117 m across (0.6822 m for the others: the
+`bursts` since format 60, 1.47 times smaller than before; a PCSX2 hit's sparks are as small).
 Lei's steam (0x90 0x400, 0x48 572) drawn 1.95 times too wide had covered the street in haze (format 58).
 
 Exported (format 28): stages.json `weather` (GAMEDATA.md), the pictures in the effects' atlas from cell 24. Not:

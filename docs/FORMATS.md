@@ -291,6 +291,10 @@ FOGCOL in its packet 0x456780 (+0x10). The lights are geometry part 4's first li
 PCSX2 on arenas 4, 8 and the bowl); a second record, where there is one, is the fighters' (0x455180 + 0x80 x arena,
 0x353F14). OpenKumite's (since format 44; flags 4 and 0x400 since format 45): GAMEDATA.md.
 
+**TEX0's TFX** [H]: 1 (decal) on most batches (all but arena 7 and 11 have them in their floors or scenery): the GS
+draws the texel as it is, so the microcode's colour and alpha do not count; arena 16's floor, lit to 0.39 by its light
+record, shows its full texture on the PS2. OpenKumite's (format 60): such a batch's colour 128 (1).
+
 Blending, when the strip's PRIM has ABE: ALPHA `0x44` ordinary, `0x48` additive (lights, floor
 gloss; uses the vertex alpha), `0x89` a darkening decal. `TEX0.TCC` says whether the texture's
 alpha counts.
