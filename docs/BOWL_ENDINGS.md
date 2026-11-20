@@ -483,7 +483,8 @@ palette); the model part's table after its nodes (u32 count, then at its +0x14 1
 w, h, dbw, psm}`) says where a frame goes, from the fighter's first texture block. Only Jin's packs have one: channel 0,
 his face with the mark (frame 0, the face the textures load with) and without (frame 1). His set-up shows frame 1
 (0x3A85E4, character 9; not on screen 5 when 0x43B800 is set); in a fight the mark shows while the move's +0x24 bit 17
-is set (0x370E20), in a scene by op 12. The converter bakes frame 1 into his textures. [H]
+is set (0x370E20), in a scene by op 12. The converter bakes frame 1 into his textures and keeps the texels frame 0
+changes in his picture too (the texture's extras `mark`: `[x, y, w, h, from x, from y]`). [H]
 
 Typical: ops 0-4 at frame 0, fade in over 45, effects, fade out over 60-120, end at camera frames - 1. No op plays
 sound: the only audio is the music [M]. The background characters are a set of 0x114FC8 by the scene, not

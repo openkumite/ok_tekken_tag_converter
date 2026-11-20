@@ -248,8 +248,11 @@ pub fn convert(ctx: &Ctx, src: &dyn DiscFile, research: bool) -> Result<Value> {
             let tris: usize = m.sections.iter().flatten().map(|s| s.verts.len().saturating_sub(2)).sum();
             let slot = i.checked_sub(FIGHTERS).filter(|s| s % 3 == 0).map(|s| s / 3);
             let who = slot.map(|s| moves::fighter(&a.elf, s)).transpose()?.flatten();
-            // Jin's set-up shows his texture channel 0's frame 1, the face without the mark (0x3A85E4: character 9)
+            // Jin's set-up shows his texture channel 0's frame 1, the face without the mark (0x3A85E4: character 9);
+            // frame 0, the face the textures load with, is the mark's (shown by ending op 12)
+            let mut marked = vec![];
             if let (Some((9, _)), Some(p)) = (who, pack.as_ref()) {
+                marked = ups.clone();
                 p.iter()
                     .find(|c| c.starts_with(b"PS2TagA"))
                     .zip(p.get(1))
@@ -263,7 +266,7 @@ pub fn convert(ctx: &Ctx, src: &dyn DiscFile, research: bool) -> Result<Value> {
             };
             // OpenKumite's character: a fighter of the roster, with its moveset
             if let (Some((body, costume)), Some(set)) = (who, moveset) {
-                match m.fighter_glb(&ups) {
+                match m.fighter_glb(&ups, &marked) {
                     Some(glb) => {
                         let file = format!("model_{i:03}.glb");
                         assets.write(&format!("characters/{file}"), &glb)?;
@@ -331,7 +334,7 @@ pub fn convert(ctx: &Ctx, src: &dyn DiscFile, research: bool) -> Result<Value> {
                 if research {
                     out.write(&file, &m.glb(&own))?;
                 }
-                if let (Some(n), Some(glb)) = (listed, m.fighter_glb(&own)) {
+                if let (Some(n), Some(glb)) = (listed, m.fighter_glb(&own, &[])) {
                     assets.write(&format!("stages/stage_{n:02}_p{}.glb", k - 1), &glb)?;
                 }
                 people.push(json!({"id": k - 1, "file": file}));
