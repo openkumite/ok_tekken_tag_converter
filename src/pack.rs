@@ -69,8 +69,8 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 /// pitching boats; 33: camera.json `team_intro.start_frames`, `fighter_cameras`; 34: front_end `practice`; 35: Unknown's
 /// moveset 28; 36: Law-A's lanterns and leaves in stages.json `objects`, the leaves' and their shadows' copies; 37:
 /// front_end `practice.hud`; 38: camera.json `fighter_cameras.rows`, `win_pose.world_turn`; 44: the arenas' strips lit
-/// and their texture coordinates made as the VU1 microcode does, stage::colour).
-pub const FORMAT: i64 = 44;
+/// and their texture coordinates made as the VU1 microcode does, stage::colour; 45: flags 4 and 0x400's panorama, the arenas' fog).
+pub const FORMAT: i64 = 45;
 /// What a pack's manifest names it.
 pub const KIND: &str = "ttt";
 
@@ -286,7 +286,11 @@ pub fn convert(ctx: &Ctx, src: &dyn DiscFile, research: bool) -> Result<Value> {
             let mut bare = b.clone();
             b.extend(floors.iter().flat_map(|f| f.laid()));
             // (the lights of its VU1 blocks: geometry part 4's record)
-            let light = archive::pack(&d).and_then(|p| stage::light(p.get(4)?));
+            // an arena of the stage list, by its number there
+            let listed = i.checked_sub(ARENAS).filter(|k| k % 7 == 0).map(|k| k / 7);
+            let light = archive::pack(&d)
+                .and_then(|p| stage::light(p.get(4)?))
+                .map(|l| stage::Light { fog: listed.and_then(|n| stage::fog(&a.elf, n)), ..l });
             if i == BOWL {
                 // OpenKumite's: its objects apart, the ball, the pin and the pin deck where the object table puts
                 // them; the object part (taken for scenery and objects, all at the origin) not in its stage
@@ -306,8 +310,6 @@ pub fn convert(ctx: &Ctx, src: &dyn DiscFile, research: bool) -> Result<Value> {
             if research {
                 out.write(&file, &stage::glb(&b, &objects, &banks))?;
             }
-            // an arena of the stage list, by its number there
-            let listed = i.checked_sub(ARENAS).filter(|k| k % 7 == 0).map(|k| k / 7);
             // the arena's background characters: part 0 is a pack of their motions and their models (OpenKumite's:
             // `stages/stage_NN_pK.glb`, K the model, as characters; their motions `stage_NN_mK.glb`, clips of that name)
             let (mut people, mut motions) = (vec![], vec![]);

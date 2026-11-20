@@ -184,7 +184,7 @@ Cd x As: painted shadows, dirt) are in the stages since format 14, in materials 
 
 ## 6. Not found or not read
 
-Fog / depth cue: the arenas' strips with FGE get it from the VU1 blocks (FORMATS.md 10), its colour not located. The tag-in / tag-out effects, ki-charge glow, motion blur: not located. The ending scripts' effect
+Fog / depth cue: the arenas' strips with FGE (FORMATS.md 10), its colour from table 0x456540. The tag-in / tag-out effects, ki-charge glow, motion blur: not located. The ending scripts' effect
 ops (BOWL_ENDINGS.md 7.4) use the same tasks.
 
 Searched again (format 32) [H]:
