@@ -205,12 +205,31 @@ Searched again (format 32) [H]:
   goes on by +8 and stops on frame 0 past the last (0x3A73F8 starts it), state 4 loops (0x3A7430: from a start, back to
   0 past the last, the fraction dropped), state 2 holds (0x3A7490). By the arena (0x3A7198, table 0x519940): 1 channel
   0 at 0x40 (256 = a frame a frame); 2 0 at 0xC0; 3 0-1 at 0xC0, 2 at 0xC0 from 16; 4 the lightning (0-3 held on
-  frame 1, cleared at the set-up (0x3A70C0), 4-6 on frame 3; task 0x3A76C0 flashes them: four bolts by rand() (6 in
-  1000 a frame while their point 0x437C80 is on screen) through three frame lists, with thunder 0x1072 / 0x1074 /
-  0x1075 and 0x353C78; not started on screen 11); 6 0 at 0x80, 1-2 at 0x100; 8, 17, 20 0 at 0x100; 9, 18 0 at 0x100,
-  1 at 0x100 from 8; 11 0 at 0x80; 12 three tasks 0x3A7590 (channel 0-2 held on 0, played once at 0x80 at a 7 in 1000
-  chance a frame); 14 0-1 at 0x80. Exported (format 59): the looping ones as the arena's scene extras `channels`, the
-  still ones as they stand (arena 4's lightning and arena 12's signs not played). Every arena object routine (the
+  frame 1, whose texels the set-up clears (0x3A70C0: frame 0 is the sky's glow), 4-6 on frame 3 (frames 0-2 three
+  bolts); task 0x3A76C0 below, not started on screen 11); 6 0 at 0x80, 1-2 at 0x100; 8, 17, 20 0 at 0x100; 9, 18 0 at
+  0x100, 1 at 0x100 from 8; 11 0 at 0x80; 12 three tasks 0x3A7590 (+0x1A the channel, 0-2: state 0 holds frame 0;
+  state 1 at rand() % 1000 < 7 plays it once at 0x80 (0x3A73F8); state 2 counts +0x80 a frame and, past the
+  channel's frames, holds frame 0 again); 14 0-1 at 0x80. Exported (format 59): the looping ones as the arena's scene
+  extras `channels`; **new** (format 60) the still ones arena 4's and 12's tasks play too, with their `channel`,
+  speed 0, resting on `start` (arena 4's bolts' frame 1 cleared), and their tasks' data as stages.json `weather`
+  `lightning` and `signs`.
+- **Arena 4's lightning** (task 0x3A76C0, a frame each while not paused) [H]: state 0 sets the four bolts' records
+  (0x8D5DE0, 16 bytes: +0 channel 0-3, +2 a count from rand() % 1000, never read, +4 on, +8 the list) and the three
+  flickers' (0x8D5DB0: channels 4-6, +2 a count from rand() % 240). Each frame, each point (bolts 0x437C80, flickers
+  0x437C50; 16 bytes, mm, the arena's axes) is projected (0x366EA8, 0x34B2A0): "near" when in front and within 10000
+  (bolts, gp-0x7DF0) or 5000 (flickers, gp-0x7DEC) GS units (1/16 pixel) of the screen's centre. A bolt at rest
+  starts at rand() % 1000 < 6: list rand() % 3 (0x519A20, 0x519A68, 0x519AB0, the same 35 frames of 0 and 1), with
+  thunder 0x1072, 0x1074 or 0x1075 (0x374D30) when near. A flicker at rest counts +1: at 240 back to 0 and at rand()
+  % 100 < 30 the long list 0x519990 with the roll 0x1073 when near; from 168, at rand() % 1000 < 20 a list of rand()
+  % 3 (0x5199A8, 0x5199C0, 0x5199D8); below, at rand() % 1000 < 10 one of rand() & 1 (0x5199F0, 0x519A08). A list
+  playing holds the channel on its frame (state 2), then steps (s16 a frame, to a negative); its end in the same
+  frame rests the channel (a bolt's frame 1, a flicker's 3), so a list's last frame is not shown. A flicker's frame
+  0 also shows its bolt's frame 0 (channel 4 -> 0, 5 -> 3, 6 -> 1; that bolt's own flash ended), another its bolt's
+  frame 1. While near, a bolt's frame 0 (and a flicker's) sets 0x353C78(side, 1) for both sides: the fighters' lights
+  0 and 1 with x and z negated (0x353758); any other frame of a near bolt and every list's end set it back. The
+  EMBU's op 7 (0x3A7FA8(a, b)) starts task 0x3A7EB0: channel a plays list b of table 0x519B00 (0x519990, 0x5199A8,
+  0x5199C0, 0x5199D8, 0x5199F0, 0x519A08, 0x519A20, 0x519A68, 0x519AB0), the same way, without the lights.
+  Exported (format 60): stages.json `weather.lightning`.
   rows' +0x30 / +0x34 of table 0x520FC0) moves matrices only; no UV scroll or palette cycling in a fight. Paul's
   train's routine 0x3D5998 only sets the pad's rumble and the train's sound by its distance (0x3758F0).
 - **The particles' depth**: arena effects (flag 4) are drawn only behind the farther fighter (0x346830 passes
