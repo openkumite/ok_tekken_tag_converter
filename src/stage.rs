@@ -320,6 +320,73 @@ pub fn fog(elf: &[u8], n: usize) -> Option<Fog> {
     (n < 23 && slope.is_finite()).then_some(Fog { colour, line: [f0 - slope * near, slope] })
 }
 
+/// An arena's texture channel table ([`tex::channels`]): the last one at the end of geometry part 4, after its
+/// light records (0x356D40 keeps it at gp-0x60A8).
+/// shortcut: found by its shape (each entry's channel its place, PSMT8 or PSMT4, a size of powers of two); upgrade
+/// when the part's header is decoded
+pub fn channel_table(part: &[u8]) -> Vec<[u16; 8]> {
+    let fits = |t: &Vec<[u16; 8]>| {
+        !t.is_empty()
+            && t.iter().enumerate().all(|(i, e)| {
+                e[0] as usize == i
+                    && matches!(e[7], 0x13 | 0x14)
+                    && [e[4], e[5]].iter().all(|n| n.is_power_of_two() && *n <= 256)
+            })
+    };
+    (0..part.len() / 4)
+        .rev()
+        .map(|o| tex::channels(part.get(4 * o..).unwrap_or_default()))
+        .find(fits)
+        .unwrap_or_default()
+}
+
+/// The arenas' looping texture channels (0x3A7198 by the arena, table 0x519940; 0x3A7430: state 4, the frame + `speed`
+/// / 256 a frame from `start`, back to 0 past the last): (arena, channel, speed, start).
+pub const LOOPS: [(usize, usize, u32, u32); 18] = [
+    (1, 0, 0x40, 0),
+    (2, 0, 0xC0, 0),
+    (3, 0, 0xC0, 0),
+    (3, 1, 0xC0, 0),
+    (3, 2, 0xC0, 0x10),
+    (6, 0, 0x80, 0),
+    (6, 1, 0x100, 0),
+    (6, 2, 0x100, 0),
+    (8, 0, 0x100, 0),
+    (9, 0, 0x100, 0),
+    (9, 1, 0x100, 8),
+    (11, 0, 0x80, 0),
+    (14, 0, 0x80, 0),
+    (14, 1, 0x80, 0),
+    (17, 0, 0x100, 0),
+    (18, 0, 0x100, 0),
+    (18, 1, 0x100, 8),
+    (20, 0, 0x100, 0),
+];
+
+/// The arenas' texture channels that stand still unless a task of the arena plays them (0x3A7198): (arena,
+/// channel, frame, cleared). Arena 4's lightning (0x3A7254: channels 0-3 on frame 1, cleared at the set-up, 4-6 on
+/// frame 3; task 0x3A76C0 flashes them, not played), arena 12's neon (three tasks 0x3A7590 from frame 0, now and then
+/// played once, not played).
+pub const STILLS: [(usize, usize, usize, bool); 10] = [
+    (4, 0, 1, true),
+    (4, 1, 1, true),
+    (4, 2, 1, true),
+    (4, 3, 1, true),
+    (4, 4, 3, false),
+    (4, 5, 3, false),
+    (4, 6, 3, false),
+    (12, 0, 0, false),
+    (12, 1, 0, false),
+    (12, 2, 0, false),
+];
+
+/// A looping texture channel: the arena's uploads with each of its frames in place, its speed and start ([`LOOPS`]).
+pub struct Anim {
+    pub frames: Vec<Vec<Vec<tex::Upload>>>,
+    pub speed: u32,
+    pub start: u32,
+}
+
 /// The lights the arena's VU1 blocks carry for its geometry: the first light record of geometry part 4 (after its
 /// strips; a second one, where there is one, is the fighters', 0x455180's row): `u32 3, f32 ambient[3]`, then three
 /// `{f32 towards[3], f32 colour[3]}`; the blocks have the colours / 128 and half the ambient (seen in PCSX2 on arenas
@@ -562,6 +629,10 @@ pub fn glb(scenery: &[Batch], objects: &[Batch], banks: &[Vec<tex::Upload>]) -> 
 /// colours (floats, 1 = 128: up to twice the texture) as the VU1 microcode makes them from the strips' with the arena's
 /// `light` ([`colour`]; since format 44); a strip whose texture coordinates it makes from its normals in a material
 /// with extras `env` (1, 2 or 8) and NORMAL, its picture whole.
+/// - scene extras `channels` (`anims`, the looping texture channels): for each picture one changes, its `image`, the
+///   `rect` (x, y, w, h) of it the frames change and the `frames` images from `first`, each that rectangle's texels,
+///   played from `start` at `speed` / 256 a frame (0x3A6C80, state 4).
+#[allow(clippy::too_many_arguments)]
 pub fn game_glb(
     name: &str,
     scenery: &[Batch],
@@ -570,6 +641,7 @@ pub fn game_glb(
     banks: &[Vec<tex::Upload>],
     levels: Option<Value>,
     light: Option<&Light>,
+    anims: &[Anim],
 ) -> Vec<u8> {
     let mut g = Glb::default();
     let (mut sky, mut tiles): (Vec<Batch>, Vec<Batch>) = (scenery.to_vec(), vec![]);
@@ -618,9 +690,38 @@ pub fn game_glb(
     // the images: a white texel, then each picture cut to the texels its batches reach (all of it along an axis
     // they repeat it on): (image, its texture coordinates from the picture's)
     let mut images = vec![json!({"bufferView": g.view(&tex::png(1, 1, &[255; 4])), "mimeType": "image/png"})];
-    let mut place = BTreeMap::new();
+    let (mut place, mut animated) = (BTreeMap::new(), vec![]);
     for (k, pic) in &pics {
         let Some((w, h, px, scale, r)) = pic else { continue };
+        // the texture channels over it: its frames, the first of them as it shows at first (the one as loaded is
+        // overwritten at once); a picture they all leave the same stands so, one they change by frame is animated
+        let t = tex::tex0(k.0);
+        // (a clear texel's colour is not seen)
+        let visible = |p: &[u8]| -> Vec<[u8; 4]> {
+            p.as_chunks::<4>().0.iter().map(|&t| if t[3] == 0 { [0; 4] } else { t }).collect()
+        };
+        let mut frames = None;
+        let mut px: std::borrow::Cow<[u8]> = px.into();
+        for a in anims {
+            let f: Vec<Vec<u8>> = (a.frames.iter())
+                .filter_map(|ups| {
+                    tex::image(ups.get(k.1)?, &t, t.alpha).filter(|f| (f.0, f.1) == (*w, *h)).map(|f| f.2)
+                })
+                .collect();
+            let Some(first) = f.get(a.start as usize).filter(|_| f.len() == a.frames.len()) else { continue };
+            if visible(first) == visible(&px) && f.iter().all(|f| visible(f) == visible(&px)) {
+                continue;
+            }
+            if f.iter().all(|x| visible(x) == visible(first)) {
+                px = first.clone().into();
+            } else {
+                frames = Some((f, a));
+                break;
+            }
+        }
+        if let Some(first) = frames.as_ref().and_then(|(f, a)| f.get(a.start as usize)) {
+            px = first.clone().into();
+        }
         let span = |lo: f32, hi: f32, n: usize| {
             let inside = lo >= 0.0 && hi <= 1.0;
             let (a, b) = if inside { ((lo * n as f32) as usize, (hi * n as f32).ceil() as usize) } else { (0, n) };
@@ -629,9 +730,36 @@ pub fn game_glb(
             (a..b, if inside { [n as f32 / (b - a) as f32, a as f32 / (b - a) as f32] } else { [1.0, 0.0] })
         };
         let ((x, fx), (y, fy)) = (span(r[0], r[2], *w), span(r[1], r[3], *h));
-        let png = tex::png(x.len(), y.len(), &tex::cut(*w, *h, px, x.clone(), y.clone()));
-        images.push(json!({"bufferView": g.view(&png), "mimeType": "image/png"}));
+        let base = tex::cut(*w, *h, &px, x.clone(), y.clone());
+        images.push(json!({"bufferView": g.view(&tex::png(x.len(), y.len(), &base)), "mimeType": "image/png"}));
         place.insert(*k, (images.len() - 1, *scale, [fx, fy]));
+        // a channel's frames: the rectangle they change, each frame's texels there as an image after the others
+        if let Some((f, a)) = &frames {
+            let cuts: Vec<Vec<u8>> = f.iter().map(|px| tex::cut(*w, *h, px, x.clone(), y.clone())).collect();
+            let cw = x.len();
+            // (a texel clear in both is the same, whatever its colour)
+            let same = |a: Option<&[u8]>, b: Option<&[u8]>| a == b || matches!((a, b), (Some([.., 0]), Some([.., 0])));
+            let changed = |i: usize| cuts.iter().any(|c| !same(c.get(4 * i..4 * i + 4), base.get(4 * i..4 * i + 4)));
+            let diff: Vec<(usize, usize)> =
+                (0..base.len() / 4).filter(|&i| changed(i)).map(|i| (i % cw, i / cw)).collect();
+            if let (Some(x0), Some(y0), Some(x1), Some(y1)) = (
+                diff.iter().map(|d| d.0).min(),
+                diff.iter().map(|d| d.1).min(),
+                diff.iter().map(|d| d.0).max(),
+                diff.iter().map(|d| d.1).max(),
+            ) {
+                let image = images.len() - 1;
+                for c in &cuts {
+                    let rows: Vec<u8> = (y0..=y1)
+                        .flat_map(|r| c.get(4 * (r * cw + x0)..4 * (r * cw + x1 + 1)).unwrap_or_default())
+                        .copied()
+                        .collect();
+                    images.push(json!({"bufferView": g.view(&tex::png(x1 - x0 + 1, y1 - y0 + 1, &rows)), "mimeType": "image/png"}));
+                }
+                animated.push(json!({"image": image, "rect": [x0, y0, x1 - x0 + 1, y1 - y0 + 1], "first": image + 1,
+                    "frames": cuts.len(), "speed": a.speed, "start": a.start}));
+            }
+        }
     }
     let textures: Vec<Value> = (0..images.len()).map(|i| json!({"source": i, "sampler": 0})).collect();
     // a material for each image, opaque (cut out by the texture's alpha) or blended; a primitive for each of a
@@ -716,6 +844,9 @@ pub fn game_glb(
         glb::set(node, "mesh", json!(sky));
     }
     let mut extras = json!({"drum": "model", "drum_cull": false, "drum_depth": "floor", "background_rgb": [0, 0, 0]});
+    if !animated.is_empty() {
+        glb::set(&mut extras, "channels", json!(animated));
+    }
     if let Some(f) = light.and_then(|l| l.fog) {
         glb::set(&mut extras, "fog", json!({"colour": f.colour, "line": f.line}));
     }
@@ -807,6 +938,17 @@ pub fn game_glb(
 mod tests {
     use super::*;
 
+    #[test]
+    fn the_channel_table_at_part_4s_end() {
+        // a light record's tail, the table (one PSMT4 channel, 64 x 64 at block 0x600), the padding
+        let mut part = [1.0f32, 0.5, 0.25].iter().flat_map(|v| v.to_le_bytes()).collect::<Vec<u8>>();
+        part.extend(1u32.to_le_bytes());
+        part.extend([0u16, 0x600, 0, 0, 64, 64, 2, 0x14].iter().flat_map(|v| v.to_le_bytes()));
+        part.extend([0xAB; 12]);
+        assert_eq!(channel_table(&part), vec![[0, 0x600, 0, 0, 64, 64, 2, 0x14]]);
+        assert!(channel_table(&part[..20]).is_empty());
+    }
+
     /// One batch: a strip of `n` vertices at height `y`.
     fn batch(n: u8, y: f32) -> Vec<u8> {
         let mut d = vec![4, 4, 0, 1, 0, 0, 1, 0x60, 0, 0, 0, 0, 0, 0, 5, 0x6c];
@@ -837,7 +979,7 @@ mod tests {
         // cut anywhere, or noise: the whole strips come out, and nothing panics
         for n in 0..d.len() {
             let (s, o, f) = arena(&[(0, &d[..n])]);
-            let _ = (glb(&s, &o, &[]), game_glb("", &s, &f, &[], &[], None, None));
+            let _ = (glb(&s, &o, &[]), game_glb("", &s, &f, &[], &[], None, None, &[]));
         }
         let noise: Vec<u8> = (0..4096u32).map(|i| (i.wrapping_mul(2654435761) >> 13) as u8).collect();
         let _ = arena(&[(0, &noise)]);
@@ -929,7 +1071,7 @@ mod tests {
         floors[1].tiles[0].mode = 1;
         let mut sky = batches(&batch(5, 3000.0));
         sky.extend(batches(&batch(3, 3000.0)).into_iter().map(|b| Batch { mode: 2, ..b }));
-        let doc = gltf::Gltf::from_slice(&game_glb("Arena", &sky, &floors, &[], &[], None, None)).unwrap();
+        let doc = gltf::Gltf::from_slice(&game_glb("Arena", &sky, &floors, &[], &[], None, None, &[])).unwrap();
         let extras: Value =
             serde_json::from_str(doc.scenes().next().unwrap().extras().as_ref().unwrap().get()).unwrap();
         assert_eq!(
