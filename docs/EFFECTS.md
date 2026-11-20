@@ -209,7 +209,7 @@ Searched again (format 32) [H]:
   1000 a frame while their point 0x437C80 is on screen) through three frame lists, with thunder 0x1072 / 0x1074 /
   0x1075 and 0x353C78; not started on screen 11); 6 0 at 0x80, 1-2 at 0x100; 8, 17, 20 0 at 0x100; 9, 18 0 at 0x100,
   1 at 0x100 from 8; 11 0 at 0x80; 12 three tasks 0x3A7590 (channel 0-2 held on 0, played once at 0x80 at a 7 in 1000
-  chance a frame); 14 0-1 at 0x80. Exported (format 56): the looping ones as the arena's scene extras `channels`, the
+  chance a frame); 14 0-1 at 0x80. Exported (format 59): the looping ones as the arena's scene extras `channels`, the
   still ones as they stand (arena 4's lightning and arena 12's signs not played). Every arena object routine (the
   rows' +0x30 / +0x34 of table 0x520FC0) moves matrices only; no UV scroll or palette cycling in a fight. Paul's
   train's routine 0x3D5998 only sets the pad's rumble and the train's sound by its distance (0x3758F0).

@@ -632,6 +632,7 @@ pub fn glb(scenery: &[Batch], objects: &[Batch], banks: &[Vec<tex::Upload>]) -> 
 /// - scene extras `channels` (`anims`, the looping texture channels): for each picture one changes, its `image`, the
 ///   `rect` (x, y, w, h) of it the frames change and the `frames` images from `first`, each that rectangle's texels,
 ///   played from `start` at `speed` / 256 a frame (0x3A6C80, state 4).
+#[allow(clippy::too_many_arguments)]
 pub fn game_glb(
     name: &str,
     scenery: &[Batch],
@@ -697,7 +698,7 @@ pub fn game_glb(
         let t = tex::tex0(k.0);
         // (a clear texel's colour is not seen)
         let visible = |p: &[u8]| -> Vec<[u8; 4]> {
-            p.chunks_exact(4).map(|t| if t[3] == 0 { [0; 4] } else { [t[0], t[1], t[2], t[3]] }).collect()
+            p.as_chunks::<4>().0.iter().map(|&t| if t[3] == 0 { [0; 4] } else { t }).collect()
         };
         let mut frames = None;
         let mut px: std::borrow::Cow<[u8]> = px.into();
