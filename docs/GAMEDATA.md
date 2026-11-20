@@ -495,7 +495,7 @@ rules are written as read (strings where they are formulas); the tables are read
 at once `count` times, the camera's `pivot` and `distance`), `strike` (state 5: the bowler's and the partner's `z`,
 the partner's `side`, the reaction slot, the camera), `records` (TOP 5 BOWLERS, save block `save`: `size`,
 `defaults` from 0x523C00 / 0x523C10, each `name` (the first body's name's three letters), `bodies` (the team's two),
-`score`, **new** (format 39) `card` (its score card as balls in order: `rolls`, the pins of each, and `marks`, `none`,
+`score`, **new** (format 40) `card` (its score card as balls in order: `rolls`, the pins of each, and `marks`, `none`,
 `strike`, `spare`, `miss`, `foul` or `split`; BOWL_ENDINGS.md 5); `bonus`: the scores that keep JUKEBOX and the 300 flag), `texts` (the results', records' and pause menu's
 words without their printf control codes: `replay`, `king`, `top`, `new`, `record`, `thanks`, `draw`, `losers`,
 `winners`, `score_sheet`, `your_score`, `rank`, `summary`, `bonus`, `jukebox`, `top_bowlers`, `exit`,
