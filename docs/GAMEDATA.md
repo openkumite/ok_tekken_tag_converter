@@ -420,7 +420,12 @@ is there: since format 14 the additive ones (lights, floor gloss) in materials n
 (shadows, dirt) in materials named `shade`. Left out: the background characters; part 3, the object models, are
 not in the scenery but under node `objects` where their arena's code puts them (since format 14). Each primitive (a picture and a blend mode) has its own
 positions, texture coordinates and vertex colours; the first image is a white texel, which strips without a texture
-draw; each picture is cut to the texels its strips reach (all of it along an axis they repeat it on).
+draw; each picture is cut to the texels its strips reach (all of it along an axis they repeat it on). **New** (format
+44) the vertex colours are floats (1 = 128, the GS's modulation: up to twice the texture) as the arena's VU1
+microcode makes them (FORMATS.md 10): lit by the arena's lights from the strips' normals, or as stored, or white; a
+strip whose texture coordinates the microcode makes from its normal (flags 1, 2: the normal in the camera's axes; 8:
+its reflection of the way to the eye) is in a material with extras `env` (1, 2, 8) and has NORMAL (the arena's axes),
+its picture whole.
 
 ### `gamedata/sound.json`
 

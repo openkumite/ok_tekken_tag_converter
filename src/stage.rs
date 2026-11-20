@@ -22,6 +22,8 @@ const FLOOR_VERTICES: usize = 4 << 20;
 /// dirt decals), 3 ordinary blending (clouds, glass, soft edges).
 pub struct Batch {
     pub tex0: u64,
+    /// the word the microcode dispatches on ([`colour`])
+    pub flags: u32,
     pub mode: u8,
     pub floor: bool,
     /// which texture bank its TEX0 refers to
@@ -286,6 +288,67 @@ type Window = (Vec<Vec<Batch>>, Vec<(usize, [f32; 2])>);
 const GP: usize = 0x5F_D0F0;
 const FLOOR_TABLE: usize = 0x52_1700;
 
+/// An arena's lights for its geometry: towards each (the arena's axes), its colour (128 = 1), the ambient (GS units).
+pub struct Light {
+    pub toward: [[f32; 3]; 3],
+    pub colour: [[f32; 3]; 3],
+    pub ambient: [f32; 3],
+}
+
+/// The lights the arena's VU1 blocks carry for its geometry: the first light record of geometry part 4 (after its
+/// strips; a second one, where there is one, is the fighters', 0x455180's row): `u32 3, f32 ambient[3]`, then three
+/// `{f32 towards[3], f32 colour[3]}`; the blocks have the colours / 128 and half the ambient (seen in PCSX2 on arenas
+/// 4 and 8).
+/// shortcut: the record is found by its shape, not by the part's header (its words 4-8 not decoded); upgrade when
+/// a part has a look-alike before it
+pub fn light(part: &[u8]) -> Option<Light> {
+    (0..(part.len() + 1).saturating_sub(88)).step_by(4).find_map(|o| {
+        (u32le(part, o)? == 3).then_some(())?;
+        let v: Vec<f32> = (0..21).map(|k| f32le(part, o + 4 + 4 * k)).collect::<Option<_>>()?;
+        let at = |k: usize| -> Option<[f32; 3]> { Some([*v.get(k)?, *v.get(k + 1)?, *v.get(k + 2)?]) };
+        let ambient = at(0)?;
+        let [Some(t0), Some(t1), Some(t2)] = [3, 9, 15].map(at) else { return None };
+        let [Some(c0), Some(c1), Some(c2)] = [6, 12, 18].map(at) else { return None };
+        let unit = |t: [f32; 3]| ((t[0] * t[0] + t[1] * t[1] + t[2] * t[2]).sqrt() - 1.0).abs() < 0.01;
+        let colour = |c: [f32; 3]| c.iter().all(|v| (0.0..=300.0).contains(v));
+        ([t0, t1, t2].into_iter().all(unit) && [ambient, c0, c1, c2].into_iter().all(colour)).then_some(Light {
+            toward: [t0, t1, t2],
+            colour: [c0, c1, c2],
+            ambient: ambient.map(|a| a / 2.0),
+        })
+    })
+}
+
+/// Vertex `i`'s colour as the arena's VU1 microcode makes it (GS units, 128 = 1), and how its texture coordinates
+/// are made: 0 as stored, 1 or 2 from its normal in the camera's axes (2: added to the stored ones), 8 from its
+/// reflection. 0x54 dispatches on the batch's flags, the first of 8, 2, 1, 0x10, 4, 0x400, 0x20, 0x40, 0x100 set:
+/// 8 (0x128) the stored colour, the reflection; 2 (0x195), 1 (0x16E), 4 and 0x400 (0x1BC) white (the I register,
+/// 128, alpha too); 0x10 (0xB6) and 0x100 (0x102) the stored colour; 0x20 (0xDC) the stored colour + the ambient; 0x40
+/// and none (0x8B) lit: the stored colour x the sum of each light's colour / 128 x max(0, n . towards it), + the
+/// ambient; each clamped to 255 and truncated (FTOI0), the alpha the stored one (x the block's ambient w, 1).
+pub fn colour(b: &Batch, i: usize, light: Option<&Light>) -> ([f32; 4], u8) {
+    let c = b.col.get(i).copied().unwrap_or([128; 4]).map(f32::from);
+    let f = b.flags;
+    let first = [8, 2, 1, 0x10, 4, 0x400, 0x20, 0x40, 0x100].into_iter().find(|k| f & k != 0).unwrap_or(0x40);
+    let env = if matches!(first, 1 | 2 | 8) { first as u8 } else { 0 };
+    let rgb = match (first, light) {
+        (2 | 1 | 4 | 0x400, _) => return ([128.0; 4], env),
+        (0x20, Some(l)) => [c[0] + l.ambient[0], c[1] + l.ambient[1], c[2] + l.ambient[2]],
+        (0x40, Some(l)) => {
+            let n = b.nrm.get(i).copied().unwrap_or_default();
+            let mut sum = [0.0; 3];
+            for (to, col) in l.toward.iter().zip(&l.colour) {
+                let d = (n[0] * to[0] + n[1] * to[1] + n[2] * to[2]).max(0.0);
+                sum = [sum[0] + col[0] / 128.0 * d, sum[1] + col[1] / 128.0 * d, sum[2] + col[2] / 128.0 * d];
+            }
+            [c[0] * sum[0] + l.ambient[0], c[1] * sum[1] + l.ambient[1], c[2] * sum[2] + l.ambient[2]]
+        }
+        _ => [c[0], c[1], c[2]],
+    };
+    let [r, g, b] = rgb.map(|v| v.clamp(0.0, 255.0).trunc());
+    ([r, g, b, c[3]], env)
+}
+
 /// Every batch found in `d`, as stored.
 pub fn batches(d: &[u8]) -> Vec<Batch> {
     // (both read inside `d`: the loops below check their reach first)
@@ -315,6 +378,7 @@ pub fn batches(d: &[u8]) -> Vec<Batch> {
         let tex0 = word(m + 48) as u64 | (word(m + 52) as u64) << 32;
         let mut b = Batch {
             tex0,
+            flags: word(p + 8),
             mode,
             floor: false,
             bank: 0,
@@ -464,7 +528,9 @@ pub fn glb(scenery: &[Batch], objects: &[Batch], banks: &[Vec<tex::Upload>]) -> 
 ///
 /// Every strip: the additive ones (lights, floor gloss) in materials named `additive`, the darkening ones (painted
 /// shadows, dirt) in materials named `shade` (since format 14; glTF has neither blending). A batch without a texture draws the first image, a white texel;
-/// colours are the strips' vertex colours.
+/// colours (floats, 1 = 128: up to twice the texture) as the VU1 microcode makes them from the strips' with the arena's
+/// `light` ([`colour`]; since format 44); a strip whose texture coordinates it makes from its normals in a material
+/// with extras `env` (1, 2 or 8) and NORMAL, its picture whole.
 pub fn game_glb(
     name: &str,
     scenery: &[Batch],
@@ -472,6 +538,7 @@ pub fn game_glb(
     objects: &[objects::Object],
     banks: &[Vec<tex::Upload>],
     levels: Option<Value>,
+    light: Option<&Light>,
 ) -> Vec<u8> {
     let mut g = Glb::default();
     let (mut sky, mut tiles): (Vec<Batch>, Vec<Batch>) = (scenery.to_vec(), vec![]);
@@ -510,7 +577,9 @@ pub fn game_glb(
             Some((w, h, px, [t.tw as f32 / w as f32, t.th as f32 / h as f32], [f32::MAX, f32::MAX, f32::MIN, f32::MIN]))
         });
         for (.., k, r) in pic.iter_mut() {
-            for c in (0..b.pos.len()).map(|i| st(b, i)) {
+            // (coordinates made from normals reach all of it: OpenKumite makes them in the picture's)
+            let made = (colour(b, 0, None).1 > 0).then_some([-1.0, 2.0]);
+            for c in (0..b.pos.len()).map(|i| st(b, i)).chain(made) {
                 *r = [r[0].min(c[0] * k[0]), r[1].min(c[1] * k[1]), r[2].max(c[0] * k[0]), r[3].max(c[1] * k[1])];
             }
         }
@@ -541,12 +610,13 @@ pub fn game_glb(
     let parts = [("sky".to_string(), &sky), ("floor".to_string(), &tiles)].into_iter();
     let parts = parts.chain(cells.iter().enumerate().map(|(k, c)| (format!("floor_cell_{k}"), c)));
     for (name, batches) in parts.chain(models.iter().enumerate().map(|(k, m)| (format!("object_{k}"), m))) {
-        // (positions, texture coordinates, colours, indices, floor cells)
-        type Prim = (Vec<f32>, Vec<f32>, Vec<u8>, Vec<u32>, Vec<f32>);
+        // (positions, texture coordinates, colours, indices, floor cells, normals)
+        type Prim = (Vec<f32>, Vec<f32>, Vec<f32>, Vec<u32>, Vec<f32>, Vec<f32>);
         let mut prims: BTreeMap<usize, Prim> = BTreeMap::new();
         for b in batches.iter() {
             let (image, scale, [fx, fy]) = place.get(&key(b)).copied().unwrap_or((0, [0.0; 2], [[1.0, 0.0]; 2]));
-            let mat = *material.entry((image, b.mode)).or_insert_with(|| {
+            let env = colour(b, 0, light).1;
+            let mat = *material.entry((image, b.mode, env)).or_insert_with(|| {
                 let pbr = json!({"baseColorTexture": {"index": image}, "metallicFactor": 0.0, "roughnessFactor": 1.0});
                 let mut m =
                     json!({"pbrMetallicRoughness": pbr, "doubleSided": true, "alphaMode": "MASK", "alphaCutoff": 0.1});
@@ -557,19 +627,25 @@ pub fn game_glb(
                 if let Some(name) = [None, Some("additive"), Some("shade")].get(b.mode as usize).copied().flatten() {
                     glb::set(&mut m, "name", json!(name));
                 }
+                if env > 0 {
+                    glb::set(&mut m, "extras", json!({"env": env}));
+                }
                 materials.push(m);
                 materials.len() - 1
             });
-            let (pos, uv, col, idx, cells) = prims.entry(mat).or_default();
+            let (pos, uv, col, idx, cells, nrm) = prims.entry(mat).or_default();
             let base = (pos.len() / 3) as u32;
             for (i, p) in b.pos.iter().enumerate() {
                 pos.extend(p.map(|v| (v as f64 * SCALE) as f32));
                 let c = st(b, i);
                 uv.extend([c[0] * scale[0] * fx[0] - fx[1], c[1] * scale[1] * fy[0] - fy[1]]);
-                let c = b.col.get(i).copied().unwrap_or([128; 4]);
-                col.extend([c[0], c[1], c[2]].map(|v| (v as u32 * 2).min(255) as u8));
-                col.push(if b.mode > 0 { (c[3] as u32 * 2).min(255) as u8 } else { 255 });
+                let c = colour(b, i, light).0;
+                col.extend([c[0] / 128.0, c[1] / 128.0, c[2] / 128.0]);
+                col.push(if b.mode > 0 { (c[3] * 2.0).min(255.0) / 255.0 } else { 1.0 });
                 cells.extend([b.cell[0] * SCALE as f32, b.cell[1] * SCALE as f32, b.cell[2], b.cell[3]]);
+                if env > 0 {
+                    nrm.extend(b.nrm.get(i).copied().unwrap_or_default());
+                }
             }
             for i in 0..(b.pos.len() as u32).saturating_sub(2) {
                 let (a, c) = (base + i + (i & 1), base + i + 1 - (i & 1));
@@ -580,10 +656,13 @@ pub fn game_glb(
             continue;
         }
         let prims: Vec<Value> = (prims.into_iter())
-            .map(|(mat, (pos, uv, col, idx, cells))| {
+            .map(|(mat, (pos, uv, col, idx, cells, nrm))| {
                 let n = pos.len() / 3;
                 let mut attrs = json!({"POSITION": g.ranged(&pos, 3, "VEC3"), "TEXCOORD_0": g.accessor(&glb::floats(&uv), glb::F32, "VEC2", n),
-                    "COLOR_0": g.accessor(&col, glb::U8, "VEC4", n)});
+                    "COLOR_0": g.accessor(&glb::floats(&col), glb::F32, "VEC4", n)});
+                if nrm.len() == pos.len() {
+                    glb::set(&mut attrs, "NORMAL", json!(g.accessor(&glb::floats(&nrm), glb::F32, "VEC3", n)));
+                }
                 // the floor's cells: TEXCOORD_1 a vertex's cell's centre (x, z), TEXCOORD_2 (its level, the count)
                 if name.starts_with("floor") {
                     let half = |k: usize| -> Vec<f32> { cells.chunks(2).skip(k).step_by(2).flatten().copied().collect() };
@@ -720,10 +799,35 @@ mod tests {
         // cut anywhere, or noise: the whole strips come out, and nothing panics
         for n in 0..d.len() {
             let (s, o, f) = arena(&[(0, &d[..n])]);
-            let _ = (glb(&s, &o, &[]), game_glb("", &s, &f, &[], &[], None));
+            let _ = (glb(&s, &o, &[]), game_glb("", &s, &f, &[], &[], None, None));
         }
         let noise: Vec<u8> = (0..4096u32).map(|i| (i.wrapping_mul(2654435761) >> 13) as u8).collect();
         let _ = arena(&[(0, &noise)]);
+    }
+
+    #[test]
+    fn strips_are_lit_as_the_microcode_does() {
+        // a light record after some strip data: light 0 straight up, white (128), the others away; ambient 40
+        let mut part = vec![0u8; 12];
+        part.extend(3u32.to_le_bytes());
+        let rec = [40.0, 40.0, 40.0, 0.0, 1.0, 0.0, 128.0, 128.0, 128.0, 0.0, -1.0, 0.0, 9.0, 9.0, 9.0, 0.0, -1.0, 0.0];
+        part.extend(rec.iter().chain(&[9.0, 9.0, 9.0]).flat_map(|v: &f32| v.to_le_bytes()));
+        let l = light(&part).unwrap();
+        assert_eq!((l.ambient, l.toward[0], l.colour[0]), ([20.0; 3], [0.0, 1.0, 0.0], [128.0; 3]));
+        assert!(light(&part[..40]).is_none());
+        // a strip facing the light: its colour x 1 + half the ambient; the alpha kept
+        let mut b = batches(&batch(3, 0.0)).remove(0);
+        b.col = vec![[100, 50, 0, 64]; 3];
+        assert_eq!(colour(&b, 0, Some(&l)), ([120.0, 70.0, 20.0, 64.0], 0));
+        // 0x10: as stored; 0x20: + the ambient; 1, 2, 8: their texture coordinates made, 1 and 2 white
+        b.flags = 0x210;
+        assert_eq!(colour(&b, 0, Some(&l)).0, [100.0, 50.0, 0.0, 64.0]);
+        b.flags = 0x20;
+        assert_eq!(colour(&b, 0, Some(&l)).0, [120.0, 70.0, 20.0, 64.0]);
+        b.flags = 0x201;
+        assert_eq!(colour(&b, 0, Some(&l)), ([128.0; 4], 1));
+        b.flags = 0x208;
+        assert_eq!(colour(&b, 0, Some(&l)), ([100.0, 50.0, 0.0, 64.0], 8));
     }
 
     #[test]
@@ -775,7 +879,7 @@ mod tests {
         floors[1].tiles[0].mode = 1;
         let mut sky = batches(&batch(5, 3000.0));
         sky.extend(batches(&batch(3, 3000.0)).into_iter().map(|b| Batch { mode: 2, ..b }));
-        let doc = gltf::Gltf::from_slice(&game_glb("Arena", &sky, &floors, &[], &[], None)).unwrap();
+        let doc = gltf::Gltf::from_slice(&game_glb("Arena", &sky, &floors, &[], &[], None, None)).unwrap();
         let extras: Value =
             serde_json::from_str(doc.scenes().next().unwrap().extras().as_ref().unwrap().get()).unwrap();
         assert_eq!(

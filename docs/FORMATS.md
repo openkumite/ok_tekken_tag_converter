@@ -263,6 +263,29 @@ STCYCL 4,1   UNPACK V2-32 xN    texture coordinates
 STCYCL 4,2   UNPACK V3-32 x2N   normal, position
 ```
 
+**The flags** are what the arena's VU1 microcode dispatches on (a save state's VU1 micro memory, program 0x50:
+0x54 reads the batch, then tests 8, 2, 1, 0x10, 4, 0x400, 0x20, 0x40 in turn, else 0x100, else the lit path) [H]:
+
+| First flag set | Path | Colour | Texture coordinates |
+|---|---|---|---|
+| 8 | 0x128 | as stored | the reflection R = 2n(V.n) - V of V, the way to the eye (its y first x 3, VU1 constant 1.w), turned about y by the block's 4.w / 5.w (sin, cos): ((R.x + 1) / 2, (R.z + 1) / 2) |
+| 2 | 0x195 | white (the I register, 128), alpha 128 | the normal in the camera's axes (block rows 12-14) x 0.25 + the stored ones |
+| 1 | 0x16E | white, alpha 128 | the normal in the camera's axes x 0.25 + 0.5 |
+| 0x10 | 0xB6 | as stored | as stored |
+| 4, 0x400 | 0x1BC | white, alpha 128 | from the way to the eye through EATANxy / EATANxz (not decoded) |
+| 0x20 | 0xDC | as stored + the ambient | as stored |
+| 0x40, none | 0x8B | lit: the stored colour x the sum of each light's colour / 128 x max(0, n . towards it), + the ambient, each to 255, truncated; the alpha the stored one x the ambient's w (1) | as stored |
+| 0x100 | 0x102 | as stored (z 0) | as stored |
+
+0x200, 0x80 are not tested. Each batch's 16-quadword block before it (UNPACK V4-32 x16 to 0, MSCAL 0x32): the
+view-projection matrix, the three lights' directions (as columns: rows 4-6), the lights' colours (8-10, / 128), the
+ambient (11), the camera's rotation (12-14) and the eye (15, the model's axes); 8.w and 9.w make the fog coefficient
+`9.w + 8.w x w` (255 none; e.g. 268.8 - 0.001 w), used by strips whose PRIM has FGE (arena 0 has many) [H; the fog
+colour and OpenKumite's fog are not done]. The lights are geometry part 4's first light record (after its strips:
+`u32 3, f32 ambient[3]`, then three `{f32 towards[3], f32 colour[3]}`), the blocks' ambient half the record's (seen in
+PCSX2 on arenas 4, 8 and the bowl); a second record, where there is one, is the fighters' (0x455180 + 0x80 x arena,
+0x353F14). OpenKumite's (since format 44): GAMEDATA.md.
+
 Blending, when the strip's PRIM has ABE: ALPHA `0x44` ordinary, `0x48` additive (lights, floor
 gloss; uses the vertex alpha), `0x89` a darkening decal. `TEX0.TCC` says whether the texture's
 alpha counts.
