@@ -288,7 +288,7 @@ fn windowed(floors: &[Floor], window: [usize; 2]) -> Option<Window> {
 type Window = (Vec<Vec<Batch>>, Vec<(usize, [f32; 2])>);
 
 const GP: usize = 0x5F_D0F0;
-const FLOOR_TABLE: usize = 0x52_1700;
+pub(crate) const FLOOR_TABLE: usize = 0x52_1700;
 
 /// An arena's lights for its geometry: towards each (the arena's axes), its colour (128 = 1), the ambient (GS units);
 /// and its fog ([`fog`]).

@@ -367,9 +367,17 @@ pub fn objects(elf: &[u8], arena: usize, blocks: &[Vec<Batch>]) -> Result<Vec<Ob
 /// What arena `arena`'s code does with its objects that depends on the camera or on chance, for OpenKumite to run
 /// (stages.json `objects`; mm, frames, radians): Nina's helicopter (object 1, 0x3D62A0: `wait` frames out of sight
 /// on its pad, then up to `top` and back down near `land`) and her 40 lanes' copies (objects 10-49, 0x3D5B58 /
-/// 0x3D5E80). None elsewhere.
+/// 0x3D5E80); Eddy's grass (`grass`: the arenas whose floor row +4 is 1, 0x3415D4): the floor's window drawn through
+/// a lattice (0x3E13C8: x, z +-`size`, y 0..`size`, the row's +0x14) whose top corner at each corner of the window's
+/// cells 0x3D43A8 moves by the wind there (0x3D3E00, the arena's `wind`; its impulses not exported) x `gain` (120) and
+/// lowers by that move and `drop` (200). None elsewhere.
 pub fn motion(elf: &[u8], arena: usize) -> Option<serde_json::Value> {
     let gp = |off: usize| f32le(elf, GP - off - VADDR).map(f64::from);
+    let row = (crate::stage::FLOOR_TABLE + 0x30 * arena).checked_sub(VADDR)?;
+    if crate::u16le(elf, row + 4)? == 1 {
+        return Some(serde_json::json!({"grass": {"size": f32le(elf, row + 0x14)?, "gain": 120.0, "drop": 200.0,
+            "wind": crate::effects::wind(elf, arena)?}}));
+    }
     if arena == 1 {
         // (the leaves' copies after the table's objects, then their shadows')
         let table = (crate::u32le(elf, ROWS - VADDR + 16 * arena)? as usize).checked_sub(VADDR)?;
