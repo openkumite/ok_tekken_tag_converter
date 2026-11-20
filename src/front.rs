@@ -87,6 +87,63 @@ pub fn help_font(elf: &[u8]) -> Option<(String, Vec<u8>)> {
     Some(("help_font.png".to_string(), tex::png(w, h, &px)))
 }
 
+/// A fighter file's command list (part 2, a pack: section 0 the help font again, 1-5 the list, the same text in each;
+/// 0x3DC870 keeps section 1): u8 the count, the character's name, then the count's moves, each its name and its keys
+/// (NUL-ended). A name's leading 0xFC n (n < 0xFE) starts colour group n - 1 (0x3DC9C8); the keys' 0xFC 0xFF aligns
+/// each line right, 0xFF 'n' starts a line, 0xDB-0xFB are icons (0x3DFA00). `{name, moves: [[group, name, keys]]}`,
+/// bytes as the characters of the same number.
+pub fn command_list(part: &[u8]) -> Option<Value> {
+    let text = *crate::archive::pack(part)?.get(1)?;
+    let (&count, rest) = text.split_first()?;
+    let mut strings = rest.split(|&b| b == 0).map(|s| s.iter().map(|&b| char::from(b)).collect::<String>());
+    let name = strings.next()?;
+    let mut group = 0;
+    let mut moves = Vec::new();
+    for _ in 0..count {
+        let (mut label, keys) = (strings.next()?, strings.next()?);
+        if let Some(n) =
+            label.strip_prefix('\u{fc}').and_then(|l| l.chars().next()).map(u32::from).filter(|&n| n < 0xfe)
+        {
+            group = n.saturating_sub(1);
+            label = label.chars().skip(2).collect();
+        }
+        moves.push(json!([group, label, keys]));
+    }
+    Some(json!({"name": name, "moves": moves}))
+}
+
+/// The command list's icons (the executable's archive 0x4567A0, uploaded under the help font at 0x3B40 by 0x3DE930):
+/// entry 0 the arrows (64 x 16, four 16-wide cells, 4 bits) and entry 1 the buttons (20 x 20) with their 16-colour
+/// palettes (16-bit; row r at the GS's row 238 + r), one row each: `command_arrows.png` (the arrows in palette rows
+/// 0-3: held (solid), tapped (outlined), then both lit; 0x3DF500 takes row 1 less the code's bit 3, 2 more lit; the
+/// star row 1) and `command_buttons.png` (the button icon in rows 0-15, the row the buttons pressed, 0x3DF150), each row's
+/// picture under the one before.
+pub fn command_icons(elf: &[u8]) -> Vec<(String, Vec<u8>)> {
+    let base = 0x4567A0 - VADDR;
+    let Some(entries) = elf.get(base..).and_then(|d| crate::archive::pack(d.get(..0x2000)?)) else { return vec![] };
+    [("command_arrows.png", 0, 64, 16, 4), ("command_buttons.png", 1, 20, 20, 16)]
+        .into_iter()
+        .filter_map(|(name, k, w, h, rows)| {
+            let ups = tex::uploads(entries.get(k)?);
+            let (px, pal) = (&ups.first()?.data, &ups.get(1)?.data);
+            let rgba: Vec<u8> = (0..rows * w * h)
+                .flat_map(|i| {
+                    let (row, p) = (i / (w * h), i % (w * h));
+                    let v = px.get(p / 2).map_or(0, |b| if p % 2 == 1 { b >> 4 } else { b & 15 }) as usize;
+                    let at = 2 * (row * 16 + v);
+                    tex::rgba16(crate::u16le(pal, at).unwrap_or(0))
+                })
+                .collect();
+            Some((name.to_string(), tex::png(w, h * rows, &rgba)))
+        })
+        .collect()
+}
+
+/// A colour word of the executable (0x3DBCF0 reads it as 0xRRGGBBAA) as [r, g, b, a].
+fn rgba_word(elf: &[u8], at: usize) -> Result<[u8; 4]> {
+    Ok(u32_at(elf, at - VADDR, "a colour")?.to_be_bytes())
+}
+
 /// The help texts (archive entry 2, 0x45D780: NUL-separated, as 0x3E4FA0 counts them), up to the first "null"; bytes
 /// past ASCII (the font's button glyphs) as the characters of the same number.
 /// Practice's four menus (FREESTYLE, VS CPU, CHAIN TRAINING, COMBO TRAINING) as the PS2 shows them: their rows,
@@ -566,6 +623,27 @@ pub fn front_end(elf: &[u8], ups: &[Upload], clips: &[Option<String>]) -> Result
                 "widths": u8s(0x4572E0, 160)?, "space": 4, "line_h": 20, "wrap": 0x244},
             "x": 30, "y": 390, "level": 0x60, "band": {"rect": [0, 389, 640, 48], "colour": [0x18, 0x18, 0x18, 0x60]},
             "texts": help_texts(elf)},
+        // COMMAND LIST (the pause's, 0x3DD098 for each side a player plays, and practice's): 0x3DC9C8 by side at x 20
+        // or 336, y 89 (59 in practice); the head (x - 8, y - 8, 300 x 58) RGBA 0x40405073 with the member's face at
+        // (x - 3, y - 4) (0x3CBFB8), the character's name at (x + 51, y) and "When Facing Right" (0x522B90) right-aligned
+        // in 280 from x at y + 32, all in the help font at level 0x60; the list from y + 50, clipped to 288 high: four
+        // moves 72 apart (`lists`, by body), each on its group's two bands (0x4564F0: 18 then 54 high, 300 wide from x -
+        // 8; 72 of the second when the name is empty), the name at (x, top), the keys right-aligned in 280 from x + 2 at
+        // top + 24 (0xFF 'n' a line 20 lower); arrows (0xDC + d, d + 8 held: cell and mirror flags (1 x, 2 y) 0x522D00 by
+        // d & 7, the keypad's 1 2 3 4 6 7 8 9, 16 wide, the star 0xDB the ninth, 14 wide), buttons (0xEC + the buttons'
+        // bits 1, 2, 4, 8: 20 wide), drawn 2 low (0x3DFA00).
+        // With five moves or more: down / up one, right / left four (round; sound 0x103F), the list easing there (a
+        // third of what is left a frame, 0x48 a move), and the bar at x + 286, 6 wide: its track (RGBA
+        // 0xFFFFFF80) 288 high, the thumb (0xB0B0B080) 1152 / count high at index x 288 / count, wrapped round; fewer:
+        // the rest below the moves in 0x4564F4. Then the window's frame about (x, y, 284, 330) (0x3DC188)
+        "command_list": {"x": [20, 336], "y": 89, "practice_y": 59, "head": {"rect": [-8, -8, 300, 58], "colour": [0x40, 0x40, 0x50, 0x73]},
+            "face_xy": [-3, -4], "name_xy": [51, 0], "facing": {"text": "When Facing Right", "y": 32}, "width": 280, "level": 0x60,
+            "top": 50, "rows": 4, "row_h": 72, "bands": [18, 54], "band_x": -8, "band_w": 300, "keys_xy": [2, 24],
+            "colours": (0..10).map(|k| Ok([rgba_word(elf, 0x4564F0 + 8 * k)?, rgba_word(elf, 0x4564F4 + 8 * k)?])).collect::<Result<Vec<_>>>()?,
+            "below": rgba_word(elf, 0x4564F4)?, "bar": {"x": 286, "w": 6, "track": [0xFF, 0xFF, 0xFF, 0x80], "thumb": [0xB0, 0xB0, 0xB0, 0x80]},
+            "frame": [0, 0, 284, 330], "sound": 0x103F, "step": 4,
+            "arrows": {"picture": "command_arrows.png", "cell": [16, 16], "cells": (0..9).map(|k| Ok([u8_at(elf, 0x522D00 - VADDR + 2 * k, "the arrows")?, u8_at(elf, 0x522D01 - VADDR + 2 * k, "the arrows")?])).collect::<Result<Vec<_>>>()?, "advance": 16, "star_advance": 14},
+            "buttons": {"picture": "command_buttons.png", "size": [20, 20], "advance": 20}, "dy": 2},
         // the pause menu (0x3B7B98): its items 0x51E7A8 (CANCEL, RESET, COMMAND LIST, SCREEN CAPTURE, TOP BOWLERS,
         // BOWLING OPTIONS, ADJUST DISPLAY, CONTROLLER SETUP; SCREEN CAPTURE once the Gallery is open, the Bowl's two only
         // in Tekken Bowl and COMMAND LIST and SCREEN CAPTURE not there); the window 0x3DC768 (x, y, w, h; drawn 8 out,
@@ -612,6 +690,21 @@ pub fn front_end(elf: &[u8], ups: &[Upload], clips: &[Option<String>]) -> Result
 #[allow(clippy::unwrap_used, clippy::indexing_slicing)]
 mod tests {
     use super::*;
+
+    /// A command list: the count's moves after the name, a name's 0xFC n its group from then on, the keys as they are.
+    #[test]
+    fn command_list_groups_and_keys() {
+        let text = b"\x02  Paul\0\xfc\x02Jab\0\xfc\xff\xed\0Kick\0\xfc\xff\xf0\0\xfc\x03\0 \0";
+        let mut part = vec![2, 0, 0, 0, 32, 0, 0, 0, 1, 0, 0, 0, 33, 0, 0, 0];
+        part.extend((text.len() as u32).to_le_bytes());
+        part.extend(0xffff_ffffu32.to_le_bytes());
+        part.resize(32, 0xab);
+        part.push(0);
+        part.extend(text);
+        let l = command_list(&part).unwrap();
+        assert_eq!(l["name"], "  Paul");
+        assert_eq!(l["moves"], json!([[1, "Jab", "\u{fc}\u{ff}\u{ed}"], [1, "Kick", "\u{fc}\u{ff}\u{f0}"]]));
+    }
 
     #[test]
     fn sprites_name_their_pictures() {

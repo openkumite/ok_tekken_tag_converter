@@ -379,6 +379,20 @@ colour 5, the cursor's 11 over the bar 0x3BB680 (from x 180 to 40 past the text,
 the printf's "{" / "}" (shown as the gold arrows `003_067` / `003_068`) at (320, 250) towards the choice; NO first;
 left / right choose (sound 3), YES takes the reset (0x35A518, sound 4), NO or START back to the entries (sound 3).
 
+**COMMAND LIST** (format 49, `front_end.command_list`; checked against PCSX2 captures of an arcade fight's pause:
+Xiaoyu's first page and the page four down after three downs and a right): the pause's COMMAND LIST (0x3B7F74) and
+practice's (0x379A98) call 0x3DD098, which for each side a player plays (gp-0x7440) uploads the side's font and draws
+its list (0x3DC9C8) from the fighter's command text (0x3DC870 keeps part 2 section 1 of the character's file, by
+fighter +0x22): u8 count, the character's name, then count pairs of NUL-ended strings, the move's name (a leading
+0xFC n: colour group n - 1 from then on) and its keys. The texts go through 0x3DFA00 (0xFF + a letter: `H` / `V` x / y,
+`h` / `v` x 16 / x 20, `w` the width, `i` the colour, `L`, `s` a string, `n` a new line 20 lower; 0xFC 0xFF aligns each
+line right in the width; 0xDB the star, 0xDC-0xEB arrows (0x3DF500: direction d & 7 by table 0x522D00 {cell, flags},
+the keypad's 1 2 3 4 6 7 8 9, palette row 238 + 1 - (d >> 3): bit 3 held, solid, else outlined), 0xEC-0xFB the
+buttons icon with palette row 238 + the buttons' bits (0x3DF150), both from the executable's archive 0x4567A0
+uploaded under the font at 0x3B40, row 200; glyphs the help font's widths, icons 16 / 20 / 14 wide, 2 lower). The
+layout is in `command_list` and the converter's front.rs; START or a face button closes it (the pause: any of 0x8FC,
+back to its entries). [H, layout checked]
+
 **Practice** (checked in PCSX2): the select takes a team of two for the player and, with the CPU's cursor, a team
 of two for the dummy; the fight starts in FREESTYLE with no menu; START opens practice's menu (format 34,
 `practice`): the mode's name, MODE SELECT (left / right: FREESTYLE, VS CPU, CHAIN TRAINING, COMBO TRAINING), CANCEL,

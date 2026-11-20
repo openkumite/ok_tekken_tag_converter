@@ -334,8 +334,8 @@ fn openkumite(pack: &Hashed) {
     let written = pack.0.lock().unwrap().clone();
     let count = |dir: &str| written.keys().filter(|k| k.starts_with(&format!("assets/{dir}/"))).count();
     // (and Tekken Bowl's 114 motions, its ball, pin and pin deck; the arenas' background characters' 115 models and
-    // 294 motions)
-    assert_eq!((count("characters"), count("motions"), count("stages")), (127, 4231 + 114, 23 + 1 + 3 + 115 + 294));
+    // 294 motions; format 48: ending op 25's 5 props)
+    assert_eq!((count("characters"), count("motions"), count("stages")), (127, 4231 + 114, 23 + 1 + 3 + 115 + 294 + 5));
     let roster = load("gamedata/roster.json");
     let entries = roster["selections"]["entries"].as_array().unwrap();
     assert_eq!((entries.len(), roster["characters"].as_array().unwrap().len()), (127, 34));
@@ -604,8 +604,15 @@ fn front_end(pack: &Hashed) {
     let mut named = vec![];
     pictures(fe, &mut named);
     // (format 16: the small font's 36 colours, the VS screen's fire and logo, and its colours' picture; format 24:
-    // the help font; format 29: the records' up / down marks, the ranking's banners, separator and face frame)
-    assert_eq!(named.len(), 282);
+    // the help font; format 29: the records' up / down marks, the ranking's banners, separator and face frame; format
+    // 49: the command list's arrows and buttons)
+    assert_eq!(named.len(), 284);
+    // (format 49: each body's command list, Xiaoyu's as PCSX2 shows it)
+    let xiaoyu = &fe["command_list"]["lists"][7];
+    assert_eq!(
+        (&xiaoyu["name"], &xiaoyu["moves"][1]),
+        (&"  Ling Xiaoyu".into(), &serde_json::json!([0, "Bayonet McTwist", "\u{fc}\u{ff}\u{ed}\u{dd}\u{ee}"]))
+    );
     // (format 24, FRONTEND.md 8: the pause's entries, the help texts, GAME OPTIONS' 14 rows, the records' letters)
     assert_eq!(
         (&fe["pause"]["items"][7], &fe["help"]["texts"][31], &fe["options"][13]["label"], &fe["options"][0]["arrows"]),

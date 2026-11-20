@@ -271,7 +271,7 @@ pub fn png(w: usize, h: usize, rgba: &[u8]) -> Vec<u8> {
     out
 }
 
-fn rgba16(v: u16) -> [u8; 4] {
+pub(crate) fn rgba16(v: u16) -> [u8; 4] {
     let c = |s: u16| ((v >> s & 31) * 255 / 31) as u8;
     [c(0), c(5), c(10), if v & 0x8000 != 0 || v & 0x7fff != 0 { 255 } else { 0 }]
 }
