@@ -202,6 +202,35 @@ The arenas' additive strips (ALPHA 0x48, Cs x As + Cd: lights, neon, floor gloss
 Cd x As: painted shadows, dirt) are in the stages since format 14, in materials named `additive` and `shade`
 (GAMEDATA.md).
 
+## 5b. Devil's beam and the character effects (read 2026-11-21, not exported yet)
+
+- **Devil's beam** [H unless marked]: in a fight 0x378150 (each frame, Devil only: character 0x1D at fighter +0x2A,
+  drawn +0x127): while the move (+0xC0) has attack bone 0x18 in one of its slots +0x28..+0x2B and its frame +0xC4 is
+  within +0x2C..+0x2D, state 0 picks the beam's type by the move (0x368248 of entries 0x104F -> 1, 0x1051 and 0x1053
+  -> 2, 0x1A48 -> 3, 0x1054 -> 4); a type starts it (0x3780C8: the record 0x8A7AD0 + 0x50 x side cleared, start and
+  end at fighter +0x708), plays sound 0x45 and 0x3A8C50 (18 random jitters 0..7 at 0x8D7820 + 0x48 x side, and a point
+  light at the head matrix +0x1BF0 x 0x437CD0, 0x3531F0). State 1 runs the type's routine (table 0x506210: 0x378810,
+  0x378A28, 0x378C48, 0x378E70). Type 1: heading +0x3C, the beam's step 200 mm a frame along it (0x357F18 / 0x357F58,
+  sin / cos x 200 >> 15) times the frames since the active start; its start offset by table 0x506248 (0x50624C when
+  the costume table's value is 0x6B): `s16 forward, s16 height`; 0x378500 writes start (+0x38) and end (+0x44), and
+  the hit line fighter +0x190..+0x1A4; an end below the floor is put on it (y 0) and every 8 frames 0x379090 throws a
+  spark there. Ending op 16 (0x378368 -> 0x378398) sets table 0x8A7B70[side] = {type b, count, frames c}: the same
+  routines with the scene's count and the heading from 0x378760 (the head's two points 0x42F120 / 0x42F130), for c
+  frames.
+- **Its draw** (0x378600 -> 0x3A8D08): width 0x64 x t + 0x32 (type 0) or 0x82 x t + 0x46, t fading after the active
+  end (+0x1E frames); colour gp-0x7198 (3 bytes) x t. For the first 15 frames a flare at the eye (0x3A8BC0, slot 0x14
+  / 0x17 by side, colour 0x5F6250). The line from start to end is cut into |end - start| / 500 segments (at most 36),
+  each projected (0x34B2A0) and drawn as a screen-space quad (0x3A8BC0, queue 0x8D6AA0, 36 entries of 0x60) of half
+  width 7200 x width / w across the segment's screen direction, its texture slot 0x14 + 3 x side + 2 (the first) or
+  + 1 (the others), its cell the segment's jitter % 7 (the jitter + 1 each frame). Skipped off screen (0x6C00..0x9400,
+  0x7200..0x8E00) or when w > 0xFDE8.
+- **The character effects** (0x3A2BC0(side, 0, at)): the model's effect index (0x35C970: model table 0x415840, the
+  record's byte 8) selects 0x347730's row (0x51B3B8 + 8 x index, 36 rows: `u32 the particle routine, light`); a
+  particle on each path of set 4 + side, texture slot 14 + 3 x side + the path's +0x36, its +0x34 cells. Characters
+  0x13, 0x1D, 0x0F, 0x21 on their moves 0x25 / 0x26 take set 9 instead (0x3A2E20; 0x344BE0 points set 9 and slot 12
+  at True Ogre's or Devil's own part, 0x8BF2C0 / 0x8BF308). Where sets 4-5 and slots 14-25 are loaded from the
+  fighter's files is not yet found.
+
 ## 6. Not found or not read
 
 Fog / depth cue: the arenas' strips with FGE (FORMATS.md 10), its colour from table 0x456540. The tag-in / tag-out effects, ki-charge glow, motion blur: not located. The ending scripts' effect
