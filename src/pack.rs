@@ -635,8 +635,9 @@ pub fn convert(ctx: &Ctx, src: &dyn DiscFile, research: bool) -> Result<Value> {
     let mut roster = assets::roster(&roster, &characters);
     if let Some(r) = roster.as_object_mut() {
         let mut front_end = front::front_end(&a.elf, &atlas, &clips)?;
-        front_end["command_list"]["lists"] =
-            json!((0..moves::BODIES).map(|b| commands.remove(&b).unwrap_or(Value::Null)).collect::<Vec<_>>());
+        if let Some(c) = front_end.get_mut("command_list").and_then(Value::as_object_mut) {
+            c.insert("lists".into(), json!((0..moves::BODIES).map(|b| commands.remove(&b)).collect::<Vec<_>>()));
+        }
         r.insert("front_end".into(), front_end);
     }
     for (name, png) in front::command_icons(&a.elf) {

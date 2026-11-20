@@ -115,8 +115,8 @@ pub fn command_list(part: &[u8]) -> Option<Value> {
 /// The command list's icons (the executable's archive 0x4567A0, uploaded under the help font at 0x3B40 by 0x3DE930):
 /// entry 0 the arrows (64 x 16, four 16-wide cells, 4 bits) and entry 1 the buttons (20 x 20) with their 16-colour
 /// palettes (16-bit; row r at the GS's row 238 + r), one row each: `command_arrows.png` (the arrows in palette rows
-/// 0-3: held (solid), tapped (outlined), then both lit; 0x3DF500 takes row 1 - the code's bit 3, + 2 lit; the star row
-/// 1) and `command_buttons.png` (the button icon in rows 0-15, the row the buttons pressed, 0x3DF150), each row's
+/// 0-3: held (solid), tapped (outlined), then both lit; 0x3DF500 takes row 1 less the code's bit 3, 2 more lit; the
+/// star row 1) and `command_buttons.png` (the button icon in rows 0-15, the row the buttons pressed, 0x3DF150), each row's
 /// picture under the one before.
 pub fn command_icons(elf: &[u8]) -> Vec<(String, Vec<u8>)> {
     let base = 0x4567A0 - VADDR;
@@ -131,7 +131,7 @@ pub fn command_icons(elf: &[u8]) -> Vec<(String, Vec<u8>)> {
                     let (row, p) = (i / (w * h), i % (w * h));
                     let v = px.get(p / 2).map_or(0, |b| if p % 2 == 1 { b >> 4 } else { b & 15 }) as usize;
                     let at = 2 * (row * 16 + v);
-                    tex::rgba16(pal.get(at..at + 2).map_or(0, |c| u16::from_le_bytes([c[0], c[1]])))
+                    tex::rgba16(crate::u16le(pal, at).unwrap_or(0))
                 })
                 .collect();
             Some((name.to_string(), tex::png(w, h * rows, &rgba)))
