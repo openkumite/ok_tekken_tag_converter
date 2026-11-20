@@ -455,7 +455,11 @@ pub fn front_end(elf: &[u8], ups: &[Upload], clips: &[Option<String>]) -> Result
             // two 10 higher)
             "quick": {"titles": quick, "title_y": 40, "title_size": 5,
                 "lines": [[230, 318], [410, 318], [200, 298], [440, 298]], "team_lines": [[160, 298], [160, 298], [480, 298], [480, 298]],
-                "one_on_one_dy": -10, "line": {"y": [-6, -2], "near": 4, "far": 160, "alpha": 0x80}, "face_dy": 52},
+                "one_on_one_dy": -10, "line": {"y": [-6, -2], "near": 4, "far": 160, "alpha": 0x80}, "face_dy": 52,
+                // (0x3BECC0: each side's members' faces at (x, 324), member 0 first (0x51F218 by side); a member not
+                // picked yet shows the face under the cursor, the one after it the random face; the options' backdrop
+                // under it all, as PCSX2 shows it)
+                "faces": {"x": (0..4).map(|k| u32_at(elf, 0x51F218 - VADDR + 4 * k, what)).collect::<Result<Vec<_>>>()?, "y": 324}},
             "start_slots": [18, 27], "ordinal": {"text": string(elf, 0x5205C8), "x": [62, 480], "y": 350,
                 "second": string(elf, 0x5204B8), "second_after": 90},
             // (BGM 0 from the select's frame 18, select +0x10; it stops as the select ends: the VS screen is silent, as
