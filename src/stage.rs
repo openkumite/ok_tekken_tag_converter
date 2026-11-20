@@ -240,37 +240,47 @@ pub fn levels(elf: &[u8], arena: usize) -> Option<Value> {
 /// The floors as 0x341218 lays them around the fight: a window of N x M cells (`window`, the floors' cell size),
 /// cell (j, i) at ((j - N / 2) x width, (i - M / 2) x depth) showing cell (j mod n, i mod m) of each floor of n x m
 /// cells. None when the floors' cells differ in size or do not tile.
-fn windowed(floors: &[Floor], window: [usize; 2]) -> Option<Vec<Batch>> {
+fn windowed(floors: &[Floor], window: [usize; 2]) -> Option<Window> {
     let cell = floors.first()?.cell;
-    let mut out = vec![];
+    let mut grids = vec![];
     for f in floors {
         let n = [f.period[0] / f.cell[0], f.period[1] / f.cell[1]];
         let tiles = f.cell == cell && n.iter().all(|n| (1.0..=64.0).contains(n) && (n - n.round()).abs() < 1e-3);
         if !tiles || window.contains(&0) {
             return None;
         }
-        let [nx, nz] = n.map(|n| n.round() as usize);
-        // a cell's index from its centre
-        let at = |c: f32, size: f32, n: usize| (c / size + (n as f32 - 1.0) / 2.0).round() as usize;
-        for (j, i) in (0..window[0]).flat_map(|j| (0..window[1]).map(move |i| (j, i))) {
-            let x = (j as f32 - window[0] as f32 / 2.0) * cell[0];
-            let z = (i as f32 - window[1] as f32 / 2.0) * cell[1];
-            for b in
-                f.tiles.iter().filter(|b| at(b.cell[0], cell[0], nx) == j % nx && at(b.cell[1], cell[1], nz) == i % nz)
-            {
-                let (dx, dz) = (x - b.cell[0], z - b.cell[1]);
-                let mut b = b.clone();
-                for p in &mut b.pos {
-                    p[0] += dx;
-                    p[2] += dz;
-                }
-                (b.cell[0], b.cell[1]) = (x, z);
-                out.push(b);
-            }
-        }
+        grids.push(n.map(|n| n.round() as usize));
     }
-    Some(out)
+    // a cell's index from its centre
+    let at = |c: f32, size: f32, n: usize| (c / size + (n as f32 - 1.0) / 2.0).round() as usize;
+    let (mut shown, mut cells, mut places) = (BTreeMap::new(), vec![], vec![]);
+    for (j, i) in (0..window[0]).flat_map(|j| (0..window[1]).map(move |i| (j, i))) {
+        let key: Vec<[usize; 2]> = grids.iter().map(|&[nx, nz]| [j % nx, i % nz]).collect();
+        let k = *shown.entry(key).or_insert_with(|| {
+            let mut out = vec![];
+            for (f, &[nx, nz]) in floors.iter().zip(&grids) {
+                let mine = |b: &&Batch| at(b.cell[0], cell[0], nx) == j % nx && at(b.cell[1], cell[1], nz) == i % nz;
+                for b in f.tiles.iter().filter(mine) {
+                    let mut b = b.clone();
+                    for p in &mut b.pos {
+                        p[0] -= b.cell[0];
+                        p[2] -= b.cell[1];
+                    }
+                    (b.cell[0], b.cell[1]) = (0.0, 0.0);
+                    out.push(b);
+                }
+            }
+            cells.push(out);
+            cells.len() - 1
+        });
+        places
+            .push((k, [(j as f32 - window[0] as f32 / 2.0) * cell[0], (i as f32 - window[1] as f32 / 2.0) * cell[1]]));
+    }
+    Some((cells, places))
 }
+
+/// The window's cells: what they show (centred on the origin, each once), and its cells (which, where).
+type Window = (Vec<Vec<Batch>>, Vec<(usize, [f32; 2])>);
 
 const GP: usize = 0x5F_D0F0;
 const FLOOR_TABLE: usize = 0x52_1700;
@@ -470,7 +480,7 @@ pub fn game_glb(
     let window = window.and_then(|w| windowed(floors, w));
     let windowed = window.is_some();
     let periodic = if windowed { &[][..] } else { floors };
-    tiles.extend(window.iter().flatten().cloned());
+    let (cells, places) = window.unwrap_or_default();
     for (f, big) in periodic.iter().zip(std::iter::repeat(floor).flatten()) {
         let n = [big.period[0] / f.period[0], big.period[1] / f.period[1]];
         if !n.iter().all(|n| (1.0..=64.0).contains(n) && (n - n.round()).abs() < 1e-3) {
@@ -491,7 +501,7 @@ pub fn game_glb(
     let st = |b: &Batch, i: usize| b.uv.get(i).copied().unwrap_or_default();
     let mut pics = BTreeMap::new();
     let models: Vec<Vec<Batch>> = objects.iter().map(|o| o.model.clone()).collect();
-    for b in sky.iter().chain(&tiles).chain(models.iter().flatten()) {
+    for b in sky.iter().chain(&tiles).chain(cells.iter().flatten()).chain(models.iter().flatten()) {
         let pic = pics.entry(key(b)).or_insert_with(|| {
             let t = tex::tex0(b.tex0);
             let (w, h, px) =
@@ -528,6 +538,7 @@ pub fn game_glb(
     let (mut materials, mut material) = (vec![], BTreeMap::new());
     let mut meshes = vec![];
     let parts = [("sky".to_string(), &sky), ("floor".to_string(), &tiles)].into_iter();
+    let parts = parts.chain(cells.iter().enumerate().map(|(k, c)| (format!("floor_cell_{k}"), c)));
     for (name, batches) in parts.chain(models.iter().enumerate().map(|(k, m)| (format!("object_{k}"), m))) {
         // (positions, texture coordinates, colours, indices, floor cells)
         type Prim = (Vec<f32>, Vec<f32>, Vec<u8>, Vec<u32>, Vec<f32>);
@@ -573,7 +584,7 @@ pub fn game_glb(
                 let mut attrs = json!({"POSITION": g.ranged(&pos, 3, "VEC3"), "TEXCOORD_0": g.accessor(&glb::floats(&uv), glb::F32, "VEC2", n),
                     "COLOR_0": g.accessor(&col, glb::U8, "VEC4", n)});
                 // the floor's cells: TEXCOORD_1 a vertex's cell's centre (x, z), TEXCOORD_2 (its level, the count)
-                if name == "floor" {
+                if name.starts_with("floor") {
                     let half = |k: usize| -> Vec<f32> { cells.chunks(2).skip(k).step_by(2).flatten().copied().collect() };
                     glb::set(&mut attrs, "TEXCOORD_1", json!(g.accessor(&glb::floats(&half(0)), glb::F32, "VEC2", n)));
                     glb::set(&mut attrs, "TEXCOORD_2", json!(g.accessor(&glb::floats(&half(1)), glb::F32, "VEC2", n)));
@@ -590,11 +601,20 @@ pub fn game_glb(
         glb::set(node, "mesh", json!(sky));
     }
     let mut extras = json!({"drum": "model", "drum_cull": false, "drum_depth": "floor", "background_rgb": [0, 0, 0]});
-    if let (Some(f), Some(tile)) = (floor, mesh("floor")) {
+    if let Some(f) = floor.filter(|_| windowed || mesh("floor").is_some()) {
         if windowed {
-            // the game's window: one node, which the engine keeps on the fight
-            nodes.push(json!({"name": "floor", "mesh": tile}));
-        } else {
+            // the game's window: a node a cell, which the engine keeps on the fight
+            let first = nodes.len() + 1;
+            nodes.push(json!({"name": "floor", "children": (first..first + places.len()).collect::<Vec<usize>>()}));
+            for (n, (k, [x, z])) in places.iter().enumerate() {
+                let mut node =
+                    json!({"name": format!("floor_{n}"), "translation": [*x as f64 * SCALE, 0.0, *z as f64 * SCALE]});
+                if let Some(m) = mesh(&format!("floor_cell_{k}")) {
+                    glb::set(&mut node, "mesh", json!(m));
+                }
+                nodes.push(node);
+            }
+        } else if let Some(tile) = mesh("floor") {
             let copies: Vec<usize> = (0..f.at.len()).map(|k| k + 2).collect();
             nodes.push(json!({"name": "floor", "children": copies}));
             for (k, [x, z]) in f.at.iter().enumerate() {
@@ -739,14 +759,14 @@ mod tests {
         let cells: Vec<[f32; 4]> = floors[0].tiles.iter().map(|b| b.cell).collect();
         assert_eq!(cells, [[-1000.0, 0.0, 0.0, 3.0], [1000.0, 0.0, 1.0, 3.0], [1000.0, 0.0, 2.0, 3.0]]);
         assert_eq!(floors[0].cell, [2000.0; 2]);
-        // laid as the game's window of 3 x 1 cells: cell j at (j - 1.5) x 2 m showing the floor's cell j mod 2
-        let laid = windowed(&floors, [3, 1]).unwrap();
-        let at: Vec<[f32; 3]> = laid.iter().map(|b| [b.cell[0], b.cell[1], b.cell[2]]).collect();
-        assert_eq!(
-            at,
-            [[-3000.0, -1000.0, 0.0], [-1000.0, -1000.0, 1.0], [-1000.0, -1000.0, 2.0], [1000.0, -1000.0, 0.0]]
-        );
-        assert_eq!(laid[0].pos[0][0] - floors[0].tiles[0].pos[0][0], -2000.0);
+        // laid as the game's window of 3 x 1 cells: cell j at (j - 1.5) x 2 m showing the floor's cell j mod 2,
+        // each cell shown once, centred on the origin
+        let (cells, places) = windowed(&floors, [3, 1]).unwrap();
+        assert_eq!(places, [(0, [-3000.0, -1000.0]), (1, [-1000.0, -1000.0]), (0, [1000.0, -1000.0])]);
+        let levels: Vec<Vec<f32>> = cells.iter().map(|c| c.iter().map(|b| b.cell[2]).collect()).collect();
+        assert_eq!(levels, [vec![0.0], vec![1.0, 2.0]]);
+        assert!(cells.iter().flatten().all(|b| b.cell[..2] == [0.0, 0.0]));
+        assert_eq!(cells[0][0].pos[0][0] - floors[0].tiles[0].pos[0][0], 1000.0);
         assert!(windowed(&floors, [0, 1]).is_none());
         // OpenKumite's stage: the two floors in one of 4 m, the 2 m one laid 2 x 2 in it; the added and
         // multiplying strips in materials of those names
