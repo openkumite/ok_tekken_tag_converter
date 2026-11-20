@@ -332,14 +332,24 @@ and its track (0x455D80) once a 200 game unlocked it, else BONUS AT 200 PTS (col
 cursor row's help text 106 + row. Both switches are ON at first (0x3F20E8), kept at save block +0x1FE / +0x200.
 SPECIAL EFFECTS (0x3E9808, each frame of the roll): the first frame every pin has been touched (+0x178 all 0,
 gp-0x6028), with the switch on (0x3F1EE8): the sound 0x10A8, the burst 0x3A2298 at 300 along the direction from (0,
--225, -8000) to the eye (x, -y, 8000 - z) (one object a sprite of the arena's effect group 7, 0x343F20 / 0x3A9488,
-driven by 0x3A04B8: 30 frames, scales 180 / 75), and 0x3E97C8(1, player): the shake 0x35C2F8(1) (pattern 0x4FBB38,
+-225, -8000) to the eye (x, -y, 8000 - z) (0x343F20(7): set 7, the hall's geometry pack part 1 entry 1 (EFFECTS.md 5), stages.json `weather.sets[1]`: 51 paths
+of 40 frames; a particle 0x3A04B8 on each, 8.16 times its path (gp-0x7E88), 0x44 180, 0x48 75, added (+0x40 1)), and 0x3E97C8(1, player): the shake 0x35C2F8(1) (pattern 0x4FBB38,
 added to the view's pitch +0 by 0x35C320 after the camera each frame: 3, 2, 0, -2, -3, 0, 3, 2, 0, -3, -2, 0, 2, 1, 0,
 -2, -1, 0, 1, 0, 0, -1, 0, 0 in 4096ths of a turn) and a vibration (0x3BB218). The pause's TOP BOWLERS (0x3F3118,
 the cursor reset by 0x3F3108): over the hall as it stands (no shade of its own; 0x3CD868 sets the blend), the
 cursor's row lit by the band 0x3F2A38 (the screen's width, 63 above the row's y, grey 128 at alpha 0x40), then 0x3F2D00
 and THE KING OF IRONBOWL (112, 40); up / down move it round the five, a button on a row opens that record's card
 (0x3F25D8; a 300 game's sound 0x1058, else 4), START leaves; the help line 109 or EXIT:START (72, 440).
+The pin's twist (+0x4C, 0x3EC388's second half): the identity's z row turned about x by the new tilt, about z by
+asin(a), about y back by the heading's step, about x back by the final tilt; the twist += atan2(its x, its z). Drawn
+(0x3E91D0 from 0x1FC6160) turned about y by -twist, x by the tilt, y by -heading.
+**SCORE SHEET** (0x3F25D8, a record's card; a button closes it): SCORE SHEET (203, 80; size 5, colour 10); RANK
+1ST..5TH:%3d (106, 212; size 8) with the score, in colour 11 / 2 / 9 / 21 for 230+ / 170+ / 100+ / less (a 300 game
+blinking 11 and 2, frame & 2); the card (0x3C59D8) at (36, 100), frames 1-10 and the total; the team's two bodies'
+portraits (0x3CF1C0) at (204, 296) and (204, 376); SUMMARY (365, 259; size 5, colour 19); STRIKES, SPARES, MISSES
+(both kinds), FOULS, SPLITS (336, y; size 5; colours 2, 17, 1, 10, 22) and `:%2d` their counts (476, y) at y 259,
+285, 311, 389, 415; the rank's pin (0x3F2480: arena object 1 for 300, 4 / 5 / 6 by the rank, turning with the frame
+counter). The records' cards are the defaults' at 0x523C10 (section 5's layout; frame k at ball 2k).
 
 **TOP 5 BOWLERS** (0x3F2D00 / 0x3F2AC0): the title (183, 64; size 5, colour 10); a record every 71 from y 135: its
 place `%2d` (16, y - 27; size 10) and ST / ND / RD / TH (y - 7; size 5); the team's faces (`003_110` frames, 51 x 52
@@ -552,16 +562,14 @@ to convert.
 
 Ranked by how much a player would notice:
 
-1. The pin's twist about its own axis (+0x4C, 0x3EC388's second half), drawn only.
-2. Ending effect ops 10, 12, 16, 25, 28-30, 32 (the props, the character effects, Kuma's face), op 15's fire.
-3. The face part's joint mapping (33 triples; section 7.3's outline).
-4. What a spectator the ball hits plays (0x3DB860).
-5. Whether the staff roll draws over the ending scene (its texts are 7.5's); the flash / fade colours (table 0x43FD10, 9 and 10).
-6. What 0x3E4BC0 draws in the throw (a panel by the bowler's motion); the burst's sprites (the arena's effect group
-   7: the effect banks 0x8BF350 are not converted).
-7. The black band behind the pin deck: the object part's models 0 and 9 are empty blocks (0x130 bytes, no batch),
+1. Ending effect ops 10, 12, 16, 25, 28-30, 32 (the props, the character effects, Kuma's face), op 15's fire.
+2. The face part's joint mapping (33 triples; section 7.3's outline).
+3. What a spectator the ball hits plays (0x3DB860).
+4. Whether the staff roll draws over the ending scene (its texts are 7.5's); the flash / fade colours (table 0x43FD10, 9 and 10).
+5. What 0x3E4BC0 draws in the throw (a panel by the bowler's motion).
+6. The black band behind the pin deck: the object part's models 0 and 9 are empty blocks (0x130 bytes, no batch),
    no fill; how the PS2 shows that place is to be compared.
-8. File 128 parts 1-2 and file 127 (the bowl's camera path, 600 frames) use.
+7. File 128 parts 1-2 and file 127 (the bowl's camera path, 600 frames) use.
 
 ## Scripts (`docs/re/`)
 
