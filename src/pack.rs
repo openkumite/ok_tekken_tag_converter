@@ -71,8 +71,9 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 /// front_end `practice.hud`; 38: camera.json `fighter_cameras.rows`, `win_pose.world_turn`; 44: the arenas' strips lit
 /// and their texture coordinates made as the VU1 microcode does, stage::colour; 45: flags 4 and 0x400's panorama, the arenas' fog;
 /// 46: front_end `fonts.small`: the button icons in each text colour; 47: Eddy's grass in stages.json `objects`; 48: Jin's
-/// texture's extras `mark`, the props of ending op 25 `stages/stage_NN_prop_K.glb`).
-pub const FORMAT: i64 = 48;
+/// texture's extras `mark`, the props of ending op 25 `stages/stage_NN_prop_K.glb`; 49: front_end
+/// `command_list`, its icons).
+pub const FORMAT: i64 = 49;
 /// What a pack's manifest names it.
 pub const KIND: &str = "ttt";
 
@@ -158,6 +159,8 @@ pub fn convert(ctx: &Ctx, src: &dyn DiscFile, research: bool) -> Result<Value> {
     let mut weather = BTreeMap::new();
     // and its people's models' scale of their motions (a character file's f32 at +4 / 1000: 0x3D87A8)
     let mut scales: BTreeMap<usize, Vec<f64>> = BTreeMap::new();
+    // each body's command list (its first fighter file's part 2, section 1: 0x3DC870)
+    let mut commands: BTreeMap<usize, Value> = BTreeMap::new();
     ctx.log(&format!("[ttt] {}: the {} files of TEKKEN.BIN", src.name(), archive::FILES));
     // (the first and the last file are random filler)
     for i in 1..archive::FILES - 1 {
@@ -249,6 +252,9 @@ pub fn convert(ctx: &Ctx, src: &dyn DiscFile, research: bool) -> Result<Value> {
             let tris: usize = m.sections.iter().flatten().map(|s| s.verts.len().saturating_sub(2)).sum();
             let slot = i.checked_sub(FIGHTERS).filter(|s| s % 3 == 0).map(|s| s / 3);
             let who = slot.map(|s| moves::fighter(&a.elf, s)).transpose()?.flatten();
+            if let (Some((body, _)), Some(list)) = (who, pack.as_ref().and_then(|p| front::command_list(p.get(2)?))) {
+                commands.entry(body).or_insert(list);
+            }
             // Jin's set-up shows his texture channel 0's frame 1, the face without the mark (0x3A85E4: character 9);
             // frame 0, the face the textures load with, is the mark's (shown by ending op 12)
             let mut marked = vec![];
@@ -628,7 +634,13 @@ pub fn convert(ctx: &Ctx, src: &dyn DiscFile, research: bool) -> Result<Value> {
     assets.write("gamedata/endings.json", serde_json::to_string(&endings)?.as_bytes())?;
     let mut roster = assets::roster(&roster, &characters);
     if let Some(r) = roster.as_object_mut() {
-        r.insert("front_end".into(), front::front_end(&a.elf, &atlas, &clips)?);
+        let mut front_end = front::front_end(&a.elf, &atlas, &clips)?;
+        front_end["command_list"]["lists"] =
+            json!((0..moves::BODIES).map(|b| commands.remove(&b).unwrap_or(Value::Null)).collect::<Vec<_>>());
+        r.insert("front_end".into(), front_end);
+    }
+    for (name, png) in front::command_icons(&a.elf) {
+        assets.write(&format!("pictures/{name}"), &png)?;
     }
     if let Some((name, png)) = front::help_font(&a.elf) {
         assets.write(&format!("pictures/{name}"), &png)?;

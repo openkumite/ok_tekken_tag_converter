@@ -101,7 +101,7 @@ sheet, row `y = TBP0`. `TW`/`TH` often exceed what was uploaded; UVs are relativ
 | Part | Content | Status |
 |---|---|---|
 | 0 | pack: 30 uploads of 128x128 4-bit images, and 81 records of 0x3BC bytes (floats) — probably face animation | not decoded |
-| 2 | pack of 6 tables of about 0x6B0 bytes | not decoded |
+| 2 | pack of 6: section 0 the help font (uploads), 1-5 the command list (the same English text in each; FRONTEND.md 8) | section 1 exported (format 47) |
 | 3, 4, 5 | small tables (4 and 5 look like short motions, type words 0x13 and 0x21) | not decoded |
 | 6 | **`PS2TagA` model** | decoded |
 | 7 | texture uploads for part 6 | decoded |
