@@ -68,8 +68,9 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 /// `rules.wake_wait`, `per_moveset`; 32: stages.json `scales` and `objects`, Nina's and King's objects' copies, Law-A's
 /// pitching boats; 33: camera.json `team_intro.start_frames`, `fighter_cameras`; 34: front_end `practice`; 35: Unknown's
 /// moveset 28; 36: Law-A's lanterns and leaves in stages.json `objects`, the leaves' and their shadows' copies; 37:
-/// front_end `practice.hud`; 38: camera.json `fighter_cameras.rows`, `win_pose.world_turn`).
-pub const FORMAT: i64 = 43;
+/// front_end `practice.hud`; 38: camera.json `fighter_cameras.rows`, `win_pose.world_turn`; 44: the arenas' strips lit
+/// and their texture coordinates made as the VU1 microcode does, stage::colour).
+pub const FORMAT: i64 = 44;
 /// What a pack's manifest names it.
 pub const KIND: &str = "ttt";
 
@@ -284,6 +285,8 @@ pub fn convert(ctx: &Ctx, src: &dyn DiscFile, research: bool) -> Result<Value> {
         {
             let mut bare = b.clone();
             b.extend(floors.iter().flat_map(|f| f.laid()));
+            // (the lights of its VU1 blocks: geometry part 4's record)
+            let light = archive::pack(&d).and_then(|p| stage::light(p.get(4)?));
             if i == BOWL {
                 // OpenKumite's: its objects apart, the ball, the pin and the pin deck where the object table puts
                 // them; the object part (taken for scenery and objects, all at the origin) not in its stage
@@ -294,7 +297,7 @@ pub fn convert(ctx: &Ctx, src: &dyn DiscFile, research: bool) -> Result<Value> {
                 for (name, m) in [("ball", ball), ("pin", pin), ("deck", deck)] {
                     assets.write(
                         &format!("stages/bowl_{name}.glb"),
-                        &stage::game_glb(name, &m, &[], &[], &banks, None),
+                        &stage::game_glb(name, &m, &[], &[], &banks, None, light.as_ref()),
                     )?;
                 }
                 b.append(&mut objects);
@@ -380,7 +383,7 @@ pub fn convert(ctx: &Ctx, src: &dyn DiscFile, research: bool) -> Result<Value> {
                 weather.insert(n, effects::entries(raw.get(1).copied().unwrap_or_default()));
                 assets.write(
                     &format!("stages/{file}"),
-                    &stage::game_glb(&name, &bare, &floors, &things, &banks, stage::levels(&a.elf, n)),
+                    &stage::game_glb(&name, &bare, &floors, &things, &banks, stage::levels(&a.elf, n), light.as_ref()),
                 )?;
                 arenas.push(json!({"id": n, "name": name, "file": file}));
             }
