@@ -624,6 +624,23 @@ pub fn front_end(elf: &[u8], ups: &[Upload], clips: &[Option<String>]) -> Result
                     "columns": [{"x": 260, "dy": 0, "size": 4, "colour": 11}, {"x": 460, "dy": -6, "size": 5, "colour": 6}]}],
             "letters": string(elf, 0x520BE8).chars().take(42).collect::<String>(), "name_len": 3,
             "new_record": format(elf, 0x51FA58)},
+        // SURVIVAL RESULTS after the lost fight, before the name entry (0x3C5388, over the arena): 0x3BF180's backdrop
+        // in the mode's colour of table 0x440748 (4: (0, 255, 64)); the title (0x51FAE8) centred on x 320 at y 40,
+        // size 5, colour 19; "WINS %d" (0x51FB18) centred at y 150 in the font's own colours, the number counting up
+        // (gp-0x6288 from 1: f x wins / 600 above `fast` wins, else f / 15; at most the wins, 9999 at most) with sound
+        // 3 at each change and 5 when it stands; then the lines, each centred (their spaces measured), `dy` apart
+        // (as seen): placed (0x3CD1E8: the first of the 10 survivors' records with fewer wins, 0 when none or when
+        // a record above it is the same pair) "YOU ARE / THE %s / GREATEST / SURVIVOR!!" from y 250, the place
+        // (0x440A28) blinking with "" every 15 frames, colour 2 for the first three, the font's own below; else "YOU
+        // NEED / MORE / PRACTICE." from y 290 colour 1; after `hold` frames from the count's end, or a button
+        // (0x3B6BD8: 0x8F4), out to black over `fade` (0x3C4AF8)
+        "survival_results": {"title": [format(elf, 0x51FAE8), 40, 5, 19], "wins": [format(elf, 0x51FB18), 150],
+            "max": 9999, "fast": [40, 600], "slow": 15, "sounds": [3, 5], "size": 10, "dy": 42,
+            "placed": [([0x51FB40, 0x51FB68, 0x51FB98, 0x51FBC8].map(|p| format(elf, p).trim_end_matches('\n').to_string())), 250],
+            "unplaced": [([0x51FBF8, 0x51FC28, 0x51FC58].map(|p| format(elf, p).trim_end_matches('\n').to_string())), 290, 1],
+            "places": (0..11).map(|k| Ok(string(elf, u32_at(elf, a(0x440A28) + 4 * k, what)?))).collect::<Result<Vec<_>>>()?,
+            "podium": [3, 2], "blink": 15, "hold": 3600, "fade": 60,
+            "backdrop": {"colour": [0, 255, 64, 0x40], "middle": 224, "fade": 3}},
         // the ranking (screen 7, 0x3C8A88) where a new TIME ATTACK or SURVIVAL record is named: the banner by kind
         // (0x3C93A0: sprites 0x520448 253, 257, 255 of file 132: TIME ATTACK, GREATEST SURVIVORS, CHARACTER USAGE) at (0, 20); rows clipped to y
         // 20-446 (0x3DBAA8), `dy` apart from foot `first` (gp-0x6264 / -0x625C: 93 from 153, 4 shown; CHARACTER USAGE 75
