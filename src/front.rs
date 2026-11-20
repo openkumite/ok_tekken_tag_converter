@@ -47,12 +47,18 @@ pub fn angry_strips(ups: &[Upload]) -> Vec<(String, Vec<u8>)> {
         .collect()
 }
 
-/// The select cursor (upload 115 of file 3) in 2P's palette, upload 117 (0x3CC9E0: 1P's is 116, the one after it):
-/// `003_057_p2.png` and its PNG.
-pub fn cursor_2p(ups: &[Upload]) -> Option<(String, Vec<u8>)> {
-    let pair = [ups.get(115)?.clone(), ups.get(117)?.clone()];
-    let (w, h, px) = tex::pictures(&pair, &|_| Some(1)).into_iter().next()?;
-    Some(("003_057_p2.png".to_string(), tex::png(w, h, &px)))
+/// Pictures of file 3 drawn in another palette upload: the select cursor (upload 115) in 2P's, upload 117 (0x3CC9E0:
+/// 1P's is 116, the one after it), `003_057_p2.png`; the ranking's face frame (upload 174) in the faces' 0x84
+/// (0x3CC078), `003_110_p84.png`. Each its file name and PNG.
+pub fn repainted(ups: &[Upload]) -> Vec<(String, Vec<u8>)> {
+    [("003_057_p2.png", 115, 117), ("003_110_p84.png", 174, 132)]
+        .into_iter()
+        .filter_map(|(name, k, pal)| {
+            let pair = [ups.get(k)?.clone(), ups.get(pal)?.clone()];
+            let (w, h, px) = tex::pictures(&pair, &|_| Some(1)).into_iter().next()?;
+            Some((name.to_string(), tex::png(w, h, &px)))
+        })
+        .collect()
 }
 
 /// The text colours (the printf `%c`: palette upload 9 + colour, 36 of them) of the chrome font (upload 2 of file 3) and
@@ -129,26 +135,31 @@ pub fn training(part: &[u8]) -> Option<Value> {
 /// palettes (16-bit; row r at the GS's row 238 + r), one row each: `command_arrows.png` (the arrows in palette rows
 /// 0-3: held (solid), tapped (outlined), then both lit; 0x3DF500 takes row 1 less the code's bit 3, 2 more lit; the
 /// star row 1) and `command_buttons.png` (the button icon in rows 0-15, the row the buttons pressed, 0x3DF150), each row's
-/// picture under the one before.
+/// picture under the one before; `command_buttons_lit.png` the buttons in entry 2's palettes (uploaded at x 192, the lit
+/// icons': 0x3DF150 with the code's bit 0x10).
 pub fn command_icons(elf: &[u8]) -> Vec<(String, Vec<u8>)> {
     let base = 0x4567A0 - VADDR;
     let Some(entries) = elf.get(base..).and_then(|d| crate::archive::pack(d.get(..0x2000)?)) else { return vec![] };
-    [("command_arrows.png", 0, 64, 16, 4), ("command_buttons.png", 1, 20, 20, 16)]
-        .into_iter()
-        .filter_map(|(name, k, w, h, rows)| {
-            let ups = tex::uploads(entries.get(k)?);
-            let (px, pal) = (&ups.first()?.data, &ups.get(1)?.data);
-            let rgba: Vec<u8> = (0..rows * w * h)
-                .flat_map(|i| {
-                    let (row, p) = (i / (w * h), i % (w * h));
-                    let v = px.get(p / 2).map_or(0, |b| if p % 2 == 1 { b >> 4 } else { b & 15 }) as usize;
-                    let at = 2 * (row * 16 + v);
-                    tex::rgba16(crate::u16le(pal, at).unwrap_or(0))
-                })
-                .collect();
-            Some((name.to_string(), tex::png(w, h * rows, &rgba)))
-        })
-        .collect()
+    [
+        ("command_arrows.png", 0, 0, 64, 16, 4),
+        ("command_buttons.png", 1, 1, 20, 20, 16),
+        ("command_buttons_lit.png", 1, 2, 20, 20, 16),
+    ]
+    .into_iter()
+    .filter_map(|(name, k, kp, w, h, rows)| {
+        let (ups, pals) = (tex::uploads(entries.get(k)?), tex::uploads(entries.get(kp)?));
+        let (px, pal) = (&ups.first()?.data, &pals.get(1)?.data);
+        let rgba: Vec<u8> = (0..rows * w * h)
+            .flat_map(|i| {
+                let (row, p) = (i / (w * h), i % (w * h));
+                let v = px.get(p / 2).map_or(0, |b| if p % 2 == 1 { b >> 4 } else { b & 15 }) as usize;
+                let at = 2 * (row * 16 + v);
+                tex::rgba16(crate::u16le(pal, at).unwrap_or(0))
+            })
+            .collect();
+        Some((name.to_string(), tex::png(w, h * rows, &rgba)))
+    })
+    .collect()
 }
 
 /// A colour word of the executable (0x3DBCF0 reads it as 0xRRGGBBAA) as [r, g, b, a].
@@ -172,8 +183,8 @@ fn practice_modes() -> Value {
         "CROUCH GUARD",
         "GUARD ALL",
         "AUTO GUARD",
-        "QUICK ROLL",
-        "QUICK ROLL",
+        "QUICK ROLL  ",
+        "QUICK ROLL  ",
         "QUICK TAG OUT",
         "SPRING FORWARD",
         "QUICK ROLL BACK",
@@ -183,7 +194,11 @@ fn practice_modes() -> Value {
     json!([
         {"title": "FREESTYLE", "rows": [row("MODE SELECT", 138, "mode", 135), row("CANCEL", 168, "close", 137),
             row("COMMAND LIST", 189, "commands", 138),
-            {"label": "TRAINING DUMMY", "y": 210, "kind": "list", "values": dummy, "default": 0, "value_y": 231, "help": 139, "value_help": 145, "value_helps": 11},
+            // (0x37F5B8: QUICK ROLL's two, 6 and 7, end in two spaces with the icon font's (11) "d" / "u" over them,
+            // `icon_dx` from the value's end on its foot: `icons` the cells of `003_003`, in the small colour 1
+            // (0x51FE98: palette 9 + 27))
+            {"label": "TRAINING DUMMY", "y": 210, "kind": "list", "values": dummy, "default": 0, "value_y": 231, "help": 139, "value_help": 145, "value_helps": 11,
+                "icons": {"6": 8, "7": 9}, "icon_dx": -22, "icon_colour": 27},
             on_off("COUNTER ATTACKS", 252, 0, 140), on_off("ATTACK DATA", 273, 1, 141), on_off("HIT ANALYSIS", 294, 0, 142),
             row("CHARACTER SELECT", 325, "select", 143), row("RESET", 346, "reset", 144)]},
         {"title": "VS CPU", "rows": [row("MODE SELECT", 138, "mode", 156), row("CANCEL", 168, "close", 158),
@@ -195,8 +210,12 @@ fn practice_modes() -> Value {
             row("RETRY", 189, "retry", 168), on_off("ATTACK DATA", 210, 1, 170), on_off("TIME DISPLAY", 231, 1, 171),
             row("CHARACTER SELECT", 262, "select", 172), row("RESET", 283, "reset", 173)]},
         {"title": "COMBO TRAINING", "rows": [row("MODE SELECT", 138, "mode", 174), row("CANCEL", 168, "close", 176),
-            {"label": "COMBO DISPLAY", "y": 189, "kind": "list", "values": ["TYPE 1"], "default": 0, "value_y": 231,
-                "lines": ["%s (YOU)"], "help": 177},
+            // (rows 0x506B60: options 9 and 10; 0x37F3E8: who does the combo, "%s %s" its name and (YOU) / (CPU)
+            // (0x4318C0); 0x37F4B0: its combo, TYPE n, RANDOM (the CPU's only, with two or more) or --- with none;
+            // left / right / cross round them, 0x37A7AC / 0x37A7CC)
+            {"label": "COMBO DISPLAY", "y": 189, "kind": "who", "values": ["%s (YOU)", "%s (CPU)"], "default": 0, "value_y": 210,
+                "help": 177},
+            {"label": "", "y": 231, "kind": "type", "values": ["TYPE %d", "RANDOM", "---"], "default": 0, "help": 183, "colour": 23},
             on_off("ATTACK DATA", 252, 1, 178), on_off("HIT ANALYSIS", 273, 0, 179),
             row("CHARACTER SELECT", 304, "select", 180), row("RESET", 325, "reset", 181)]},
     ])
@@ -459,7 +478,21 @@ pub fn front_end(elf: &[u8], ups: &[Upload], clips: &[Option<String>]) -> Result
                 // (0x3BECC0: each side's members' faces at (x, 324), member 0 first (0x51F218 by side); a member not
                 // picked yet shows the face under the cursor, the one after it the random face; the options' backdrop
                 // under it all, as PCSX2 shows it)
-                "faces": {"x": (0..4).map(|k| u32_at(elf, 0x51F218 - VADDR + 4 * k, what)).collect::<Result<Vec<_>>>()?, "y": 324}},
+                "faces": {"x": (0..4).map(|k| u32_at(elf, 0x51F218 - VADDR + 4 * k, what)).collect::<Result<Vec<_>>>()?, "y": 324,
+                    // (0x3BF080: four opaque grey bars 3 thick about a face (table 0x440688: [x, y, w, h] from its
+                    // corner), grey `picked` (0x40) about the picks' faces; about the face under the cursor the grey
+                    // pulses |sin(2 pi f / `period`)| x 256 (at most 255) by the frame f (0x3BECC0, gp-0x629C); the
+                    // face under the cursor at `same` (0x40) when it is the first pick's character)
+                    "frame": {"bars": [[-3, -3, 57, 3], [-3, 52, 57, 3], [-3, 0, 3, 52], [51, 0, 3, 52]], "picked": 0x40,
+                        "period": 128, "same": 0x40}},
+                // (0x3BEAB0: no name plates; each member's name (0x415840: by character x 8 + costume) at the lines'
+                // points (side + 2 x member), side 0's right-aligned on it, side 1's from it, size 4, colour 19, the
+                // member being picked blinking colour 2 while frame & 4 is clear; the next member's place, the cursor
+                // on the first pick's character, says SELECTED (0x51F1A8) in colour 10; 1 ON 1 10 higher)
+                "names": {"size": 4, "colour": 19, "blink": [4, 2], "selected": [string(elf, 0x51F1A8), 10],
+                    "texts": (0..34 * 8)
+                        .map(|k| Ok(string(elf, u32_at(elf, a(u32_at(elf, a(0x415840) + 4 * k, what)? as usize), what)?)))
+                        .collect::<Result<Vec<_>>>()?}},
             "start_slots": [18, 27], "ordinal": {"text": string(elf, 0x5205C8), "x": [62, 480], "y": 350,
                 "second": string(elf, 0x5204B8), "second_after": 90},
             // (BGM 0 from the select's frame 18, select +0x10; it stops as the select ends: the VS screen is silent, as
@@ -596,13 +629,14 @@ pub fn front_end(elf: &[u8], ups: &[Upload], clips: &[Option<String>]) -> Result
         // 20-446 (0x3DBAA8), `dy` apart from foot `first` (gp-0x6264 / -0x625C: 93 from 153, 4 shown; CHARACTER USAGE 75
         // from 135, 5), `132_000` (sprite 251) across at each foot (0x3C9458); a row (0x3C75E8, 0x3C7AB0): the rank "%2d" at x 16, 27
         // above the foot, size 10, and its suffix size 5, 7 above (0x3C7278); the members' faces (0x3CBFB8, 51 x 51 in
-        // the cursor frame `003_110` 2 out, 0x3CC078), the second first, and their name plates (0x3CF1E8: less the plate's `x`); TIME ATTACK's
+        // the cursor frame `003_110` 2 out in the faces' palette 0x84, 0x3CC078), the second first, and their name plates (0x3CF1E8: less the plate's `x`); TIME ATTACK's
         // time size 5 at (300, -8); SURVIVAL's "WINS" size 5 at (275, -7) then the number size 10 at -26 (0x3C7428; "WINS
         // " below 100); the name at (488, -28) size 10. Colours: the entry's row 11, the others 13, a time 10, wins 12.
         // The entry's row: a band over the row (0x3CE5D8, from 93 above the foot, grey at alpha 0x40), the name so far
         // with the letter under the cursor in its place, under the place a bar 48 x 4 at -8 (0x3CE5D8, red to white:
-        // (255, 2t + 1, 2t + 1), t 5 to 113 and back by 5 a frame), the seconds left "%d" size 5 colour 0 at (480,
-        // -54) of the `frames` the entry may take (0x3C9124: 3000, then the name is taken as it is)
+        // (255, 2t + 1, 2t + 1), t 5 to 113 and back by 5 a frame), the seconds left "%d" size 5 in the font's own
+        // colours (font 10's colour 0 is palette 3, table 0x51FE30; `colour` null) at (480, -54) of the `frames` the
+        // entry may take (0x3C9124: 3000, then the name is taken as it is)
         "ranking": {"banners": ["132_001.png", "132_003.png", "132_002.png"], "banner_xy": [0, 20], "clip": [20, 446],
             "rows": [{"dy": 93, "first": 153, "shown": 4, "hold": 150}, {"dy": 93, "first": 153, "shown": 4, "hold": 150},
                 {"dy": 75, "first": 135, "shown": 5, "hold": 130}],
@@ -610,13 +644,18 @@ pub fn front_end(elf: &[u8], ups: &[Upload], clips: &[Option<String>]) -> Result
             // page's rows from above it down `scroll` a frame to their places, each page held `hold` frames (0x3C80E8
             // / 0x3C83A8 / 0x3C84B8), the page before likewise, the first held `after` more, out to black
             "pace": {"fade": 8, "scroll": 12, "after": 60},
+            // behind it the arena loaded (the last fight's; the attract's the demo's) without the fighters (0x3B77B8
+            // puts both at 0 as screen 7 starts), on an orbit of the arena's middle (0x3B7888 each frame): the angle
+            // from `angle` `step` a frame (4096ths of a turn; not while paused), the eye at (cos, sin) x `radius`, `y`
+            // high (y down), level, the yaw (camera +4) `step` a frame from 0; H 615 as measured in PCSX2
+            "arena": {"angle": 0xC00, "step": -3, "radius": 5000, "y": -1400, "h": 615},
             "separator": "132_000.png", "rank": {"x": 16, "dy": -27, "suffix_dy": -7, "suffix_size": 5},
             "colours": {"row": 13, "entry": 11, "time": 10, "wins": 12}, "faces": [[160, -74], [210, -57]],
-            "face_frame": sprite(0xAE), "face_size": 51, "plates": [[220, -78], [270, -60]],
+            "face_frame": "003_110_p84.png", "face_size": 51, "plates": [[220, -78], [270, -60]],
             "time": {"x": 300, "dy": -8, "size": 5}, "wins": {"x": 275, "dy": -7, "size": 5, "number_dy": -26, "number_size": 10},
             "name": {"x": 488, "dy": -28}, "band": {"h": 93, "colour": [128, 128, 128, 0x40]},
             "cursor": {"dy": -8, "w": 48, "h": 4, "low": 5, "high": 113, "step": 5},
-            "counter": {"x": 480, "dy": -54, "size": 5, "colour": 0}, "frames": 3000,
+            "counter": {"x": 480, "dy": -54, "size": 5, "colour": null}, "frames": 3000,
             // CHARACTER USAGE's row (0x3C7F60): the rank in colour 14, one face at (160, -57) and the plate at (220,
             // -54); the share (0x3C74A8) "%2d" size 10 at (470, -24) and ".%d%" size 5 at -4 ("100" and "%" at 1000);
             // the bar (0x3C7530 -> 0x3CFE38) 212 x share / 1000 wide from x 228, 36 high from 38 above the foot, from the
@@ -664,7 +703,7 @@ pub fn front_end(elf: &[u8], ups: &[Upload], clips: &[Option<String>]) -> Result
             "below": rgba_word(elf, 0x4564F4)?, "bar": {"x": 286, "w": 6, "track": [0xFF, 0xFF, 0xFF, 0x80], "thumb": [0xB0, 0xB0, 0xB0, 0x80]},
             "frame": [0, 0, 284, 330], "sound": 0x103F, "step": 4,
             "arrows": {"picture": "command_arrows.png", "cell": [16, 16], "cells": (0..9).map(|k| Ok([u8_at(elf, 0x522D00 - VADDR + 2 * k, "the arrows")?, u8_at(elf, 0x522D01 - VADDR + 2 * k, "the arrows")?])).collect::<Result<Vec<_>>>()?, "advance": 16, "star_advance": 14},
-            "buttons": {"picture": "command_buttons.png", "size": [20, 20], "advance": 20}, "dy": 2},
+            "buttons": {"picture": "command_buttons.png", "lit": "command_buttons_lit.png", "size": [20, 20], "advance": 20}, "dy": 2},
         // the pause menu (0x3B7B98): its items 0x51E7A8 (CANCEL, RESET, COMMAND LIST, SCREEN CAPTURE, TOP BOWLERS,
         // BOWLING OPTIONS, ADJUST DISPLAY, CONTROLLER SETUP; SCREEN CAPTURE once the Gallery is open, the Bowl's two only
         // in Tekken Bowl and COMMAND LIST and SCREEN CAPTURE not there); the window 0x3DC768 (x, y, w, h; drawn 8 out,
@@ -686,11 +725,12 @@ pub fn front_end(elf: &[u8], ups: &[Upload], clips: &[Option<String>]) -> Result
         // [0] at the top to [1] at the foot (measured), in the pause's frame; the mode's
         // name at (67, 106) size 5; rows from x 48, size 4, by their feet; the cursor's bar from the window's left
         // edge; values right-aligned at 426 (on the row's foot, or `value_y`); ON / OFF in the GAME OPTIONS'
-        // default / off colours, a list's value in its value colour. MODE SELECT's left / right turn the modes; each
-        // row `{label, y, values, default, help (and per value: help + value)}`, `kind` "mode", "close", "list",
-        // "select" (CHARACTER SELECT), "reset", "retry", "commands"
+        // default / off colours, a list's value in its value colour (0x37F3E8 / 0x37F5B8: 20; COMBO TRAINING's TYPE
+        // its row's `colour`, 23; seen teal and blue in PCSX2). MODE SELECT's left / right turn the modes; each row
+        // `{label, y, values, default, help (and per value: help + value)}`, `kind` "mode", "close", "list", "select"
+        // (CHARACTER SELECT), "reset", "retry", "commands"
         "practice": {"window": [38, 82, 404], "colour": [[0, 32, 60, 0x70], [8, 66, 112, 0x70]], "title_xy": [67, 106], "title_size": 5, "title_colour": 7, "x": 48,
-            "value_right": 426, "below": 12, "size": 4, "colours": {"item": 5, "cursor": 11, "on": 16, "off": 22, "value": 12},
+            "value_right": 426, "below": 12, "size": 4, "colours": {"item": 5, "cursor": 11, "on": 16, "off": 22, "value": 20},
             "modes": practice_modes(),
             // the practice fight (PCSX2 captures): with ATTACK DATA on "TOTAL DMG: n" per side at x 32 / 352, foot 38,
             // size 4, colour 17; "DMG: n (nnn%)" (the last hit on the dummy and its share of the move's damage) at
@@ -722,8 +762,10 @@ pub fn front_end(elf: &[u8], ups: &[Upload], clips: &[Option<String>]) -> Result
             // moves) at (400, 80) size 4 colour 10 (0x37EEF8); the player's move entered by one of the move's aliases
             // (+0x10C, 0x37EE18): sound 0x103D, the next move, after the last 3: 180 frames, voice 0x1058 at 120, then
             // under 120 the result (0x3DD5B8: CONGRATULATIONS! (0x522C00) at (50, 100) size 8 colour 11, the face at
-            // (294, 174), the name centred at 250 size 6 colour 19, the time at (220, 320) size 6 colour 23); START, or
-            // a face button after the 180, starts again
+            // (294, 174), the name centred at 250 size 6 colour 19, the time at (220, 320) size 6 colour 23) over
+            // 0x3BF180's backdrop (the screen from black at the top and the foot to table 0x440748's colour 7, (0, 0,
+            // 255), at y 224: templates 0x43FD10 / 0x43FD58; its alpha up `fade` a frame from 0 at the result's start
+            // to 0x40, 0x3BB4E8); START, or a face button after the 180, starts again
             "chain": {"ready": {"text": format(elf, 0x506DD8), "x": 192, "y": 220, "colour": 2, "size": 10, "frames": 90,
                     "voices": [0x105A, 0x105B]},
                 "lines": {"xy": [320, 100], "dy": 60, "w": 300, "bands": [18, 42], "name_xy": [8, 1], "keys_xy": [8, 21], "width": 280, "level": 0x73},
@@ -731,7 +773,17 @@ pub fn front_end(elf: &[u8], ups: &[Upload], clips: &[Option<String>]) -> Result
                 "count": {"text": format(elf, 0x506E28), "none": format(elf, 0x506E40), "x": 400, "y": 80, "size": 4, "colour": 10},
                 "done_sound": 0x103D, "end": {"frames": 180, "voice": 0x1058, "result": 120},
                 "result": {"text": format(elf, 0x522C00), "xy": [50, 100], "size": 8, "colour": 11, "face_xy": [294, 174],
-                    "name_y": 250, "name_size": 6, "name_colour": 19, "time_xy": [220, 320], "time_size": 6, "time_colour": 23}}},
+                    "name_y": 250, "name_size": 6, "name_colour": 19, "time_xy": [220, 320], "time_size": 6, "time_colour": 23,
+                    "backdrop": {"colour": [0, 0, 255, 0x40], "middle": 224, "fade": 3}}},
+            // COMBO TRAINING (practice's states 0xB-0xE, 0x379824 / 0x379E2C): "SELECT" (0x506310) at (276, 430) size 4
+            // colour 7 and "=DEMO" (0x506328, the small font, colour 6) after it; SELECT shows the chosen side's combo
+            // (COMBO DISPLAY's option 9, TYPE option 10: the training entries with +8 set, at most 16, 0x37D0F8) when
+            // it has one: the player stops (0x36C468), the side waits to stand free (0x37DEE0) at most `wait` frames,
+            // else both are put back `distance` apart (0x37D848 / 0x37D8C8), then its pad plays the entry's steps
+            // ([frames, pad as facing right, icons lit, 0]: 0x37D558, 0x37C990 through fighter +0x420 = 3) while the
+            // entry's line shows (0x37B8D8 as CHAIN TRAINING's, its first `lit` key icons lit: the sum of the steps'
+            // third numbers so far; none for RANDOM); START stops it; after the last step, the side free again, back
+            "combo": {"keys": {"xy": [276, 430], "small": [[string(elf, 0x506328), small_colour(6)?]]}, "wait": 120, "distance": 1200}},
     }))
 }
 

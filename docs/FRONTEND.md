@@ -61,7 +61,7 @@ visible list by 0x3BD130; a locked entry shows only when its test is true. Choos
 | 1 | VS BATTLE | always | handicap health (FD 11) |
 | 2 | TEAM BATTLE | always | 1-8 per side; 15 % refill between rounds (FD 11 "mode 2") |
 | 3 | TIME ATTACK | always | the arcade ladder against the clock |
-| 4 | SURVIVAL | always | "WINS %d"; a tag battle: its records keep two members (0x5203A0), 0x3C1620 gives both 15 % of full health back to health and cap after a win (the winning human side), the CPU side starts afresh |
+| 4 | SURVIVAL | always | "WINS %d"; a tag battle: its records keep two members (0x5203A0), 0x3C1620 gives both 15 % of full health back to health and cap after a win (the winning human side; max x 15 / 100, checked in PCSX2: 300000 / 400000 of 619315 became 392897 / 492897, at most the max), the CPU side starts afresh; checked in PCSX2: two members a side, "SURVIVAL RESULTS" (WINS n, YOU ARE THE GREATEST SURVIVOR!!) after the loss, then the name entry over the arena |
 | 5 | 1 ON 1 (arcade) | always | the arcade ladder, one fighter per side |
 | 6 | 1 ON 1 VS | always | handicap health |
 | 7 | PRACTICE | always | FREESTYLE, VS CPU, CHAIN TRAINING, COMBO TRAINING (menus at 0x506528-0x507200) |
@@ -105,7 +105,7 @@ with QUICK SELECT on (settings +8) 52 lower, over a backdrop of its own (section
   Xiaoyu, Eddy, Jin, Julia, Bryan, Heihachi, Gun Jack, Anna, Michelle, Armor King, Ganryu, Jun, Baek. The rest
   unlock in section 7. [H]
 - Faces: table **0x520508** (s32 sprite per body, 0-38; palette id 0x84): `003_069`-`109`, e.g. Paul 160 =
-  `003_097`, Tiger 173 = `003_109`. Cursor frame id 0xAE = `003_110` drawn at (x-2, y-2) (0x3CC078). [H]
+  `003_097`, Tiger 173 = `003_109`. Cursor frame id 0xAE = `003_110` drawn at (x-2, y-2) (0x3CC078) in the faces' palette 0x84 (format 62 `003_110_p84.png`, the ranking's `face_frame`: light grey, as seen in PCSX2). [H]
 - Costume: the chosen slot gives the character, the button its costume: the fighter's select value is
   `character * 8 + (costume & 7)` (0x35C8D0); bodies 34-38 come out of the roster through that value. [H]
 - **Costume per button** (0x3C9ED8, on the pad's raw word 0x415728, libpad's bits byte-swapped: L2 1, R2 2, L1 4, R1 8,
@@ -347,9 +347,18 @@ or SURVIVAL record is named there (0x3C9144: 0x3D0350 each frame, 3000 frames to
 153 (4 shown), CHARACTER USAGE 75 from 135 (5); the window puts the entry third (0x3C9034); per row (0x3C75E8 /
 0x3C7AB0) `132_000` at the foot, the rank (0x3C7278) and suffix, both faces with their frames and name plates, the
 time or "WINS n" (0x3C7428), the name at (488, -28) size 10; the entry's row over a grey band, its place underlined in
-a red-to-white pulse, the seconds left at (480, -54). Read in code; the CHARACTER USAGE frames seen in PCSX2 agree; the
-arena behind (screen 7's camera: step 2 loads file 5 and 0x3CF0E0(5, ..., 15000)) not decoded. [H on the rows, M on
-the rest]
+a red-to-white pulse, the seconds left at (480, -54) in the chrome font's own colours (font 10's colour 0 is palette
+3: table 0x51FE30; seen green-edged in PCSX2). Read in code; the CHARACTER USAGE frames seen in PCSX2 agree. [H on
+the rows, M on the rest]
+
+**The ranking's arena** (format 62 `ranking.arena`) [H; checked in PCSX2: the attract's rankings over arenas 3, 10
+and 18, the camera block read each frame]: screen 7 draws the arena loaded (gp-0x743A: after GAME OVER or a name entry
+the last fight's, in the attract the demo fight's; screen 7's step 2 only loads the pictures, file 132 by table
+0x4FBF50[5], 0x3CF0E0 placing them) with the frame's own draw (0x3576C0 -> 0x357768: the arena drawn unless
+0x3ABC80). As screen 7 starts (0x3C8A50 -> 0x3B77B8) both fighters are put at 0 and not drawn and the camera block
+0x415808 set; each frame 0x3B7888 (not while paused) turns the angle gp-0x6312 from 0xC00 by -3 and the yaw (+4)
+from 0 by -3, the eye at (cos, sin) x 5000 of the angle (the sine table 0x4FCE88), 1400 up, level (pitch 0), looking
+at the arena's middle; H the live 615.
 
 **The ranking's pace** (0x3C8A88, step gp-0x74CE by table 0x5203C0; the list at 0x440D50: +0x11A the first row's foot,
 +0x16C the page's first row, +0x11E / +0x120 the hold's count and length) [H]: steps 0-3 build the list (rows apart
@@ -396,7 +405,9 @@ back to its entries). [H, layout checked]
 **Practice** (checked in PCSX2): the select takes a team of two for the player and, with the CPU's cursor, a team
 of two for the dummy; the fight starts in FREESTYLE with no menu; START opens practice's menu (format 34,
 `practice`): the mode's name, MODE SELECT (left / right: FREESTYLE, VS CPU, CHAIN TRAINING, COMBO TRAINING), CANCEL,
-then the mode's rows (FREESTYLE: COMMAND LIST, TRAINING DUMMY with its value under it, COUNTER ATTACKS, ATTACK DATA,
+then the mode's rows (FREESTYLE: COMMAND LIST, TRAINING DUMMY with its value under it (QUICK ROLL's two, "QUICK
+ROLL  ", with the icon font's down / up triangle over the two spaces, 22 back from the end, in the small colour 1:
+0x37F5B8; seen in PCSX2), COUNTER ATTACKS, ATTACK DATA,
 HIT ANALYSIS; VS CPU: COMMAND LIST, CPU LEVEL, ATTACK DATA, HIT ANALYSIS; CHAIN TRAINING: RETRY, ATTACK DATA, TIME
 DISPLAY; COMBO TRAINING: COMBO DISPLAY (the character, "(YOU)", TYPE 1), ATTACK DATA, HIT ANALYSIS), CHARACTER SELECT,
 RESET; help texts 135-190. In the fight: TOTAL DMG per side, DMG: n (nnn%), the mode's name at the foot, COMMAND
@@ -426,8 +437,28 @@ CAPTURE / SELECT + O = REC. The menus' layout is as seen [M]; their code (0x3790
   entry's commands with those before it (0x37B8D8: from y 100, 60 apart, at x 320), the time running (to 216000,
   "%02d'%02d\"%02d" at (240, 60) size 4 colour 19 with TIME DISPLAY), "COMBO n:m" at (400, 80) size 4 colour 10;
   the player's move (+0x10C) among the 16 aliases: sound 0x103D, the next entry; after the last, state 3: 180
-  frames, voice 0x1058 at 120; START or a face button after them starts again. COMBO TRAINING (0x37CDA0, state
-  gp-0x7070) places both sides (0x37D8C8) and plays the combo entries; not followed further.
+  frames, voice 0x1058 at 120; START or a face button after them starts again. Under 120 the result (0x3DD5B8) over
+  0x3BF180's backdrop: the screen from black at the top and the foot to table 0x440748's colour 7 (0, 0, 255) at
+  y 224 (templates 0x43FD10 / 0x43FD58), its alpha 3 up a frame from 0 (gp-0x6E44, cleared at 120) to 0x40
+  (0x3BB4E8). (0x37CDA0 is COMMAND CAPTURE's playing, not COMBO TRAINING.)
+- **COMBO TRAINING** (format 62 `practice.combo`; practice's state machine 0x3796B8, jump table 0x506340: state 0
+  0x379824 prints the mode's name and, in COMBO TRAINING, "SELECT" (0x506310) at (276, 430) size 4 colour 7 and
+  "=DEMO" (0x506328, the small font, colour 6) at 382; states 3-10 are COMMAND LIST's move demo, 0xB-0xE the combo
+  demo) [H]: the menu's rows (0x506B60) MODE SELECT, CANCEL, COMBO DISPLAY (option 9, 0x37F3E8: "%s %s", the side's
+  name 0x415840 and (YOU) / (CPU), 0x4318C0) and its TYPE (option 10, 0x37F4B0: "TYPE %d", RANDOM, or "---" when the
+  character has none, table 0x5070F8), ATTACK DATA, HIT ANALYSIS, CHARACTER SELECT, RESET; left / right / cross round
+  options 9 and 10 (0x37A7AC, 0x37A7CC: TYPE 1 to the combos' count for (YOU), one more, RANDOM, for (CPU) with two
+  or more). The combos are the training entries with +8 set, at most 16 (0x37D0F8: count +0x3E90, list +0x3E94;
+  0x37D4F8 / 0x37D518). SELECT (0x379964; the side has a combo, 0x37BFB8): +0x90 = 120, state 0xB: the player
+  stopped (0x36C468), each frame the demo's side (+0x98: the player or the dummy) is checked free (0x37DEE0: not lying,
+  standing at rest); free, or after 120 frames (both sides put back 1200 apart, 0x37D848 / 0x37D8C8, unless one is
+  in the air, 0x37C168), state 0xC takes TYPE's entry (RANDOM: rand(count), no line shown, +0x95) and starts it
+  (0x37D798 -> 0x37D558: the entry's steps copied to the side's recording 0x42F380 + 0x1248 x side +0xA38, its +0x10
+  the distance at 0x431858); 0xD: the side's +0x420 = 3 plays the steps (0x36C7A4 -> 0x37C990: each step `[frames,
+  pad, icons, 0]` its pad (as facing right) for its frames, its third number added to the icons lit, +0x24) while
+  0x37B8D8 shows the entry's line with that many key icons lit (0x3DD188's "%L": the arrows in palette rows 2 more,
+  the buttons in archive 0x4567A0 entry 2's palettes; no sounds, 0x37BAB0 being off); START stops it (0x379F94);
+  after the last step, the side free again (0x37DFC8), 0xE puts things back, state 0.
 - **COMMAND CAPTURE** (format 53 `practice.hud.capture`; FREESTYLE only, 0x37FA30; 0x37FB70 on the player's side, state 0x4318C8: +0 state, +2 loop,
   +4 count, +6 / +0xA the pad held / new): 0 shows "COMMAND CAPTURE" (0x5072B0) at (360, 410), or (360, 390) once
   something is recorded, size 4 colour 23, and under it at x 400 "SELECT" (size 4 colour 7) "+" "o" "=REC" (small
@@ -450,7 +481,14 @@ TEAM BATTLE 0x440728, 1 ON 1 the first two 10 higher; the even ones fading leftw
 left of it, the odd ones rightwards), the grid 52 lower (0x3CC6D4, 0x3CCA28) with a panel per slot (0x3BE038, not
 followed); no arena drawn (0x3D9410), the options' backdrop under it (seen in PCSX2); each side's members' faces
 at (x, 324) by table 0x51F218 (160, 100 / 430, 490: member 0, member 1), a member not picked yet the face under the
-cursor (pulsing), the next the random face (0x3BECC0; format 56 `select.quick.faces`).
+cursor, the next the random face (0x3BECC0; format 56 `select.quick.faces`). Format 62 `select.quick.faces.frame`:
+each face but the random one in a frame (0x3BF080: four opaque grey bars 3 thick, table 0x440688), grey 0x40 about
+a pick, about the face under the cursor |sin(2 pi f / 128)| x 256 (at most 255) by the frame (gp-0x629C, the sine
+table 0x4FCE88), that face at 0x40 when it is the first pick's character. No name plates (0x3CC260 -> 0x3BEAB0):
+each member's name (0x415840, character x 8 + costume) in the chrome font size 4 at the lines' points (side + 2 x
+member), side 0's ending there, side 1's from there, colour 19, the member being picked colour 2 while frame & 4 is
+clear; the cursor on the first pick's character SELECTED (0x51F1A8) colour 10; 1 ON 1 10 higher; no "1ST"
+(0x3CC654) (`select.quick.names`).
 
 **CHICKEN MARKING** (settings +0xE, format 55 `hud.chicken`) [H, the counters followed in the code]:
 - The counters (0x3D2A38, at each move a fighter starts, 0x36A7CC): for the side's member in front (fighter +0),
@@ -458,8 +496,9 @@ cursor (pulsing), the next the random face (0x3BECC0; format 56 `select.quick.fa
   frame (an attack: +0x2C) goes into the member's last 20 aliases (fighter +0x64 + 0x28 x member), and when two or
   more of the other 19 are the same alias, +0x60[member] += 1 (the same attack again and again). Both reset with the
   match (0x36D480).
-- The check (0x3D2B88, at the round's end, 0x36E4CC / 0x36FAE0): only with settings +0x1A = 2 (seen 1 in practice;
-  by the life code, the match of two players) and +0xE on, for the side ahead in rounds won (+0x5A; none on a tie)
+- The check (0x3D2B88, at the round's end, 0x36E4CC / 0x36FAE0): only with settings +0x1A = 2 (0x35A940: the
+  sides played by a human, gp-0x7440 and gp-0x743E, counted; read 1 in PCSX2 in practice, where the VS modes are
+  passed over by the menu with one pad, so the two players' 2 is read in code only) and +0xE on, for the side ahead in rounds won (+0x5A; none on a tie)
   when no CPU plays it (+0x418). With r the rounds won by both (0-9) and the column c the ROUND TIME option (+0xB, at
   most 4): not marked yet, the side is marked when either member's +0x5C >= A[c] x r x s(r) / 4096 or its +0x60 >=
   B[c] x r x s(r) / 4096 (A = 25, 33, 50, 75, 83 and B = 17, 22, 33, 50, 55: table 0x521190, its two rows the same;
