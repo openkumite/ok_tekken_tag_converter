@@ -76,8 +76,8 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 /// `joints`, the joint places the strikes and spheres are posed with; 52: the fighters' hand poses,
 /// `characters/hands_NNN.glb` and movesets/index.json `hands`; 53: `practice.hud.capture`'s states, PLAY keys
 /// and limit; 54: the wings, skins' extras `wings`; 55: front_end `hud.chicken`'s thresholds; 56:
-/// `select.quick.faces`).
-pub const FORMAT: i64 = 56;
+/// `select.quick.faces`; 57: the joints drawn at the game's places, skins' extras `cloth`).
+pub const FORMAT: i64 = 57;
 /// What a pack's manifest names it.
 pub const KIND: &str = "ttt";
 
@@ -245,7 +245,7 @@ pub fn convert(ctx: &Ctx, src: &dyn DiscFile, research: bool) -> Result<Value> {
                 movies.push(json!({"name": name, "file": format!("{i:02}.avi"), "audio_file": format!("{i:02}.flac"),
                     "fps": fps, "frames": frames, "seconds": seconds}));
             }
-        } else if let Some((m, mut ups)) = pack.as_ref().and_then(|p| {
+        } else if let Some((mut m, mut ups)) = pack.as_ref().and_then(|p| {
             let m = p.iter().find_map(|c| model::parse(c))?;
             Some((m, p.iter().flat_map(|c| tex::uploads(c)).collect::<Vec<_>>()))
         }) {
@@ -283,7 +283,21 @@ pub fn convert(ctx: &Ctx, src: &dyn DiscFile, research: bool) -> Result<Value> {
             };
             // OpenKumite's character: a fighter of the roster, with its moveset
             if let (Some((body, costume)), Some(set)) = (who, moveset) {
-                match m.fighter_glb(&ups, &marked, pack.as_ref().and_then(|p| p.get(1).copied()).unwrap_or_default()) {
+                if let Some(s) = slot {
+                    m.place_joints(&fight::places(&a.elf, body, s)?);
+                }
+                // Roger's and True Ogre's ids 3, 6, 9 hang on their swayed slots 18-20 (0x34D038, player flag 0x2000)
+                let held: &[i32] = if matches!(body, 17 | 20) { &[3, 6, 9] } else { &[] };
+                let cloth = pack
+                    .as_ref()
+                    .and_then(|p| Some(model::cloth(p.iter().find(|c| c.starts_with(b"PS2TagA"))?, p.get(10)?, held)))
+                    .unwrap_or_default();
+                match m.fighter_glb(
+                    &ups,
+                    &marked,
+                    pack.as_ref().and_then(|p| p.get(1).copied()).unwrap_or_default(),
+                    &cloth,
+                ) {
                     Some(glb) => {
                         let file = format!("model_{i:03}.glb");
                         assets.write(&format!("characters/{file}"), &glb)?;
@@ -358,7 +372,7 @@ pub fn convert(ctx: &Ctx, src: &dyn DiscFile, research: bool) -> Result<Value> {
                 if research {
                     out.write(&file, &m.glb(&own))?;
                 }
-                if let (Some(n), Some(glb)) = (listed, m.fighter_glb(&own, &[], &[])) {
+                if let (Some(n), Some(glb)) = (listed, m.fighter_glb(&own, &[], &[], &[])) {
                     assets.write(&format!("stages/stage_{n:02}_p{}.glb", k - 1), &glb)?;
                 }
                 people.push(json!({"id": k - 1, "file": file}));
