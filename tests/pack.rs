@@ -418,8 +418,10 @@ fn openkumite(pack: &Hashed) {
     );
     assert!(stages["stages"][0]["flare"].is_null() && written.contains_key("assets/pictures/effects/flare_1.png"));
     // the arenas' weather: Hwoarang's six smoke streams (every 18 frames from (11.56, 1.1, 4.54) m) on 16 paths of its
-    // own picture (atlas cell 24) blown by three wind waves; Lei's steam added; King's 60 beacons; none on Paul's
-    let (hw, king) = (&stages["stages"][4]["weather"], &stages["stages"][11]["weather"]);
+    // own picture (atlas cell 25, after Yoshimitsu's flake) blown by three wind waves; Lei's steam added; King's 60
+    // beacons; none on Paul's; arena 19's snow: 1040 and 560 flakes of cell 24
+    let (hw, king, snow) =
+        (&stages["stages"][4]["weather"], &stages["stages"][11]["weather"], &stages["stages"][19]["weather"]);
     assert_eq!(
         (
             &hw["streams"][0]["every"],
@@ -427,7 +429,11 @@ fn openkumite(pack: &Hashed) {
             &hw["sets"][0]["cell"],
             hw["sets"][0]["paths"].as_array().map(Vec::len)
         ),
-        (&18.into(), &serde_json::json!([11.56, 1.1, 4.54]), &24.into(), Some(16))
+        (&18.into(), &serde_json::json!([11.56, 1.1, 4.54]), &25.into(), Some(16))
+    );
+    assert_eq!(
+        (&snow["sets"][0]["cell"], &snow["snow"]["layers"][0]["count"], &snow["snow"]["layers"][1]["count"]),
+        (&24.into(), &1040.into(), &560.into())
     );
     assert_eq!(
         (hw["wind"]["waves"].as_array().map(Vec::len), &stages["stages"][5]["weather"]["streams"][0]["add"]),
