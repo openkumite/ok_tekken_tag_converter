@@ -108,7 +108,8 @@ sheet, row `y = TBP0`. `TW`/`TH` often exceed what was uploaded; UVs are relativ
 | 6 | **`PS2TagA` model** | decoded |
 | 7 | texture uploads for part 6 | decoded |
 | 8 | low-detail model, 18 joints, 403 triangles, VIF packets | understood, not exported |
-| 9, 10 | small tables (10 has 0x20-byte records) | not decoded |
+| 9 | the swaying nodes' capsules (0x60 bytes each: kind, node, a matrix, radii) and which nodes each one pushes | not decoded |
+| 10 | the swaying nodes (belts, hair, cloth, tails): 0x20 bytes a record to `u16` 0xFFFF, moved by 0x34D258 (`model.rs` `cloth`) | exported (format 57) |
 
 ### PS2TagA model (verified: bind pose closes to 0.000 units on shared vertices)
 
@@ -319,7 +320,7 @@ that are not exported. Collision. One sky quad in arena 14 shows a palm-shadow t
   Each strip: a 4-quadword material packet and `1 + 5n` quadwords of
   `{s, t, matrix A, matrix B}, normal A, normal B, position A·w + w, position B·w + w`
   where a matrix number is `1 + 7 * index`.
-- **Cloth and hair movement**, face poses.
+- Face poses; the swaying nodes' capsules (part 9) and the arena's wind on them (0x34E018).
 
 ## 12. Arena background characters
 

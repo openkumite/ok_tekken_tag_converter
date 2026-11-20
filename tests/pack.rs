@@ -442,11 +442,14 @@ fn openkumite(pack: &Hashed) {
     sound(&load, count("audio/sfx"), count("audio/music"));
     let rules = load("gamedata/rules.json");
     assert_eq!((&rules["dialect"], &rules["hurt_spheres"]["layout"][8]["gltf_joint"]), (&"ttt".into(), &"head".into()));
-    // Paul: his character, skinned on the 98 nodes, the 18 joints named, one picture
+    // Paul: his character, skinned on all his 134 nodes (his belt and cloth sway: 36 in the skin's extras),
+    // the 18 joints named, one picture
     let (doc, buffers, images) = gltf::import_slice(pack.read("assets/characters/model_351.glb").unwrap()).unwrap();
     let skin = doc.skins().next().unwrap();
     let joints: Vec<String> = skin.joints().map(|j| j.name().unwrap().to_string()).collect();
-    assert_eq!(joints.len(), 98);
+    assert_eq!(joints.len(), 134);
+    let extras: serde_json::Value = serde_json::from_str(skin.extras().as_ref().unwrap().get()).unwrap();
+    assert_eq!((extras["cloth"].as_array().map(Vec::len), &extras["cloth"][0]["node"]), (Some(36), &98.into()));
     for name in [
         "root",
         "chest",

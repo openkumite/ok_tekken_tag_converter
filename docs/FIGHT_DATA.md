@@ -118,8 +118,8 @@ Hit volumes are not baked paths. They are bare segments between bone positions, 
   0-17 from the joint places of 0x439A80 by body (+0x2A; costume file 0x6B has its own at 0x4396C0), not from the
   model's nodes: Jack-2's, P.Jack's and Gun Jack's knee is 390 down the thigh where their model has 440, Ogre's and
   Armor King's arms differ too. The hurt and push spheres use the same slots, and so does the drawing (0x3478F0:
-  every joint takes its slot's matrix, the clavicles less node 2's offset, the head its turn only, section 22); the glbs keep
-  the model's nodes (not done).
+  every joint takes its slot's matrix, the clavicles less node 2's offset, the head its turn only, section 22); since format 57
+  the glbs are drawn so too (each slot's node and twist copies at its place, the clavicles less node 2).
 - Slots 18-23 (checked in PCSX2): 0x34F3D8 sets, before the strikes, for moveset (+0x28) 4 slot 22 = hand B x (100,
   0, 720) and 23 = hand B x (100, 0, 360) (the sword), for movesets 26 and 32 slot 22 = hand A x (100, 0, -400), for
   moveset 14 on bodies 20 and 15 slot 23 = head x (800, 0, 600) (vectors at 0x5F5E50). 0x3AFAA0 adds joints for

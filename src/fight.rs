@@ -451,6 +451,14 @@ fn joint_places(elf: &[u8], at: usize) -> Result<Vec<[i16; 3]>> {
         .collect()
 }
 
+/// The joint places costume slot `s` of `body` is drawn and posed with (0x3AFAA0: costume file 0x6B has its own).
+pub fn places(elf: &[u8], body: usize, s: usize) -> Result<Vec<[i16; 3]>> {
+    if s == ANGEL_JOINTS.1 {
+        return joint_places(elf, ANGEL_JOINTS.0);
+    }
+    joint_places(elf, (u32_at(elf, JOINTS + 4 * body, "the joints' places")? as usize).wrapping_sub(VADDR))
+}
+
 /// rules.json `joints`: the slots' parents and each body's joint places, which 0x3AFAA0 builds the matrix slots with
 /// (the strikes, the hurt and push spheres and the drawing all take those slots).
 fn joints(elf: &[u8], names: &[(String, usize)]) -> Result<Value> {
