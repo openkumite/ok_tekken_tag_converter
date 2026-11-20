@@ -69,7 +69,7 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 /// pitching boats; 33: camera.json `team_intro.start_frames`, `fighter_cameras`; 34: front_end `practice`; 35: Unknown's
 /// moveset 28; 36: Law-A's lanterns and leaves in stages.json `objects`, the leaves' and their shadows' copies; 37:
 /// front_end `practice.hud`; 38: camera.json `fighter_cameras.rows`, `win_pose.world_turn`).
-pub const FORMAT: i64 = 40;
+pub const FORMAT: i64 = 41;
 /// What a pack's manifest names it.
 pub const KIND: &str = "ttt";
 
@@ -292,7 +292,10 @@ pub fn convert(ctx: &Ctx, src: &dyn DiscFile, research: bool) -> Result<Value> {
                 let [ball, pin, deck] = bowl::models(&a.elf, &models.unwrap_or_default())?;
                 bare.retain(|x| x.bank != bowl::OBJECT_PART);
                 for (name, m) in [("ball", ball), ("pin", pin), ("deck", deck)] {
-                    assets.write(&format!("stages/bowl_{name}.glb"), &stage::game_glb(name, &m, &[], &[], &banks))?;
+                    assets.write(
+                        &format!("stages/bowl_{name}.glb"),
+                        &stage::game_glb(name, &m, &[], &[], &banks, None),
+                    )?;
                 }
                 b.append(&mut objects);
             }
@@ -375,7 +378,10 @@ pub fn convert(ctx: &Ctx, src: &dyn DiscFile, research: bool) -> Result<Value> {
                     .collect();
                 let things = if i == BOWL { vec![] } else { objects::objects(&a.elf, n, &blocks)? };
                 weather.insert(n, effects::entries(raw.get(1).copied().unwrap_or_default()));
-                assets.write(&format!("stages/{file}"), &stage::game_glb(&name, &bare, &floors, &things, &banks))?;
+                assets.write(
+                    &format!("stages/{file}"),
+                    &stage::game_glb(&name, &bare, &floors, &things, &banks, stage::levels(&a.elf, n)),
+                )?;
                 arenas.push(json!({"id": n, "name": name, "file": file}));
             }
             let triangles = b.iter().map(|x| x.pos.len().saturating_sub(2)).sum::<usize>();
