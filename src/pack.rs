@@ -71,7 +71,7 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 /// front_end `practice.hud`; 38: camera.json `fighter_cameras.rows`, `win_pose.world_turn`; 44: the arenas' strips lit
 /// and their texture coordinates made as the VU1 microcode does, stage::colour; 45: flags 4 and 0x400's panorama, the arenas' fog;
 /// 46: front_end `fonts.small`: the button icons in each text colour; 47: Eddy's grass in stages.json `objects`; 48: Jin's
-/// texture's extras `mark`).
+/// texture's extras `mark`, the props of ending op 25 `stages/stage_NN_prop_K.glb`).
 pub const FORMAT: i64 = 48;
 /// What a pack's manifest names it.
 pub const KIND: &str = "ttt";
@@ -387,6 +387,13 @@ pub fn convert(ctx: &Ctx, src: &dyn DiscFile, research: bool) -> Result<Value> {
                     .map(|m| m.into_iter().map(|b| stage::Batch { bank, ..b }).collect())
                     .collect();
                 let things = if i == BOWL { vec![] } else { objects::objects(&a.elf, n, &blocks)? };
+                // the objects ending op 25 holds at a hand, each at its own origin
+                for &(_, k) in bowl::PROPS.iter().filter(|p| p.0 == n) {
+                    if let Some(m) = bowl::object_model(&a.elf, n, k)?.and_then(|m| blocks.get(m)) {
+                        let glb = stage::game_glb(&format!("prop {k}"), m, &[], &[], &banks, None, light.as_ref());
+                        assets.write(&format!("stages/stage_{n:02}_prop_{k}.glb"), &glb)?;
+                    }
+                }
                 weather.insert(n, effects::entries(raw.get(1).copied().unwrap_or_default()));
                 assets.write(
                     &format!("stages/{file}"),

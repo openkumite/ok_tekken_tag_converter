@@ -470,7 +470,7 @@ scene; hard cap 7200 frames. [H]
 | 22 | an iris (0x3AC8B0 -> 0x3CF850(x a, y b, r)): black outside a circle (15-step fans and two bands), r from 640 down by (640 - (c & 0xFF)) / (c >> 8) a frame to c & 0xFF, then held to the scene's end | [H] |
 | 23 | an oval (0x3AC978 -> 0x3CFAD8(220, 133, 0xC0)): black outside the ellipse about (320, 224) of half-height 220, half-width 220 x 1.33, for a frames | [H] |
 | 24 | a screen fill (0x3ACAB0 -> 0x3AC9D8(a)) for b frames from table 0x437D10 (16 bytes: r, g, b, a, ALPHA's A B C D): 0 (255, 255, 255) and 1 (205, 157, 200) with (Cs - Cd) x Ad (the colour less the picture, the frame's alpha taken as 1 [M]), 2 (162, 51, 50) at 64 / 128 over | [H] |
-| 25 | an arena prop (0x3ACB08 -> 0x3D10D0(b & 0x3FFF, matrix)) on arenas 3, 5 and 7 by b, at actor a's node matrix (fighter +0x2A30 or +0x3CF0; flag 0x20 the other actor) for c frames; its matrix 0x444CD0 is ops 17 / 18's node 0x4002 [M] | [M] |
+| 25 | the arena's object b & 0x3FFF (0x3ACB08 -> 0x3D10D0(object, matrix)) for c frames at actor a's (side 1 when a != 0) node: arena 7 object 0 node 63 (fighter +0x3CF0), objects 1, 2 node 38 (+0x2A30); arena 5 object 0 and arena 3 object 19 node 38, or with b's 0x4000 the matrix 0x8D7E00 (turned -0.349 about x, 0.785 about y, at z 1500); other objects end the task. Exported (format 48) as `stages/stage_NN_prop_K.glb` | [H] |
 | 26 / 31 | gp-0x6E84 = a & 1 (cleared with the arena's people, 0x390E74); 0x34CB38(0 / 1) by bits of a, its result unused: nothing drawn | [H] |
 | 27 | 0x3465E0: gp-0x6420 \|= 3 (also op 4's: a camera cut) | [H] |
 | 28 | actor a & 1's +0xB052 = b when it is True Ogre or Devil (characters 20 / 29 at +0x2A): their wings (below) | [H] |

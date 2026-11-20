@@ -224,6 +224,23 @@ const OBJECTS: usize = 0x52_0FC0;
 /// The geometry pack's part (of the non-empty ones) whose blocks are the arena's object models.
 pub const OBJECT_PART: usize = 3;
 
+/// The arenas' objects ending op 25 holds at a hand (0x3ACB08: arena, object): ending 19's on arena 3, 20's on 5,
+/// 10's and 30's on 7.
+pub const PROPS: [(usize, usize); 5] = [(3, 19), (5, 0), (7, 0), (7, 1), (7, 2)];
+
+/// Arena `arena`'s object `k`'s model (a block of the object part), as 0x3D10D0 draws it at a matrix of its own; none
+/// past the table.
+pub fn object_model(elf: &[u8], arena: usize, k: usize) -> Result<Option<usize>> {
+    let what = "the arena's object table";
+    let at = |p: u32| (p as usize).checked_sub(VADDR).context(what);
+    let table = at(u32_at(elf, OBJECTS - VADDR + 16 * arena, what)?)?;
+    let (count, list) = (u32_at(elf, table + 8, what)? as usize, at(u32_at(elf, table + 12, what)?)?);
+    if k >= count {
+        return Ok(None);
+    }
+    Ok(usize::try_from(u16_at(elf, list + 64 * k, what)? as i16).ok())
+}
+
 /// The bowling hall's objects the bowl draws, from arena 20's object table: an object (64 bytes) is `s16 model` (a
 /// block of the object part, [`crate::stage::blocks`]) and, at +0x20, its place (x, y, z); a link (s16 parent, s16
 /// child) places the child from its parent. The roll's draw (0x3EEF00 -> 0x3D10D0) draws object 0 at the ball and
