@@ -289,6 +289,16 @@ turn starts (0x3E9C10) at pivot (0, -2300, -12000), pitch -0.2 rad, distance 200
 
 The aiming guide is a 7-triangle overlay (0x3EA978).
 
+**The hall drawn** [H] (a PCSX2 save state in the position step, its VU1 blocks): the arena's turn of pi (0x3E9A90,
+0x3671D0's 0x879460) is in part 4's and the objects' matrices, not the floor's (part 6, symmetric); part 4's eye is
+(0, 2697, -13960) in its own axes looking +z, the camera OpenKumite's picture axes already have, golden walls
+included. Two things make the PS2's hall dark: in the throw (states 1 and 9, 0x3E9400) 0x341EEC gives part 4's VU1
+blocks a z guard (row 10.w, gp-0x67B0) of 2 x 7000 / z(7000) on 0x433440's projection, which part 4's own z (0x433480)
+meets 5297 mm from the eye: its triangles with a corner nearer are dropped (0xA4 CLIPw, FCAND, ADC), the light cones
+before the lane among them (in a fight 0x341E0C does the same at the nearer fighter's depth less 500 while gp-0x7268
+is set, arena 12 aside). And the objects (the deck, its sign) are drawn after part 4: its painted shadows do not
+darken them.
+
 **The throw's gauges** (0x3C65D0, every frame; the step's row of table 0x51FD30 gives each one's alpha: position
 the rack, aim the spin meter and the power bar at half, power the rack, half the spin meter and the power bar, run-up
 all three at half; none from the release) [H], pictures of file 130 (`130_NNN.png`):
@@ -606,9 +616,7 @@ Ranked by how much a player would notice:
 3. What a spectator the ball hits plays (0x3DB860).
 4. Whether the staff roll draws over the ending scene (its texts are 7.5's); the flash / fade colours (table 0x43FD10, 9 and 10).
 5. What 0x3E4BC0 draws in the throw (a panel by the bowler's motion).
-6. The black band behind the pin deck: the object part's models 0 and 9 are empty blocks (0x130 bytes, no batch),
-   no fill; how the PS2 shows that place is to be compared.
-7. File 128 parts 1-2 and file 127 (the bowl's camera path, 600 frames) use.
+6. File 128 parts 1-2 and file 127 (the bowl's camera path, 600 frames) use.
 
 ## Scripts (`docs/re/`)
 

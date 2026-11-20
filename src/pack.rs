@@ -76,8 +76,9 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 /// `joints`, the joint places the strikes and spheres are posed with; 52: the fighters' hand poses,
 /// `characters/hands_NNN.glb` and movesets/index.json `hands`; 53: `practice.hud.capture`'s states, PLAY keys
 /// and limit; 54: the wings, skins' extras `wings`; 55: front_end `hud.chicken`'s thresholds; 56:
-/// `select.quick.faces`; 57: the joints drawn at the game's places, skins' extras `cloth`).
-pub const FORMAT: i64 = 57;
+/// `select.quick.faces`; 57: the joints drawn at the game's places, skins' extras `cloth`; 58: the arena effects'
+/// quads as the arena's projection sizes them).
+pub const FORMAT: i64 = 58;
 /// What a pack's manifest names it.
 pub const KIND: &str = "ttt";
 

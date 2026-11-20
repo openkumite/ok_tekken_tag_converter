@@ -160,9 +160,13 @@ const BEACONS_KING: usize = 0x43_6EE0;
 /// The arenas' wind (0x3D3630: 12 bytes an arena, `u32 waves, *waves, u32`; a wave 32 bytes: `i32 step, f32 speed,
 /// f32 strength, u32, f32 direction[4]`).
 const WIND: usize = 0x44_7EC0;
-/// A particle's quad (metres at size 1) as 0x345A00 sizes it, 0x90 / 0x48 of the particle, with its 0x90 0x400 and
-/// the 0x48 of 400 it is made with.
-const QUAD: f64 = 1024.0 / 400.0;
+/// An arena effect's quad (metres across at size 1 and 0x90 / 0x48 of 1): 0x345C10 makes its half 0x90 x size x z / 4
+/// / 0x48 GS units (a sixteenth of a pixel), z its depth through the arena's view (0x346A24: 0x879420, projection
+/// 0x433480's z = 12586753 / w less 64), its 768.75 pixels across a unit at w: 2 x 12586753 / (64 x 768.75) mm.
+const ARENA_QUAD: f64 = 2.0 * 12_586_753.0 / (64.0 * 768.75) * SCALE;
+/// A particle's quad (metres at size 1), 0x90 / 0x48 of the particle, with its 0x90 0x400 and the 0x48 of 400 it is
+/// made with.
+const QUAD: f64 = 1024.0 / 400.0 * ARENA_QUAD;
 
 /// Arena `arena`'s weather, the effect tasks 0x3A2640 starts on it (none on most arenas), in metres, frames and
 /// radians, from its `entries` and their pictures' atlas `cells`:
@@ -200,7 +204,7 @@ pub fn weather(elf: &[u8], arena: usize, entries: &[Entry], cells: &[Option<usiz
                   divisor: f64,
                   add: bool| {
         json!({"set": 0, "every": every, "at": at, "heading": heading, "scale": scale, "colour": colour.map(|c| c / 128.0),
-            "level": level / 128.0, "size": 1024.0 / divisor, "add": add, "wind": 0.0, "most": null, "prewarm": false})
+            "level": level / 128.0, "size": 1024.0 / divisor * ARENA_QUAD, "add": add, "wind": 0.0, "most": null, "prewarm": false})
     };
     // (and with `more` in place of what it says)
     let with = |mut s: Value, more: Value| {
