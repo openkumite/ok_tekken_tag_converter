@@ -450,7 +450,7 @@ TEAM BATTLE 0x440728, 1 ON 1 the first two 10 higher; the even ones fading leftw
 left of it, the odd ones rightwards), the grid 52 lower (0x3CC6D4, 0x3CCA28) with a panel per slot (0x3BE038, not
 followed).
 
-**CHICKEN MARKING** (settings +0xE, format 54 `hud.chicken`) [H, the counters followed in the code]:
+**CHICKEN MARKING** (settings +0xE, format 55 `hud.chicken`) [H, the counters followed in the code]:
 - The counters (0x3D2A38, at each move a fighter starts, 0x36A7CC): for the side's member in front (fighter +0),
   +0x5C[member] += 1 for a move with flag 0x4000 at +0x24, += 2 for one with 0x8000; a move with a first active
   frame (an attack: +0x2C) goes into the member's last 20 aliases (fighter +0x64 + 0x28 x member), and when two or
