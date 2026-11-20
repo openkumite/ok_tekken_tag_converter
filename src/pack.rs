@@ -72,8 +72,9 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 /// and their texture coordinates made as the VU1 microcode does, stage::colour; 45: flags 4 and 0x400's panorama, the arenas' fog;
 /// 46: front_end `fonts.small`: the button icons in each text colour; 47: Eddy's grass in stages.json `objects`; 48: Jin's
 /// texture's extras `mark`, the props of ending op 25 `stages/stage_NN_prop_K.glb`; 49: front_end
-/// `command_list`, its icons; 50: `command_list.lists[].training`, front_end `practice.chain`).
-pub const FORMAT: i64 = 50;
+/// `command_list`, its icons; 50: `command_list.lists[].training`, front_end `practice.chain`; 51: rules.json
+/// `joints`, the joint places the strikes and spheres are posed with).
+pub const FORMAT: i64 = 51;
 /// What a pack's manifest names it.
 pub const KIND: &str = "ttt";
 
