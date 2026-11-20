@@ -428,7 +428,7 @@ CAPTURE / SELECT + O = REC. The menus' layout is as seen [M]; their code (0x3790
   the player's move (+0x10C) among the 16 aliases: sound 0x103D, the next entry; after the last, state 3: 180
   frames, voice 0x1058 at 120; START or a face button after them starts again. COMBO TRAINING (0x37CDA0, state
   gp-0x7070) places both sides (0x37D8C8) and plays the combo entries; not followed further.
-- **COMMAND CAPTURE** (FREESTYLE only, 0x37FA30; 0x37FB70 on the player's side, state 0x4318C8: +0 state, +2 loop,
+- **COMMAND CAPTURE** (format 53 `practice.hud.capture`; FREESTYLE only, 0x37FA30; 0x37FB70 on the player's side, state 0x4318C8: +0 state, +2 loop,
   +4 count, +6 / +0xA the pad held / new): 0 shows "COMMAND CAPTURE" (0x5072B0) at (360, 410), or (360, 390) once
   something is recorded, size 4 colour 23, and under it at x 400 "SELECT" (size 4 colour 7) "+" "o" "=REC" (small
   font; colours 6, 8, 6; 0x5072D0) and, recorded, "SELECT + x = PLAY" (0x507300) 20 lower; SELECT + circle: 1 READY
@@ -436,7 +436,8 @@ CAPTURE / SELECT + O = REC. The menus' layout is as seen [M]; their code (0x3790
   recording the side's pad (0x37C650, 0x37C8A0) until SELECT or full: 4 REC LIMIT (0x507370, sound 0x103D at 180,
   160, 140 frames), "SELECT=STOP" (0x507350) at (400, 430) while recording or playing; SELECT + cross plays it once,
   SELECT + square in a loop: 6-7 PLAY (0x507388), the dummy's pad +0x430 from the recording (0x37C970, +0x420 = 4)
-  until SELECT or its end (5 waits between loops).
+  until SELECT or its end (5 waits between loops: the last run's frames, 0x37C878). The recording is runs of one pad
+  (frames, pad; at most 254, 0x37C8A0) of the player's input history (+0x226, its pad as facing right).
 
 **GAME OPTIONS' select options** [H]: CHARACTER SELECT CURSOR (settings +0xA, HOLD 1): each pick of a side writes its
 slot to 0x4157F8 + 8 x side + the pick's number (0x3CAB18); a played side's cursor starts on byte 0 (0x3C993C; at first

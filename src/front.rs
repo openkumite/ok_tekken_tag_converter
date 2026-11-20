@@ -692,9 +692,17 @@ pub fn front_end(elf: &[u8], ups: &[Upload], clips: &[Option<String>]) -> Result
             // colours, kept as `fonts.small.colours` indices)
             "hud": {"total": {"x": [32, 352], "y": 38, "size": 4, "colour": 17},
                 "damage": {"xy": [32, 58], "size": 4, "colour": 0}, "mode": {"xy": [18, 427], "size": 4, "colour": 0},
-                "capture": {"text": string(elf, 0x5072B0), "xy": [360, 410], "size": 4, "colour": 23,
+                "capture": {"text": string(elf, 0x5072B0), "xy": [360, 410], "recorded_y": 390, "size": 4, "colour": 23,
                     "keys": {"xy": [400, 430], "select": "SELECT", "size": 4, "colour": 7,
-                        "small": [["+", small_colour(6)?], ["o", small_colour(8)?], ["=REC", small_colour(6)?]], "button": 3}}},
+                        "small": [["+", small_colour(6)?], ["o", small_colour(8)?], ["=REC", small_colour(6)?]], "button": 3,
+                        "play": [["+", small_colour(6)?], ["x", small_colour(8)?], ["=PLAY", small_colour(6)?]], "buttons": {"o": 3, "x": 2}},
+                    // (0x37FB70 / 0x37FE58: the states' texts at (196, 430) size 4 shown while frame & 0x10, and SELECT =
+                    // STOP (0x507350) at (400, 430) while recording or playing; REC LIMIT's sound at 180, 160, 140 of
+                    // its 180 frames; a recording is at most 254 runs of one pad (0x37C8A0))
+                    "states": {"xy": [196, 430], "size": 4, "blink": 16, "ready": [string(elf, 0x507330), 16],
+                        "rec": [string(elf, 0x507340), 12], "limit": [string(elf, 0x507370), 12], "play": [string(elf, 0x507388), 7]},
+                    "stop": {"xy": [400, 430], "small": [["=STOP", small_colour(6)?]]},
+                    "limit": {"frames": 180, "beeps": [180, 160, 140], "sound": 0x103D}, "runs": 254}},
             // CHAIN TRAINING (0x37EB04, state 0x8B8010; the moves are `command_list.lists[body].training`'s entries with
             // +6 set, in order, at most 128): 0 the first; 1 READY! (0x506DD8) at (192, 220) size 10 colour 2 for 90
             // frames, voice 0x105A at its start, 0x105B at its end; 2 the move's line with the lines of the moves its

@@ -74,8 +74,9 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 /// texture's extras `mark`, the props of ending op 25 `stages/stage_NN_prop_K.glb`; 49: front_end
 /// `command_list`, its icons; 50: `command_list.lists[].training`, front_end `practice.chain`; 51: rules.json
 /// `joints`, the joint places the strikes and spheres are posed with; 52: the fighters' hand poses,
-/// `characters/hands_NNN.glb` and movesets/index.json `hands`).
-pub const FORMAT: i64 = 52;
+/// `characters/hands_NNN.glb` and movesets/index.json `hands`; 53: `practice.hud.capture`'s states, PLAY keys
+/// and limit).
+pub const FORMAT: i64 = 53;
 /// What a pack's manifest names it.
 pub const KIND: &str = "ttt";
 
