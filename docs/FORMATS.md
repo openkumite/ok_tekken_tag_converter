@@ -243,7 +243,8 @@ then levels x cells blocks, each opened by  STCYCL 4,4  FLUSH  BASE 0  OFFSET 0x
 
 Vertices are relative to the centre of their cell: cell `i` sits at
 `((i % nx) - (nx-1)/2) * width`, `((i / nx) - (nz-1)/2) * depth`. The levels hold the same cells
-at different densities; the exporter keeps the densest.
+at different densities; 0x340408 draws a cell's by its depth (GAMEDATA.md, `floor_levels`), from level 1: the
+exporter keeps them all, a cell's alike once.
 
 - A grid of several cells, or a flat one (seen: 4x4 cells of 2 m, and 1 cell of 8 m), is the
   **floor** around the fighters. The game repeats it in every direction as they move; the far

@@ -403,7 +403,13 @@ centred on the fighters (scene extras `drum: "model"`, `drum_cull: false`: the s
 sides are drawn; **new** (format 13) `drum_depth: "floor"`: the PS2 draws the arena with one z-buffer, so the floor
 hides the ground below it, unlike the arcade stages' model; `background_rgb` black); node `floor` holds copies `floor_K` of the floor mesh, a period apart, to a
 little past the hole in the far ground, and the scene extras' `floor_period` (metres) is that period. An arena's
-floors are one: the one of the longest period, each shorter one (2 or 4 m in 8 or 4 m) laid inside it. Every strip
+floors are one: the one of the longest period, each shorter one (2 or 4 m in 8 or 4 m) laid inside it. **New**
+(format 41) every level of detail the game draws of each floor cell (from 1: level 0 never shows), a cell's
+levels alike once: TEXCOORD_1 is a vertex's cell's centre (x, z, metres, in the mesh), TEXCOORD_2 (its level, 0 when
+drawn at every level; the floor's last level); scene extras `floor_levels` `{limits, corner, cell}` (metres; 0x340070,
+0x340408): a cell shows the level of the mean depth of its square's corners in front of the camera (the square the
+cell `cell` times `corner`, table 0x521700 +0xC), past `limits[k]` level k + 2 if the floor has it (from the last
+down), else level 1. Every strip
 is there: since format 14 the additive ones (lights, floor gloss) in materials named `additive`, the darkening ones
 (shadows, dirt) in materials named `shade`. Left out: the background characters; part 3, the object models, are
 not in the scenery but under node `objects` where their arena's code puts them (since format 14). Each primitive (a picture and a blend mode) has its own
