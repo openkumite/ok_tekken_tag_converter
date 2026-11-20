@@ -448,7 +448,9 @@ back); the bytes go to the config's +0x38 / +0x39 at the select's end (0x3CB6CC;
 centred by the width at foot 40, size 5) and white lines (0x3BE8C0: 4 high, 6 to 2 above the points of 0x440708,
 TEAM BATTLE 0x440728, 1 ON 1 the first two 10 higher; the even ones fading leftwards from 4 right of the point to 160
 left of it, the odd ones rightwards), the grid 52 lower (0x3CC6D4, 0x3CCA28) with a panel per slot (0x3BE038, not
-followed).
+followed); no arena drawn (0x3D9410), the options' backdrop under it (seen in PCSX2); each side's members' faces
+at (x, 324) by table 0x51F218 (160, 100 / 430, 490: member 0, member 1), a member not picked yet the face under the
+cursor (pulsing), the next the random face (0x3BECC0; format 56 `select.quick.faces`).
 
 **CHICKEN MARKING** (settings +0xE, format 55 `hud.chicken`) [H, the counters followed in the code]:
 - The counters (0x3D2A38, at each move a fighter starts, 0x36A7CC): for the side's member in front (fighter +0),
