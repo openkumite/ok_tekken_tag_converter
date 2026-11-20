@@ -486,8 +486,11 @@ his face with the mark (frame 0, the face the textures load with) and without (f
 is set (0x370E20), in a scene by op 12. The converter bakes frame 1 into his textures. [H]
 
 Typical: ops 0-4 at frame 0, fade in over 45, effects, fade out over 60-120, end at camera frames - 1. No op plays
-sound: the only audio is the music [M]. Thirteen endings swap the arena's background-character set (0x3D85D8,
-table 0x521C30): 2, 4, 7, 9, 10, 12, 15, 16, 23, 24, 30, 33, 36 [M].
+sound: the only audio is the music [M]. The background characters are a set of 0x114FC8 by the scene, not
+the arena's (0x3D85D8, the people set gp-0x6170): ending e takes case e - 2 of jump table 0x521C30: 2 -> 23, 4 -> 27,
+7 -> 22, 9 / 16 / 24 -> 29, 10 -> 25, 12 -> 13, 15 -> 30, 23 -> 28, 30 -> 26, 33 -> 24, 36 -> 21; every other
+ending shows none. On the EMBU's screen arena 13 takes set 30, any other none. Sets 23-30 use the arena's models and
+motions (their motion table is an arena's); arenas 7 and 21 still draw each person with the next model. [H]
 
 ### 7.5 Playback and staff roll (0x3AA8A8, table 0x51B7B0) [H unless marked]
 

@@ -49,6 +49,19 @@ pub fn endings(elf: &[u8]) -> Result<Value> {
     let table: Vec<Vec<i8>> = (0..34)
         .map(|c| (0..8).map(|k| crate::u8_at(elf, a(0x51B678) + 8 * c + k, what).map(|v| v as i8)).collect())
         .collect::<Result<_>>()?;
+    // the people an ending shows (0x3D85D8: case e - 2 of jump table 0x521C30, `addiu v0, zero, set` in its delay
+    // slot; set -1, and endings 0 and 1, none), and the EMBU's (0x3D868C: set 30 on arena 13, else none)
+    let people = |set: Option<i16>, arena: usize| {
+        let set = usize::try_from(set?).ok()?;
+        let (people, walk) = crate::effects::people(elf, set, arena);
+        Some(json!({"set": set, "people": people, "walk": walk}))
+    };
+    let set = |e: usize| -> Option<i16> {
+        let k = e.checked_sub(2).filter(|&k| k < 0x23)?;
+        let case = (u32_at(elf, a(0x521C30) + 4 * k, what).ok()? as usize).checked_sub(VADDR)?;
+        let op = u32_at(elf, case + 4, what).ok()?;
+        (op >> 16 == 0x2402).then_some(op as u16 as i16)
+    };
     let mut scenes = vec![];
     for e in 0..COUNT {
         let r = a(0x51B488) + 12 * e;
@@ -64,6 +77,7 @@ pub fn endings(elf: &[u8]) -> Result<Value> {
         let records = script_at(script)?;
         let (camera, pack) = files(e);
         scenes.push(json!({"arena": arena, "cast": members, "script": records, "camera_file": camera, "pack_file": pack,
+            "people": people(set(e), arena as usize),
             "camera": format!("ending_{e:02}_camera.bin"), "body": [format!("ending_{e:02}_0.glb"), format!("ending_{e:02}_1.glb")],
             "face": format!("ending_{e:02}_face.bin"), "hands": format!("ending_{e:02}_hands.bin")}));
     }
@@ -98,7 +112,7 @@ pub fn endings(elf: &[u8]) -> Result<Value> {
         .collect::<Result<_>>()?;
     let embu = json!({"casts": casts, "arenas": [4, 13], "script": script_at(a(0x519B90))?, "bgm": 1,
         "camera_file": EMBU.0, "pack_file": EMBU.1, "camera": "embu_camera.bin", "body": [],
-        "face": "embu_face.bin", "hands": "embu_hands.bin"});
+        "face": "embu_face.bin", "hands": "embu_hands.bin", "people": [people(None, 4), people(Some(30), 13)]});
     Ok(json!({
         "table": table, "endings": scenes, "embu": embu,
         "staff_roll": {"lines": roll, "cards": ["TEKKEN TAG TOURNAMENT", "NAMCO PRODUCTION STAFF"], "card_frames": 170,
