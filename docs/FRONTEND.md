@@ -370,6 +370,19 @@ count rows; 6 down 12 a frame to it; 7 held +0x120 frames, then the page before 
 and 0xC eases to it ((target - foot + 15) / 16 a frame, 1 to 16). The rows are drawn first, the banner over them
 (0x3C93A0).
 
+**SURVIVAL RESULTS** (0x3C5388, after the lost fight and before the name entry, over the arena; format 64
+`survival_results`) [H; checked in PCSX2 after a run of 5 wins]: 0x3BF180's backdrop in the mode's colour (table
+0x440748[4] (0, 255, 64)); "SURVIVAL RESULTS" (0x51FAE8) centred on x 320 at y 40, size 5, colour 19; "WINS %d"
+(0x51FB18) centred at y 150 in the chrome font's own colours, the number counting up (gp-0x6288 from 1: f x wins /
+600 above 40 wins, else f / 15, at most the wins (9999 at most, gp-0x7430)) with sound 3 at each change and 5 when
+it stands; then, by the place (gp-0x742C = 0x3CD1E8(wins, members): 1 + the first of the 10 survivors' records with
+fewer wins, 0 when none or when a record above it is the same pair either way round), each line centred with its
+spaces measured: placed, "YOU ARE / THE %s / GREATEST / SURVIVOR!!" (0x51FB40-0x51FBC8, the place 0x440A28: "1ST" to
+"10TH", blinking with "" every 15 frames) from y 250, size 10, colour 2 for places 1-3 and the font's own below;
+else "YOU NEED / MORE / PRACTICE." (0x51FBF8-0x51FC58) from y 290 colour 1; the lines about 42 apart (the font's
+newline, as seen). 3600 frames after the count stands, or a button (0x3B6BD8: mask 0x8F4), out to black over 60
+frames (0x3C4AF8), then the name entry.
+
 **Name entry** (0x3D0350): right / down the next letter, left / up the one before (round in 42); a face button takes
 the letter under the cursor ("<" takes the last back, "=" ends); the third letter ends; the entry shows the current
 letter in its place as it changes; sound 3 a move, 4 a letter. [H]
@@ -440,7 +453,9 @@ CAPTURE / SELECT + O = REC. The menus' layout is as seen [M]; their code (0x3790
   frames, voice 0x1058 at 120; START or a face button after them starts again. Under 120 the result (0x3DD5B8) over
   0x3BF180's backdrop: the screen from black at the top and the foot to table 0x440748's colour 7 (0, 0, 255) at
   y 224 (templates 0x43FD10 / 0x43FD58), its alpha 3 up a frame from 0 (gp-0x6E44, cleared at 120) to 0x40
-  (0x3BB4E8). (0x37CDA0 is COMMAND CAPTURE's playing, not COMBO TRAINING.)
+  (0x3BB4E8); the colour is the game mode's (settings +0, table 0x440748: 7 practice). Checked in PCSX2 (the run's
+  state 0x8B8010 put at 3 with 180 frames): the blue over the fight, the practice HUD (TOTAL DMG, the mode's name)
+  drawn over it. (0x37CDA0 is COMMAND CAPTURE's playing, not COMBO TRAINING.)
 - **COMBO TRAINING** (format 62 `practice.combo`; practice's state machine 0x3796B8, jump table 0x506340: state 0
   0x379824 prints the mode's name and, in COMBO TRAINING, "SELECT" (0x506310) at (276, 430) size 4 colour 7 and
   "=DEMO" (0x506328, the small font, colour 6) at 382; states 3-10 are COMMAND LIST's move demo, 0xB-0xE the combo
@@ -497,8 +512,9 @@ clear; the cursor on the first pick's character SELECTED (0x51F1A8) colour 10; 1
   more of the other 19 are the same alias, +0x60[member] += 1 (the same attack again and again). Both reset with the
   match (0x36D480).
 - The check (0x3D2B88, at the round's end, 0x36E4CC / 0x36FAE0): only with settings +0x1A = 2 (0x35A940: the
-  sides played by a human, gp-0x7440 and gp-0x743E, counted; read 1 in PCSX2 in practice, where the VS modes are
-  passed over by the menu with one pad, so the two players' 2 is read in code only) and +0xE on, for the side ahead in rounds won (+0x5A; none on a tie)
+  sides played by a human, gp-0x7440 and gp-0x743E, counted; checked in PCSX2 with a second pad on port 2: 2 in VS
+  BATTLE, 1 in practice; with one pad the menu passes over the VS modes; the mark seen in VS BATTLE after a round won
+  with 142 repeats of one attack, none after the first round's 26 below its 33) and +0xE on, for the side ahead in rounds won (+0x5A; none on a tie)
   when no CPU plays it (+0x418). With r the rounds won by both (0-9) and the column c the ROUND TIME option (+0xB, at
   most 4): not marked yet, the side is marked when either member's +0x5C >= A[c] x r x s(r) / 4096 or its +0x60 >=
   B[c] x r x s(r) / 4096 (A = 25, 33, 50, 75, 83 and B = 17, 22, 33, 50, 55: table 0x521190, its two rows the same;

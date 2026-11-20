@@ -637,6 +637,17 @@ fn front_end(pack: &Hashed) {
     // the help font; format 29: the records' up / down marks, the ranking's banners, separator and face frame; format
     // 49: the command list's arrows and buttons; format 62: the lit buttons)
     assert_eq!(named.len(), 285);
+    // (format 64: SURVIVAL RESULTS' lines with their spaces, as PCSX2 shows them centred, and the places)
+    let sr = &fe["survival_results"];
+    assert_eq!(
+        (&sr["title"][0], &sr["placed"][0][1], &sr["unplaced"][0][2], &sr["places"][10]),
+        (
+            &serde_json::json!("SURVIVAL RESULTS"),
+            &serde_json::json!("  THE %s"),
+            &serde_json::json!("    PRACTICE."),
+            &serde_json::json!("10TH")
+        )
+    );
     // (format 49: each body's command list, Xiaoyu's as PCSX2 shows it)
     // (format 50: Paul's training data, Shredder a CHAIN TRAINING move done by alias 966)
     let paul = &fe["command_list"]["lists"][0]["training"];
