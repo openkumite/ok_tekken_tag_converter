@@ -26,6 +26,8 @@ pub struct Batch {
     pub flags: u32,
     pub mode: u8,
     pub floor: bool,
+    /// its PRIM's FGE: the GS fogs it
+    pub fog: bool,
     /// which texture bank its TEX0 refers to
     pub bank: usize,
     pub pos: Vec<[f32; 3]>,
@@ -288,11 +290,34 @@ type Window = (Vec<Vec<Batch>>, Vec<(usize, [f32; 2])>);
 const GP: usize = 0x5F_D0F0;
 const FLOOR_TABLE: usize = 0x52_1700;
 
-/// An arena's lights for its geometry: towards each (the arena's axes), its colour (128 = 1), the ambient (GS units).
+/// An arena's lights for its geometry: towards each (the arena's axes), its colour (128 = 1), the ambient (GS units);
+/// and its fog ([`fog`]).
 pub struct Light {
     pub toward: [[f32; 3]; 3],
     pub colour: [[f32; 3]; 3],
     pub ambient: [f32; 3],
+    pub fog: Option<Fog>,
+}
+
+/// The arenas' fog: 24 bytes an arena, `u64 FOGCOL` (r, g, b bytes), `f32 near level, near, far level, far` (mm).
+const FOG: usize = 0x45_6540;
+
+/// An arena's fog: the GS's FOGCOL, and the coefficient `line[0] + line[1] x w` (w the depth in mm; 255 none, to 0)
+/// that 0x3DE6C0 makes from its row (gp-0x67A8, gp-0x67AC) and the VU1 blocks carry (8.w, 9.w).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Fog {
+    pub colour: [u8; 3],
+    pub line: [f32; 2],
+}
+
+/// Arena `n`'s fog.
+pub fn fog(elf: &[u8], n: usize) -> Option<Fog> {
+    let o = (FOG + 24 * n).checked_sub(VADDR)?;
+    let colour = [elf.get(o)?, elf.get(o + 1)?, elf.get(o + 2)?].map(|c| *c);
+    let [f0, near, f1, far] = [8, 12, 16, 20].map(|k| f32le(elf, o + k));
+    let (f0, near, f1, far) = (f0?, near?, f1?, far?);
+    let slope = (f1 - f0) / (far - near);
+    (n < 23 && slope.is_finite()).then_some(Fog { colour, line: [f0 - slope * near, slope] })
 }
 
 /// The lights the arena's VU1 blocks carry for its geometry: the first light record of geometry part 4 (after its
@@ -315,6 +340,7 @@ pub fn light(part: &[u8]) -> Option<Light> {
             toward: [t0, t1, t2],
             colour: [c0, c1, c2],
             ambient: ambient.map(|a| a / 2.0),
+            fog: None,
         })
     })
 }
@@ -385,6 +411,7 @@ pub fn batches(d: &[u8]) -> Vec<Batch> {
             flags: word(p + 8),
             mode,
             floor: false,
+            fog: tag >> 15 & 0x20 != 0,
             bank: 0,
             pos: vec![],
             nrm: vec![],
@@ -620,7 +647,8 @@ pub fn game_glb(
         for b in batches.iter() {
             let (image, scale, [fx, fy]) = place.get(&key(b)).copied().unwrap_or((0, [0.0; 2], [[1.0, 0.0]; 2]));
             let env = colour(b, 0, light).1;
-            let mat = *material.entry((image, b.mode, env)).or_insert_with(|| {
+            let fogged = b.fog && light.is_some_and(|l| l.fog.is_some());
+            let mat = *material.entry((image, b.mode, env, fogged)).or_insert_with(|| {
                 let pbr = json!({"baseColorTexture": {"index": image}, "metallicFactor": 0.0, "roughnessFactor": 1.0});
                 let mut m =
                     json!({"pbrMetallicRoughness": pbr, "doubleSided": true, "alphaMode": "MASK", "alphaCutoff": 0.1});
@@ -631,8 +659,11 @@ pub fn game_glb(
                 if let Some(name) = [None, Some("additive"), Some("shade")].get(b.mode as usize).copied().flatten() {
                     glb::set(&mut m, "name", json!(name));
                 }
-                if env > 0 {
-                    glb::set(&mut m, "extras", json!({"env": env}));
+                match (env, fogged) {
+                    (0, false) => {}
+                    (0, true) => glb::set(&mut m, "extras", json!({"fog": 1})),
+                    (_, false) => glb::set(&mut m, "extras", json!({"env": env})),
+                    (_, true) => glb::set(&mut m, "extras", json!({"env": env, "fog": 1})),
                 }
                 materials.push(m);
                 materials.len() - 1
@@ -685,6 +716,9 @@ pub fn game_glb(
         glb::set(node, "mesh", json!(sky));
     }
     let mut extras = json!({"drum": "model", "drum_cull": false, "drum_depth": "floor", "background_rgb": [0, 0, 0]});
+    if let Some(f) = light.and_then(|l| l.fog) {
+        glb::set(&mut extras, "fog", json!({"colour": f.colour, "line": f.line}));
+    }
     if let Some(f) = floor.filter(|_| windowed || mesh("floor").is_some()) {
         if windowed {
             // the game's window: a node a cell, which the engine keeps on the fight
@@ -834,6 +868,16 @@ mod tests {
         assert_eq!(colour(&b, 0, Some(&l)), ([128.0; 4], 4));
         b.flags = 0x208;
         assert_eq!(colour(&b, 0, Some(&l)), ([100.0, 50.0, 0.0, 64.0], 8));
+        // arena 8's fog row: FOGCOL grey, 255 at 14 m to 32 at 240 m: the blocks' 268.8 - 0.000987 w
+        let mut elf = vec![0u8; FOG - VADDR + 24 * 9];
+        let row = FOG - VADDR + 24 * 8;
+        elf[row..row + 3].copy_from_slice(&[0x80; 3]);
+        for (k, v) in [255.0f32, 14000.0, 32.0, 240000.0].iter().enumerate() {
+            elf[row + 8 + 4 * k..row + 12 + 4 * k].copy_from_slice(&v.to_le_bytes());
+        }
+        let f = fog(&elf, 8).unwrap();
+        assert!(f.colour == [0x80; 3] && (f.line[0] - 268.81).abs() < 0.01 && (f.line[1] + 0.000987).abs() < 1e-6);
+        assert!(fog(&elf, 23).is_none());
     }
 
     #[test]

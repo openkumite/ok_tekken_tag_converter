@@ -280,8 +280,10 @@ STCYCL 4,2   UNPACK V3-32 x2N   normal, position
 0x200, 0x80 are not tested. Each batch's 16-quadword block before it (UNPACK V4-32 x16 to 0, MSCAL 0x32): the
 view-projection matrix, the three lights' directions (as columns: rows 4-6), the lights' colours (8-10, / 128), the
 ambient (11), the camera's rotation (12-14) and the eye (15, the model's axes); 8.w and 9.w make the fog coefficient
-`9.w + 8.w x w` (255 none; e.g. 268.8 - 0.001 w), used by strips whose PRIM has FGE (arena 0 has many) [H; the fog
-colour and OpenKumite's fog are not done]. The lights are geometry part 4's first light record (after its strips:
+`9.w + 8.w x w` (255 none; e.g. 268.8 - 0.001 w), used by strips whose PRIM has FGE (16 arenas have some) [H]: the
+arena's draw (0x3DE6C0) makes that line from its row of table 0x456540 (24 bytes: `u64 FOGCOL` r, g, b; `f32` level
+255 at depth `near`, level `far level` at `far`, mm; gp-0x67AC the slope, gp-0x67A8 255 less it x near) and puts
+FOGCOL in its packet 0x456780 (+0x10). The lights are geometry part 4's first light record (after its strips:
 `u32 3, f32 ambient[3]`, then three `{f32 towards[3], f32 colour[3]}`), the blocks' ambient half the record's (seen in
 PCSX2 on arenas 4, 8 and the bowl); a second record, where there is one, is the fighters' (0x455180 + 0x80 x arena,
 0x353F14). OpenKumite's (since format 44; flags 4 and 0x400 since format 45): GAMEDATA.md.

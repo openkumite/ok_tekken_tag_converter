@@ -425,7 +425,9 @@ draw; each picture is cut to the texels its strips reach (all of it along an axi
 microcode makes them (FORMATS.md 10): lit by the arena's lights from the strips' normals, or as stored, or white; a
 strip whose texture coordinates the microcode makes from its normal (flags 1, 2: the normal in the camera's axes; 8:
 its reflection of the way to the eye; **new** (format 45) 4: flags 4 and 0x400, a panorama of that reflection) is in
-a material with extras `env` (1, 2, 8, 4) and has NORMAL (the arena's axes),
+a material with extras `env` (1, 2, 8, 4) and has NORMAL (the arena's axes); **new** (format 45) a strip whose PRIM
+has FGE is in a material with extras `fog` 1, and the scene extras' `fog` `{colour (FOGCOL, 0-255), line}`: the GS
+mixes in 1 - f / 255 of the colour, f = line[0] + line[1] x depth (mm), clamped to 0-255,
 its picture whole.
 
 ### `gamedata/sound.json`
