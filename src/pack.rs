@@ -72,8 +72,8 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 /// and their texture coordinates made as the VU1 microcode does, stage::colour; 45: flags 4 and 0x400's panorama, the arenas' fog;
 /// 46: front_end `fonts.small`: the button icons in each text colour; 47: Eddy's grass in stages.json `objects`; 48: Jin's
 /// texture's extras `mark`, the props of ending op 25 `stages/stage_NN_prop_K.glb`; 49: front_end
-/// `command_list`, its icons).
-pub const FORMAT: i64 = 49;
+/// `command_list`, its icons; 50: `command_list.lists[].training`, front_end `practice.chain`).
+pub const FORMAT: i64 = 50;
 /// What a pack's manifest names it.
 pub const KIND: &str = "ttt";
 
@@ -252,7 +252,13 @@ pub fn convert(ctx: &Ctx, src: &dyn DiscFile, research: bool) -> Result<Value> {
             let tris: usize = m.sections.iter().flatten().map(|s| s.verts.len().saturating_sub(2)).sum();
             let slot = i.checked_sub(FIGHTERS).filter(|s| s % 3 == 0).map(|s| s / 3);
             let who = slot.map(|s| moves::fighter(&a.elf, s)).transpose()?.flatten();
-            if let (Some((body, _)), Some(list)) = (who, pack.as_ref().and_then(|p| front::command_list(p.get(2)?))) {
+            if let (Some((body, _)), Some(mut list)) = (who, pack.as_ref().and_then(|p| front::command_list(p.get(2)?)))
+            {
+                if let (Some(l), Some(t)) =
+                    (list.as_object_mut(), pack.as_ref().and_then(|p| front::training(p.get(3)?)))
+                {
+                    l.insert("training".into(), t);
+                }
                 commands.entry(body).or_insert(list);
             }
             // Jin's set-up shows his texture channel 0's frame 1, the face without the mark (0x3A85E4: character 9);

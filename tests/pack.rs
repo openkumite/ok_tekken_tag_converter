@@ -608,6 +608,12 @@ fn front_end(pack: &Hashed) {
     // 49: the command list's arrows and buttons)
     assert_eq!(named.len(), 284);
     // (format 49: each body's command list, Xiaoyu's as PCSX2 shows it)
+    // (format 50: Paul's training data, Shredder a CHAIN TRAINING move done by alias 966)
+    let paul = &fe["command_list"]["lists"][0]["training"];
+    assert_eq!(
+        (paul["entries"].as_array().unwrap().len(), &paul["entries"][9][3], &paul["entries"][9][17]),
+        (57, &1.into(), &966.into())
+    );
     let xiaoyu = &fe["command_list"]["lists"][7];
     assert_eq!(
         (&xiaoyu["name"], &xiaoyu["moves"][1]),
