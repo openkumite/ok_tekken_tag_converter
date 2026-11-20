@@ -238,7 +238,8 @@ pub fn levels(elf: &[u8], arena: usize) -> Option<Value> {
 }
 
 /// The floors as 0x341218 lays them around the fight: a window of N x M cells (`window`, the floors' cell size),
-/// cell (j, i) at ((j - N / 2) x width, (i - M / 2) x depth) showing cell (j mod n, i mod m) of each floor of n x m
+/// cell (j, i) at ((N / 2 - j) x width, (i - M / 2) x depth) (x mirrored: the cells read in a fight's save state)
+/// showing cell (j mod n, i mod m) of each floor of n x m
 /// cells. None when the floors' cells differ in size or do not tile.
 fn windowed(floors: &[Floor], window: [usize; 2]) -> Option<Window> {
     let cell = floors.first()?.cell;
@@ -274,7 +275,7 @@ fn windowed(floors: &[Floor], window: [usize; 2]) -> Option<Window> {
             cells.len() - 1
         });
         places
-            .push((k, [(j as f32 - window[0] as f32 / 2.0) * cell[0], (i as f32 - window[1] as f32 / 2.0) * cell[1]]));
+            .push((k, [(window[0] as f32 / 2.0 - j as f32) * cell[0], (i as f32 - window[1] as f32 / 2.0) * cell[1]]));
     }
     Some((cells, places))
 }
@@ -759,10 +760,10 @@ mod tests {
         let cells: Vec<[f32; 4]> = floors[0].tiles.iter().map(|b| b.cell).collect();
         assert_eq!(cells, [[-1000.0, 0.0, 0.0, 3.0], [1000.0, 0.0, 1.0, 3.0], [1000.0, 0.0, 2.0, 3.0]]);
         assert_eq!(floors[0].cell, [2000.0; 2]);
-        // laid as the game's window of 3 x 1 cells: cell j at (j - 1.5) x 2 m showing the floor's cell j mod 2,
+        // laid as the game's window of 3 x 1 cells: cell j at (1.5 - j) x 2 m showing the floor's cell j mod 2,
         // each cell shown once, centred on the origin
         let (cells, places) = windowed(&floors, [3, 1]).unwrap();
-        assert_eq!(places, [(0, [-3000.0, -1000.0]), (1, [-1000.0, -1000.0]), (0, [1000.0, -1000.0])]);
+        assert_eq!(places, [(0, [3000.0, -1000.0]), (1, [1000.0, -1000.0]), (0, [-1000.0, -1000.0])]);
         let levels: Vec<Vec<f32>> = cells.iter().map(|c| c.iter().map(|b| b.cell[2]).collect()).collect();
         assert_eq!(levels, [vec![0.0], vec![1.0, 2.0]]);
         assert!(cells.iter().flatten().all(|b| b.cell[..2] == [0.0, 0.0]));
