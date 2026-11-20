@@ -536,6 +536,14 @@ The script: 81 records `{s16 frame, op, a, b, c}`, ops by table 0x519B50:
 It runs 2289 frames: white fades in over 128 while camera path 0 shows the empty arena (frames 0-487); then the
 two actors' katas on 22 camera paths; white out over 106 frames from 2184. Exported as endings.json `embu`.
 
+**Its camera** (0x392F80, path gp-0x63C8, frame gp-0x63C4): on screen 11 (0x3BB4D8) the path's frame is filmed from
+1.2 times as far from a target 8 higher (eye = target' + 1.2 (eye - target), target y - 8) at 0.8 of its H (0x3930B4;
+gp-0x7F74 1.2, gp-0x7F70 0.8). Seen in PCSX2: at EMBU frame 1100, path 6 frame 50, the view 0x415808 holds the eye
+(-339, -2152, -2338) and gp-0x7420 H 764 = 955 x 0.8, as computed so. The path and its frame matched the script's op
+4 on all 1254 frames read (1036-2289), one frame late at each cut. A window capture lands about 10 frames after the
+counter it was taken at: compare captures with frames ~10 later. Screen 11 also starts no arena-4 task 0x3A76C0
+(0x3A72A8) and takes the people set of 0x3D85D8 (none on arena 4). [H]
+
 ## 8. Theater and Gallery
 
 **Theater** (screen 0xC, shown when config +0x10 != 0) [H]: one row per character 0-33, labels 0x455E50 (8 per row,
