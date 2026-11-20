@@ -164,6 +164,8 @@ const WIND: usize = 0x44_7EC0;
 /// / 0x48 GS units (a sixteenth of a pixel), z its depth through the arena's view (0x346A24: 0x879420, projection
 /// 0x433480's z = 12586753 / w less 64), its 768.75 pixels across a unit at w: 2 x 12586753 / (64 x 768.75) mm.
 const ARENA_QUAD: f64 = 2.0 * 12_586_753.0 / (64.0 * 768.75) * SCALE;
+/// The other effects' (the hits', through 0x433440 x the view, 0x346A40: z = 16782424 / w).
+const HIT_QUAD: f64 = 2.0 * 16_782_424.0 / (64.0 * 768.75) * SCALE;
 /// A particle's quad (metres at size 1), 0x90 / 0x48 of the particle, with its 0x90 0x400 and the 0x48 of 400 it is
 /// made with.
 const QUAD: f64 = 1024.0 / 400.0 * ARENA_QUAD;
@@ -407,7 +409,7 @@ pub fn atlas(
         let frame = |f: &[f64; 5]| [f[0] * scale, f[1] * scale, f[2] * scale, f[3], f[4]].map(round);
         let paths: Vec<Vec<[f64; 5]>> =
             sets.get(set).into_iter().flatten().map(|p| p.iter().map(frame).collect()).collect();
-        json!({"cell": cell, "size": 128.0 / 400.0, "level": level, "random": random, "paths": paths})
+        json!({"cell": cell, "size": 128.0 / 400.0 * HIT_QUAD, "level": level, "random": random, "paths": paths})
     };
     let ramp = |first: usize, note: &str| json!({"cells": (first..first + 10).collect::<Vec<_>>(), "life": 0, "blend": "add", "note": note});
     let json = json!({

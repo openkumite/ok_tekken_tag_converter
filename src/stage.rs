@@ -428,7 +428,10 @@ pub fn colour(b: &Batch, i: usize, light: Option<&Light>) -> ([f32; 4], u8) {
         4 | 0x400 => 4,
         _ => 0,
     };
+    // (TEX0's TFX 1, decal: the GS draws the texel as it is, the vertex colour and alpha unused)
+    let decal = b.tex0 >> 35 & 3 == 1;
     let rgb = match (first, light) {
+        _ if decal => return ([128.0; 4], env),
         (2 | 1 | 4 | 0x400, _) => return ([128.0; 4], env),
         (0x20, Some(l)) => [c[0] + l.ambient[0], c[1] + l.ambient[1], c[2] + l.ambient[2]],
         (0x40, Some(l)) => {
@@ -1010,6 +1013,10 @@ mod tests {
         assert_eq!(colour(&b, 0, Some(&l)), ([128.0; 4], 4));
         b.flags = 0x208;
         assert_eq!(colour(&b, 0, Some(&l)), ([100.0, 50.0, 0.0, 64.0], 8));
+        // TFX 1 (decal): the texel as it is, lit or not
+        b.flags = 0x200;
+        b.tex0 |= 1 << 35;
+        assert_eq!(colour(&b, 0, Some(&l)), ([128.0; 4], 0));
         // arena 8's fog row: FOGCOL grey, 255 at 14 m to 32 at 240 m: the blocks' 268.8 - 0.000987 w
         let mut elf = vec![0u8; FOG - VADDR + 24 * 9];
         let row = FOG - VADDR + 24 * 8;
