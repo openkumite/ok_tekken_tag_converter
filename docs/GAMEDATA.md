@@ -473,7 +473,7 @@ BOWL_ENDINGS.md 7.5, not tables. **New** (format 21) `embu` (BOWL_ENDINGS.md 7.6
 `[character, costume]`), `arenas` (4 and 13, one per cast), `script` (0x519B90, the EMBU's dialect), `bgm` 1,
 `camera` (`endings/embu_camera.bin`: file 41 as on the disc, `u32` paths, their `u32` offsets, then each path as an
 ending's), `body` (`embu_K.glb`, clip `embu_K`, K the track the script names: file 42 part 0's 30, with the fingers as an ending's), `face`, `hands`,
-`camera_file`, `pack_file`. **New** (format 39) each ending's `people` (0x3D85D8): the background characters it
+`camera_file`, `pack_file`. **New** (format 40) each ending's `people` (0x3D85D8): the background characters it
 shows instead of its arena's, `{set, people, walk}` (`set` of 0x114FC8; `people` and `walk` as stages.json's), or null:
 none; `embu.people` the same for each cast (none for cast 0, set 30 for cast 1).
 
