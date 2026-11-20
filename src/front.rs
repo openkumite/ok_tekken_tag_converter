@@ -56,9 +56,10 @@ pub fn cursor_2p(ups: &[Upload]) -> Option<(String, Vec<u8>)> {
 }
 
 /// The text colours (the printf `%c`: palette upload 9 + colour, 36 of them) of the chrome font (upload 2 of file 3) and
-/// the small one (upload 4): `003_001_cNN.png`, `003_002_cNN.png`, NN the colour, and their PNGs.
+/// the small one (upload 4) and the button icons (upload 6, the small font's lower case): `003_001_cNN.png`,
+/// `003_002_cNN.png`, `003_003_cNN.png`, NN the colour, and their PNGs.
 pub fn font_colours(ups: &[Upload]) -> Vec<(String, Vec<u8>)> {
-    [(2, 1), (4, 2)]
+    [(2, 1), (4, 2), (6, 3)]
         .into_iter()
         .flat_map(|(up, picture)| (0..FONT_COLOURS).map(move |c| (up, picture, c)))
         .filter_map(|(up, picture, c)| {
@@ -597,12 +598,13 @@ pub fn front_end(elf: &[u8], ups: &[Upload], clips: &[Option<String>]) -> Result
             // (32, 58) colour 0; the mode's name at (18, 427) colour 0; no health bars or timer. FREESTYLE's COMMAND
             // CAPTURE (0x37FE58, state 0 with nothing recorded): "COMMAND CAPTURE" (0x5072B0) at (360, 410) size 4
             // colour 23, under it from (400, 430) "SELECT" size 4 colour 7, then in the small font (size 10) "+" colour
-            // 6, the circle button (its "o") colour 8 and "=REC" colour 6 (0x5072D0)
+            // 6, the circle button (its "o", drawn from `003_003_cNN`) colour 8 and "=REC" colour 6 (0x5072D0; printf
+            // colours, kept as `fonts.small.colours` indices)
             "hud": {"total": {"x": [32, 352], "y": 38, "size": 4, "colour": 17},
                 "damage": {"xy": [32, 58], "size": 4, "colour": 0}, "mode": {"xy": [18, 427], "size": 4, "colour": 0},
                 "capture": {"text": string(elf, 0x5072B0), "xy": [360, 410], "size": 4, "colour": 23,
                     "keys": {"xy": [400, 430], "select": "SELECT", "size": 4, "colour": 7,
-                        "small": [["+", 6], ["o", 8], ["=REC", 6]], "button": 3}}}},
+                        "small": [["+", small_colour(6)?], ["o", small_colour(8)?], ["=REC", small_colour(6)?]], "button": 3}}}},
     }))
 }
 
