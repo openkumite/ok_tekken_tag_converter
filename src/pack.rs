@@ -73,8 +73,9 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 /// 46: front_end `fonts.small`: the button icons in each text colour; 47: Eddy's grass in stages.json `objects`; 48: Jin's
 /// texture's extras `mark`, the props of ending op 25 `stages/stage_NN_prop_K.glb`; 49: front_end
 /// `command_list`, its icons; 50: `command_list.lists[].training`, front_end `practice.chain`; 51: rules.json
-/// `joints`, the joint places the strikes and spheres are posed with).
-pub const FORMAT: i64 = 51;
+/// `joints`, the joint places the strikes and spheres are posed with; 52: the fighters' hand poses,
+/// `characters/hands_NNN.glb` and movesets/index.json `hands`).
+pub const FORMAT: i64 = 52;
 /// What a pack's manifest names it.
 pub const KIND: &str = "ttt";
 
@@ -284,7 +285,14 @@ pub fn convert(ctx: &Ctx, src: &dyn DiscFile, research: bool) -> Result<Value> {
                     Some(glb) => {
                         let file = format!("model_{i:03}.glb");
                         assets.write(&format!("characters/{file}"), &glb)?;
-                        characters.push(json!({"id": i, "name": name, "body": body, "costume": costume, "moveset": set, "file": file}));
+                        // its hand poses (part 4) and the kind its hands go back to (FIGHT_DATA.md 3.1)
+                        let mut hands = Value::Null;
+                        if let (Some(g), Some(s)) = (pack.as_ref().and_then(|p| ending::hands_glb(p.get(4)?)), slot) {
+                            let f = format!("hands_{i:03}.glb");
+                            assets.write(&format!("characters/{f}"), &g)?;
+                            hands = fight::hands(&a.elf, s, &f)?;
+                        }
+                        characters.push(json!({"id": i, "name": name, "body": body, "costume": costume, "moveset": set, "file": file, "hands": hands}));
                         // its shadow: the low-detail model, part 8
                         if let Some(low) = pack.as_ref().and_then(|p| model::parse_low(p.get(8)?)) {
                             shadows.push(effects::shadow(&low, i));

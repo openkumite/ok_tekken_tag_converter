@@ -138,6 +138,42 @@ Over the whole data: 4174 hit records (3676 chains; the gates used are 0x4E, 0x5
 opponent's moveset is 11, 14, 16, 19, 20 or 25), 2283 timed property lists (ops up to 0x58, and 10 entries with op 0), 4064 sound
 lists, 100 input sequences, 54 reversal motion lists.
 
+### 3.1 Hand poses (read in code; PCSX2 over PINE)
+
+The fingers are not in the motions. Each fighter shows a pose of its own track for each hand, eased in by a weight.
+Fields at fighter + 0x8000 (index 0 = hand_B, 1 = hand_A): +0x306C[2] the pose, +0x3062[2] the speed (s16),
++0x307C[2] the weight (f32); +0x3074[2] a scene's track (BOWL_ENDINGS.md 7.3; 0 in a fight). [H]
+
+- **Poses**: fighter pack part 4 (record 0x8794C0 + 0x2C x slot, +0x10), a track `u16 poses, u16 15`, then 15 s16
+  triples a pose (17-23 poses). Poses 0-16 are the same for every character, open (0) to the fist (16); 17 on are
+  its own. 0x364390 picks pose +0x306C (clamped to the last). Exported as `characters/hands_NNN.glb` (format 52).
+- **Set** 0x362E90(fighter, mask, kind, blend) (mask bit 0 hand 0, bit 1 hand 1): pose = kind ? kind + 15 : 0,
+  speed = 10000 / (|blend| + 1), weight 0. Kind >= 10 is a face (0x362B38(kind - 10)), not a hand.
+  True Ogre (models 82-85, +0x3130 bit 0: 0x3ADAA0) takes another path: his wings (0x351A60), his hands never set.
+- **Each frame** (0x3634F0): a weight that reached 1 goes to 0 with its speed; else weight += speed x 0.0001, at
+  most 1. The draw (0x3DE0D8, nodes 64-78 by hand 0's pose and weight, 39-53 by hand 1's) mixes each finger's
+  matrix rows, pose x w + last frame's x (1 - w) (0x34A180, VU0), and squares them up (0x34A710: x normalised, y less
+  its x part normalised, z = x x y). The matrices are kept between frames: the hand moves w of what is left each
+  frame, and stays when the weight is 0. Hand 0 takes the triples as a scene's hand_B (table 0x522CC0), hand 1 as
+  hand_A (0x3DD788).
+- **Timed ops** (0x372D28): 0x0F + v, v < 0x60: mask v >> 5 (0 = both), kind v & 31, blend the argument; kind 9
+  is the model's own kind (0x416BA0, a byte a model: mostly 1; King and Nina 2, Xiaoyu 5, Eddy and Kuma 0 ...).
+  Each sets +0x11F ("the move set the hands", cleared by every move start, 0x36A83C). In the data: 293 + 67 + 59 open, 301 + 83 + 77
+  fist, kinds 2-7 and 9 the rest.
+- **The fight's own** (0x370BB4, before the ops each frame): K.O.'d (+0x131): both to the kind of 0x416C28 (all 0,
+  open), blend 10, every frame. Else unless +0x11F: a move that started a new motion (+0x134, set at the start when
+  the motion changes or the transition is 1 or 3: 0x36A9A0) with no damage (+0xCA) and not +0xF7, in round states
+  1-2: both to the model's kind, blend 10 (0x3630D0); a damaging move whose record +0x28 (the strike's end bone) is
+  below 0xC (an arm) from frame +0x2C - 7 on: the same, every frame; a throw's victim (+0xE0 < 0) at its counter
+  +0xC8 = 10: both open, blend 20.
+- **The load** (0x363150): pose = 0x416A90[2 x model + hand] (0-3), no weight (never drawn), then both to the
+  model's kind, blend 10 (0x3630D0): the fingers ease from the model's to it. 0x363068(fighter, blend) sets each
+  hand to its 0x416A90 value as a kind (0x3AEAF4, 0x3AF1DC blend 5; 0x3D34D4 blend 1) [their contexts not read].
+- Measured: Xiaoyu's stance 8 at the round start: frame 1 pose 20 (her kind 5) at 0.0909, then her op 0x11
+  (kind 2, blend 20) at frame 1: pose 17, the weight 0.0476 a frame to 1 at frame 22, then 0; her jab (move 570,
+  ops 0x0F at frames 1 and 2, blend 1): weight 0.5 at frame 3, 1 at frame 4; the finger matrices change only while
+  the weight is above 0.
+
 ## 4. Hurt and push volumes
 
 - Hurt: 14 spheres. Bone slots are at 0x42F060 (17, 14, 10, 6, 16, 13, 9, 5, 2, 8, 4, 0, 15, 12, as in Tekken 3).

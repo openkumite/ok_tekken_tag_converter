@@ -334,8 +334,11 @@ fn openkumite(pack: &Hashed) {
     let written = pack.0.lock().unwrap().clone();
     let count = |dir: &str| written.keys().filter(|k| k.starts_with(&format!("assets/{dir}/"))).count();
     // (and Tekken Bowl's 114 motions, its ball, pin and pin deck; the arenas' background characters' 115 models and
-    // 294 motions; format 48: ending op 25's 5 props)
-    assert_eq!((count("characters"), count("motions"), count("stages")), (127, 4231 + 114, 23 + 1 + 3 + 115 + 294 + 5));
+    // 294 motions; format 48: ending op 25's 5 props; format 52: each character's hand poses)
+    assert_eq!(
+        (count("characters"), count("motions"), count("stages")),
+        (127 * 2, 4231 + 114, 23 + 1 + 3 + 115 + 294 + 5)
+    );
     let roster = load("gamedata/roster.json");
     let entries = roster["selections"]["entries"].as_array().unwrap();
     assert_eq!((entries.len(), roster["characters"].as_array().unwrap().len()), (127, 34));

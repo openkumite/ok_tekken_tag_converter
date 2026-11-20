@@ -395,7 +395,7 @@ fn movesets(elf: &[u8], models: &[Value], out: &mut Vec<(String, Value)>) -> Res
     let models: Vec<Value> = (models.iter())
         .filter_map(|m| {
             let set = m.get("moveset")?.as_u64()? as usize;
-            Some(json!({"model": m.get("id")?, "model_record": m.get("id")?, "glb": m.get("file")?, "body": m.get("body")?, "moveset_id": set, "moveset_file": moveset_file(set)}))
+            Some(json!({"model": m.get("id")?, "model_record": m.get("id")?, "glb": m.get("file")?, "body": m.get("body")?, "moveset_id": set, "moveset_file": moveset_file(set), "hands": m.get("hands")}))
         })
         .collect();
     let index = json!({
@@ -406,6 +406,14 @@ fn movesets(elf: &[u8], models: &[Value], out: &mut Vec<(String, Value)>) -> Res
     });
     out.push(("gamedata/movesets/index.json".into(), index));
     Ok(())
+}
+
+/// Costume slot `s`'s hands (FIGHT_DATA.md 3.1): `file` its poses, `default` the kind the load eases both hands to
+/// and op kind 9 means (0x416BA0), `ops` whether the hand ops move them (True Ogre's move his wings, fighter
+/// +0x3130 bit 0: 0x3ADAA0).
+pub fn hands(elf: &[u8], s: usize, file: &str) -> Result<Value> {
+    let at = |a: usize| u8_at(elf, a - VADDR, "the hand table");
+    Ok(json!({"file": file, "default": at(0x416ba0 + s)?, "ops": !(82..=85).contains(&s)}))
 }
 
 /// The spheres of the table at `base`: their bone slots, and each body's radii.
@@ -1340,7 +1348,7 @@ mod tests {
         let index = &out[33].1;
         assert_eq!(
             index["models"],
-            json!([{"model": 348, "model_record": 348, "glb": "models/348.glb", "body": 1, "moveset_id": 1, "moveset_file": "moveset_01.json"}])
+            json!([{"model": 348, "model_record": 348, "glb": "models/348.glb", "body": 1, "moveset_id": 1, "moveset_file": "moveset_01.json", "hands": null}])
         );
         assert_eq!((index["files"].as_array().unwrap().len(), index["fighters"].as_array().unwrap().len()), (33, 1));
         // an alias naming a move past the last
