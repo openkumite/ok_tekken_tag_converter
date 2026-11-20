@@ -158,7 +158,7 @@ ALPHA 0x44 with the vertex alpha the brightness x (1 - the fade), 1 Cs x FIX + C
 its depth: the arena effects (flag 4) through the arena's view 0x879420 (0x346A24, projection 0x433480: z =
 12586753 / w - 64), the others through 0x433440 x the view (0x346A40: z = 16782424 / w - 85). At the screen's 768.75
 pixels a unit at w, an arena effect's quad is 0x90 / 0x48 x size x 0.5117 m across (0.6822 m for the others).
-Lei's steam (0x90 0x400, 0x48 572) drawn 1.95 times too wide had covered the street in haze (format FMT).
+Lei's steam (0x90 0x400, 0x48 572) drawn 1.95 times too wide had covered the street in haze (format 58).
 
 Exported (format 28): stages.json `weather` (GAMEDATA.md), the pictures in the effects' atlas from cell 24. Not:
 the particles' depth bias (+0x4C), the offscreen count that ends one (+0x96), the paused frames.
