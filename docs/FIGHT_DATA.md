@@ -118,7 +118,7 @@ Hit volumes are not baked paths. They are bare segments between bone positions, 
   0-17 from the joint places of 0x439A80 by body (+0x2A; costume file 0x6B has its own at 0x4396C0), not from the
   model's nodes: Jack-2's, P.Jack's and Gun Jack's knee is 390 down the thigh where their model has 440, Ogre's and
   Armor King's arms differ too. The hurt and push spheres use the same slots, and so does the drawing (0x3478F0:
-  every joint takes its slot's matrix, the clavicles less node 2's offset, the head its turn only); the glbs keep
+  every joint takes its slot's matrix, the clavicles less node 2's offset, the head its turn only, section 22); the glbs keep
   the model's nodes (not done).
 - Slots 18-23 (checked in PCSX2): 0x34F3D8 sets, before the strikes, for moveset (+0x28) 4 slot 22 = hand B x (100,
   0, 720) and 23 = hand B x (100, 0, 360) (the sword), for movesets 26 and 32 slot 22 = hand A x (100, 0, -400), for
@@ -1168,6 +1168,32 @@ and the stance step during Ogre's move. [C]
 8. Handlers: the routines above (`call_handler`), with King's three sequences and the pad tables (`dump_ai5.py`).
 
 Confidence: high for 21.1-21.4 and the handler table; medium for the life fields of 21.5 and player +0xF7 / +0x11A.
+
+## 22. The look: neck, head and eyes (read in code, checked in PCSX2)
+
+0x351E98(player, target, view) runs in the drawing (0x3478F0, after the node world matrices, player +0xDB0 + 0xC0 x
+node): it changes only what is drawn, never the bone slots (+0x630) the strikes and spheres use. Nodes: neck 5 (on
+2), head 6 (on 5), eyes 21 and 22 (on 6); the target is the opponent's (0x351E78) node 5 world position, +0x11A0.
+
+- On (fp): player +0xB132 (set by the fighter's setup at 0x3731D0, cleared by the scene setups 0x3AEB34 /
+  0x3B53DC), the round machine gp-0x7268 at 1 or 2 (0x36E160: the fight and the K.O. time), the move's +0x24 bit 22
+  (the engine's dialect maps it to Tekken 3's bit 30) and, for an attack (+0x2C != 0), frame >= max(+0x2D, +0x18 -
+  17). Off: nothing is written back (the motion's head is drawn) and the target is the point (1000, 0, 80) of node
+  6's frame, eased at once, so turning on starts where the face looks. gp-0x7210 / gp-0x720C / 0x3A9698 freeze the
+  angles.
+- Neck: aimed from its base rotation (0x349EE0 of 90°, 90°, 0: x→y, y→z, z→x, the model's rest) with its origin
+  raised by eye A's height (z in the neck's frame): yaw = atan2(d.y, d.x), pitch = atan2(-d.z, |d.xy|); new local
+  rotation Rx(yaw) · Rz(pitch) · base (sceVu0 RotMatrixZ 0x34AB68, Y 0x34ACB8, X 0x34AC10, left-multiplied), the
+  motion's offset kept. The head the same from the turned neck: local Rz(yaw) · Ry(pitch) (0x349D70 of 0, pitch,
+  yaw). Each: yaw within ±40°, pitch within -32.5°..15° (gp-0x7A88..0x7A3C); past ±160° the yaw stays at ±40° on the
+  side it went round (state 3 / 4) and the pitch is 0; eased by 1/8 a frame (gp-0x6108: 2 while off, so 1 while on;
+  0.125 / it); while on the pitch moves only when the eased yaw moved 5° or less and the aim is 5° or more off.
+  State per side: yaw / pitch gp-0x6100 / 0x60F8 (neck), 0x60E8 / 0x60E0 (head), side 0x60F0 / 0x60D8, reset by
+  0x351E10 with the fighter.
+- Eyes (while on, no easing): from where the turned head puts them, up = -atan2(d.y, d.x) within -7°..9°, sideways =
+  atan2(-d.z, |d.xy|) within ±35°; local Rz(sideways) · Ry(up) · Rx(90°).
+- PCSX2: the drawn head's x axis points at the opponent's neck (dot 0.9999, Xiaoyu and Anna); Paul's side-on stance
+  holds the neck at its 40°.
 
 ## Not decoded
 
