@@ -395,7 +395,7 @@ fn movesets(elf: &[u8], models: &[Value], out: &mut Vec<(String, Value)>) -> Res
     let models: Vec<Value> = (models.iter())
         .filter_map(|m| {
             let set = m.get("moveset")?.as_u64()? as usize;
-            Some(json!({"model": m.get("id")?, "model_record": m.get("id")?, "glb": m.get("file")?, "body": m.get("body")?, "moveset_id": set, "moveset_file": moveset_file(set), "hands": m.get("hands")}))
+            Some(json!({"model": m.get("id")?, "model_record": m.get("id")?, "glb": m.get("file")?, "body": m.get("body")?, "moveset_id": set, "moveset_file": moveset_file(set), "hands": m.get("hands"), "motion_scale": m.get("motion_scale")}))
         })
         .collect();
     let index = json!({
@@ -1356,7 +1356,7 @@ mod tests {
         let index = &out[33].1;
         assert_eq!(
             index["models"],
-            json!([{"model": 348, "model_record": 348, "glb": "models/348.glb", "body": 1, "moveset_id": 1, "moveset_file": "moveset_01.json", "hands": null}])
+            json!([{"model": 348, "model_record": 348, "glb": "models/348.glb", "body": 1, "moveset_id": 1, "moveset_file": "moveset_01.json", "hands": null, "motion_scale": null}])
         );
         assert_eq!((index["files"].as_array().unwrap().len(), index["fighters"].as_array().unwrap().len()), (33, 1));
         // an alias naming a move past the last

@@ -184,6 +184,26 @@ Fields at fighter + 0x8000 (index 0 = hand_B, 1 = hand_A): +0x306C[2] the pose, 
 - Push: 8 spheres on bones 2, 9, 5, 0, 16, 13, 17, 14 (0x42EFB8). Radii via 0x42EFD8: 240, 96, 96, 300, 120, 120,
   120, 120; large bodies 300, 96, 96, 375, 120 x4.
 
+### 4.1 Root motion (read in code; checked frame by frame in PCSX2)
+
+- Each frame (0x34E748, after the move logic, so also on the frame a move starts) the root's playhead (+0xB8 motion,
+  +0xBC frame) is decoded (0x363AB8) and its height and distance multiplied by the player's motion scale +0x4FC
+  (4096 = 1), each product cut toward zero (the distance's sign bit cleared). +0x4FC is set at the fight's load
+  (0x3AF7D0) from the model's `f32` at +0xC: percent x 4096 / 100, cut (Paul 100 -> 4096, Xiaoyu 98 -> 4014, Lei 106 ->
+  4341, True Ogre 103 -> 4218, Roger 96 -> 3932). A move whose +0xE0 is negative (the opponent's: a throw's victim)
+  takes the other player's scale (0x363A80).
+- The drawn root (+0x51C, 0x34E938) is the origin (+4, +8, +0xC) less the distance along the facing +0x1A plus the
+  root's heading: the 4096 sine table at 0x4FCE88 at (angle >> 4) & 0xFFF (the cosine 0x400 on), each product cut
+  toward zero (>> 12); the height is taken off y. A rebase (+0x126, 0x34FA60) puts the origin at the drawn root plus
+  the same offset of the frame before. Transition 0x18 (the walk's start) keeps the origin: the new motion's frame 0
+  shows at once.
+- The float path beside it (gp-0x6E9C set, 0x3A9520) is the endings': raw motions turned with sinf / cosf.
+- The body push (0x377338) takes the spheres of this frame's pose (+0x308, before the push) and each player's step
+  since the last push in 3D, its height in (0x8A7A90); the result goes on the origin and the drawn root at once
+  (+0x3E8, 0x371CF0).
+- PS2 runs that force a body at the load screen keep the select's models: their travel carries that model's scale
+  (Nina's 98: 0.98 of every step) and its skeleton's reach. Record with the fighters picked.
+
 ## 5. Per fighter
 
 - Aliases: 33 movesets x 5532 u16 at 0x58F3D0 (file 0x2503D0); 7350 = missing. At match load 0x368168 builds a
