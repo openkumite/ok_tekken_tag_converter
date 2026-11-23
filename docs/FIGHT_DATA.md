@@ -174,6 +174,31 @@ Fields at fighter + 0x8000 (index 0 = hand_B, 1 = hand_A): +0x306C[2] the pose, 
   ops 0x0F at frames 1 and 2, blend 1): weight 0.5 at frame 3, 1 at frame 4; the finger matrices change only while
   the weight is above 0.
 
+### 3.2 The face: blinks and expressions (read in code)
+
+The face nodes 7-28 show a pose of the model's face track (fighter-pack part 5, `u16 poses, u16 33`, then 33 s16
+triples a pose: 2-51 poses in 83 of the 128 model files, none for the masked ones),
+eased like the hands. Fields at fighter + 0x8000: +0x3066 the face (s16), +0x3068 its timer (s16), +0x3084 the pose,
++0x308C the speed (f32), +0x3090 the weight (f32); +0x3088 >= 50 a scene's track (BOWL_ENDINGS.md 7.3; 0 in a fight).
+Exported as `characters/face_NNN.glb` and the index's `face` (format 71). [H]
+
+- **Set** 0x362B38(fighter, face, blend, hold): the timer = (rand() & 0xFE) + 1 for face 0, else hold; then unless
+  the face is already shown: pose = face, weight 0, speed = 1 / (|blend| + 1). (Both cleared while 0x3D3228 of the
+  fighter's side, two countdowns at 0x1FB6ED0 / 0x1FB6EE0, is running.) The timed ops' kinds 10 and up (0x362E90)
+  set face kind - 10, blend 20, hold the op's argument (and +0x11F, as the hands').
+- **Each frame** (0x362C28 from 0x34E838; not on the select, 0x3AF358, nor while frozen, gp-0x7210 / 0x720C /
+  0x3A9698, nor in Tekken Bowl): by the model's s8 tables (0x86 models, `(file - 345) / 3`): while the move's flag
+  0x800 (+0x24) is on, set its `move` face (0x416D38: 1 for most, 0 none), blend 4, hold -1; else while the move's +4
+  bit 2 is on and +0x24 bit 22 off (hit), its `hit` face (0x416DC0), blend 8, hold -1. A shown `move` face without the
+  flag, or `hit` face without the bit, goes back to face 0, blend 1. When the timer is 0: face 0 blinks (the `blink`
+  face, 0x416CB0, blend 1, held 3 frames), the blink goes back to face 0 (blend 1; open (rand() & 0xFE) + 1 frames),
+  any other face to the blink, blend 30, held 30. Then the timer - 1, and the weight: one that reached 1 goes to 0
+  with its speed, else + the speed, at most 1. Blink face 0 (Lei, Bryan, the costume-7 models) never blinks.
+- **The draw** (0x3DD918 before the hands 0x3DE0D8 and the look 0x351E98, 0x347B30): each face node's matrix (kept
+  from the last frame, +0x8990 + 0x40 x node) goes the weight of the way to the pose's (BOWL_ENDINGS.md 7.3's
+  mapping): a turn's rows mixed and squared up (0x3DD8E8), a scaled turn's rows mixed (0x34A180), a place mixed
+  (0x34A998). Without a face track the nodes take the model's rest table (0x3B87B0).
+
 ## 4. Hurt and push volumes
 
 - Hurt: 14 spheres. Bone slots are at 0x42F060 (17, 14, 10, 6, 16, 13, 9, 5, 2, 8, 4, 0, 15, 12, as in Tekken 3).

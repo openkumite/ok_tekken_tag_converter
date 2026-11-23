@@ -104,7 +104,7 @@ sheet, row `y = TBP0`. `TW`/`TH` often exceed what was uploaded; UVs are relativ
 | 2 | pack of 6: section 0 the help font (uploads), 1-5 the command list (the same English text in each; FRONTEND.md 8) | section 1 exported (format 49) |
 | 3 | the training data (FRONTEND.md 8: CHAIN / COMBO TRAINING's entries and steps) | exported (format 50) |
 | 4 | the hand poses: `u16 poses, u16 15`, then 15 s16 triples a pose (FIGHT_DATA.md 3.1) | exported (format 52) |
-| 5 | the face: a track of 33 triples a frame, or empty (BOWL_ENDINGS.md 7.3) | not exported |
+| 5 | the face: a track of 33 triples a pose, or empty (BOWL_ENDINGS.md 7.3, FIGHT_DATA.md 3.2) | exported (format 71) |
 | 6 | **`PS2TagA` model** | decoded |
 | 7 | texture uploads for part 6 | decoded |
 | 8 | low-detail model, 18 joints, 403 triangles, VIF packets | understood, not exported |

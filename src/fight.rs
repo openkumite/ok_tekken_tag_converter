@@ -395,7 +395,7 @@ fn movesets(elf: &[u8], models: &[Value], out: &mut Vec<(String, Value)>) -> Res
     let models: Vec<Value> = (models.iter())
         .filter_map(|m| {
             let set = m.get("moveset")?.as_u64()? as usize;
-            Some(json!({"model": m.get("id")?, "model_record": m.get("id")?, "glb": m.get("file")?, "body": m.get("body")?, "moveset_id": set, "moveset_file": moveset_file(set), "hands": m.get("hands"), "motion_scale": m.get("motion_scale")}))
+            Some(json!({"model": m.get("id")?, "model_record": m.get("id")?, "glb": m.get("file")?, "body": m.get("body")?, "moveset_id": set, "moveset_file": moveset_file(set), "hands": m.get("hands"), "face": m.get("face"), "motion_scale": m.get("motion_scale")}))
         })
         .collect();
     let index = json!({
@@ -414,6 +414,13 @@ fn movesets(elf: &[u8], models: &[Value], out: &mut Vec<(String, Value)>) -> Res
 pub fn hands(elf: &[u8], s: usize, file: &str) -> Result<Value> {
     let at = |a: usize| u8_at(elf, a - VADDR, "the hand table");
     Ok(json!({"file": file, "default": at(0x416ba0 + s)?, "ops": !(82..=85).contains(&s)}))
+}
+
+/// Model slot `s`'s face (FIGHT_DATA.md 3.2): its poses' `file` and the poses 0x362C28 sets, by model (s8 tables of
+/// 0x86): `blink` (0x416CB0), `move` while the move's flag 0x800 is on (0x416D38), `hit` while it is hit (0x416DC0).
+pub fn face(elf: &[u8], s: usize, file: &str) -> Result<Value> {
+    let at = |a: usize| u8_at(elf, a + s - VADDR, "the face tables").map(|v| v as i8);
+    Ok(json!({"file": file, "blink": at(0x416cb0)?, "move": at(0x416d38)?, "hit": at(0x416dc0)?}))
 }
 
 /// The spheres of the table at `base`: their bone slots, and each body's radii.
@@ -1356,7 +1363,7 @@ mod tests {
         let index = &out[33].1;
         assert_eq!(
             index["models"],
-            json!([{"model": 348, "model_record": 348, "glb": "models/348.glb", "body": 1, "moveset_id": 1, "moveset_file": "moveset_01.json", "hands": null, "motion_scale": null}])
+            json!([{"model": 348, "model_record": 348, "glb": "models/348.glb", "body": 1, "moveset_id": 1, "moveset_file": "moveset_01.json", "hands": null, "face": null, "motion_scale": null}])
         );
         assert_eq!((index["files"].as_array().unwrap().len(), index["fighters"].as_array().unwrap().len()), (33, 1));
         // an alias naming a move past the last
