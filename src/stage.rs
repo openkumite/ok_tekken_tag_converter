@@ -547,7 +547,7 @@ pub fn glb(scenery: &[Batch], objects: &[Batch], banks: &[Vec<tex::Upload>]) -> 
         for b in batches {
             let t = tex::tex0(b.tex0);
             let (mat, k) =
-                *mat_of.entry((b.tex0 & 0x000f_ffe3_ffff_ffff, b.mode, b.floor, b.bank)).or_insert_with(|| {
+                *mat_of.entry((b.tex0 & 0x000f_ffe7_ffff_ffff, b.mode, b.floor, b.bank)).or_insert_with(|| {
                     let mut pbr = json!({"metallicFactor": 0.0, "roughnessFactor": 1.0});
                     let mut k = [1.0, 1.0];
                     if let Some((w, h, px)) = banks.get(b.bank).and_then(|ups| tex::image(ups, &t, t.alpha)) {
@@ -672,9 +672,10 @@ pub fn game_glb(
         let at = at.map(|[x, z]| [x * f.period[0], z * f.period[1]]).collect();
         tiles.extend(Floor { tiles: f.tiles.clone(), period: f.period, at, cell: f.cell }.laid());
     }
-    // each picture once: (TEX0's texture, size and palette pointers, bank) -> the picture, its part of TW x TH, and
-    // how far the batches' coordinates reach in it (in pictures: low x, y, high x, y)
-    let key = |b: &Batch| (b.tex0 & 0x000f_ffe3_ffff_ffff, b.bank);
+    // each picture once: (TEX0's texture, size and palette pointers, TCC, bank) -> the picture, its part of TW x TH,
+    // and how far the batches' coordinates reach in it (in pictures: low x, y, high x, y); TCC kept apart: arena 6's
+    // floor shades by a picture's alpha (0x89, TCC 1) that its added layer (0x48, TCC 0) takes opaque
+    let key = |b: &Batch| (b.tex0 & 0x000f_ffe7_ffff_ffff, b.bank);
     let st = |b: &Batch, i: usize| b.uv.get(i).copied().unwrap_or_default();
     let mut pics = BTreeMap::new();
     let models: Vec<Vec<Batch>> = objects.iter().map(|o| o.model.clone()).collect();

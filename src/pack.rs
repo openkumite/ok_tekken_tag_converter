@@ -81,8 +81,8 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 /// decal strips (TFX 1) at their texels' colour, the hit effects' quads by their projection, weather `lightning` and
 /// `signs`; 61: weather `snow`; 62: front_end `practice.combo` and the COMBO TRAINING rows, `chain.result.backdrop`,
 /// `select.quick.faces.frame` and `names`, `command_buttons_lit.png`, `ranking.arena`, `003_110_p84.png`, TRAINING
-/// DUMMY's `icons`; 64: front_end `survival_results`).
-pub const FORMAT: i64 = 66;
+/// DUMMY's `icons`; 64: front_end `survival_results`; 67: an arena's pictures kept apart by TEX0's TCC).
+pub const FORMAT: i64 = 67;
 /// What a pack's manifest names it.
 pub const KIND: &str = "ttt";
 
