@@ -510,19 +510,30 @@ const ROWS: usize = 0x51_93B8;
 const PARTICLES: usize = 0x43_6688;
 
 /// Frames as a sheet: square cells of the largest frame's side, `COLS` a row, each frame scaled up to its cell
-/// (nearest texel). Returns the PNG, its rows and the cell's side.
+/// bilinearly, as the GS magnifies them (PCSX2's Devil's eye flare, 32 texels drawn some 80 pixels wide, shows no
+/// texel steps). Returns the PNG, its rows and the cell's side.
 fn sheet(pics: &[&(usize, usize, Vec<u8>)]) -> Option<(Vec<u8>, usize, usize)> {
     let cell = pics.iter().map(|p| p.0.max(p.1)).max()?;
     let rows = pics.len().div_ceil(COLS);
     let (w, h) = (COLS * cell, rows * cell);
     let mut rgba = vec![0u8; w * h * 4];
-    for (n, (pw, ph, px)) in pics.iter().enumerate() {
+    for (n, &&(pw, ph, ref px)) in pics.iter().enumerate() {
         let (cx, cy) = (n % COLS * cell, n / COLS * cell);
+        // (texel centres: the two texels about a pixel's centre and its fraction between them)
+        let near = |k: usize, size: usize| {
+            let t = ((k as f32 + 0.5) * size as f32 / cell as f32 - 0.5).clamp(0.0, size.saturating_sub(1) as f32);
+            (t as usize, (t as usize + 1).min(size.saturating_sub(1)), t.fract())
+        };
         for (y, x) in (0..cell).flat_map(|y| (0..cell).map(move |x| (y, x))) {
-            let at = (y * ph / cell * pw + x * pw / cell) * 4;
+            let ((x0, x1, fx), (y0, y1, fy)) = (near(x, pw), near(y, ph));
+            let at = |x: usize, y: usize, c: usize| px.get((y * pw + x) * 4 + c).map_or(0.0, |&v| v as f32);
             let to = ((cy + y) * w + cx + x) * 4;
-            if let (Some(s), Some(d)) = (px.get(at..at + 4), rgba.get_mut(to..to + 4)) {
-                d.copy_from_slice(s);
+            for c in 0..4 {
+                let top = at(x0, y0, c) * (1.0 - fx) + at(x1, y0, c) * fx;
+                let foot = at(x0, y1, c) * (1.0 - fx) + at(x1, y1, c) * fx;
+                if let Some(d) = rgba.get_mut(to + c) {
+                    *d = (top * (1.0 - fy) + foot * fy).round() as u8;
+                }
             }
         }
     }
@@ -679,6 +690,20 @@ mod tests {
         assert_eq!(s["vertices"][2], json!([2, 1.1, 2.0, -0.5]));
         // the strip's three triangles, two of them through the vertex without a joint
         assert_eq!((s["vertices"].as_array().map(Vec::len), &s["triangles"]), (Some(4), &json!([[0, 1, 2]])));
+    }
+
+    #[test]
+    fn a_sheet_magnifies_its_small_frames_smoothly() {
+        // a 2-texel frame (black, white) beside a 4-texel one: its cell's row runs 0, 64, 191, 255
+        let small = (2, 2, [[0u8, 0, 0, 255], [255; 4], [0, 0, 0, 255], [255; 4]].concat());
+        let big = (4, 4, vec![7u8; 64]);
+        let (png, rows, cell) = sheet(&[&small, &big]).unwrap();
+        assert_eq!((rows, cell), (1, 4));
+        let mut r = png::Decoder::new(std::io::Cursor::new(png)).read_info().unwrap();
+        let mut rgba = vec![0; r.output_buffer_size().unwrap()];
+        let w = r.next_frame(&mut rgba).unwrap().width as usize;
+        let row: Vec<u8> = (0..4).map(|x| rgba[x * 4]).collect();
+        assert_eq!((w, row, rgba[4 * 4]), (COLS * 4, vec![0, 64, 191, 255], 7));
     }
 
     #[test]

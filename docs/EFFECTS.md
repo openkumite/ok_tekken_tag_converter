@@ -244,7 +244,9 @@ Cd x As: painted shadows, dirt) are in the stages since format 14, in materials 
   brightness 128, divisor 800 (a running path) or 1600, held; 0x347178 (Xiaoyu) 2.0, 300, still; 0x3472B8 (Eddy) 1.5,
   400, still; 0x3473F0 (Jin) 1.0, divisor gp-0x7F50 (533), round the slot every frame; 0x347568 (Jun) 1.5, 400 or 800,
   held. The row's colour lights the fighters from the effect for 54 frames (0x3531F0: gp-0x60B6 = 0x36, strength
-  frames / 54). Exported (format 65): effects.json `characters` (GAMEDATA.md).
+  frames / 54). Exported (format 65): effects.json `characters` (GAMEDATA.md). **New** (format 70) each sheet's frames
+  magnified to its cell bilinearly: the beam's queue (0x3A8BC0 -> 0x3A88B0) draws in context 2 (TEX0_2, ALPHA_2),
+  whose TEX1_2 filters (0x61), and PCSX2 shows Devil's 32-texel eye flare smooth at some 80 pixels (was: nearest).
 - **The beam's draw, completed** [H]: 0x378600 passes 0x3A8D08 the width only (the colour it makes is not used: the
   quads are drawn at 0x80), 100 x t + 50, or 130 x t + 70 when the record's +0xC is 1 (types 2 and 4: 0x378A28,
   0x378E70); t is 1 in a scene (0x3ABCD0). The segments run from the end back (the first, the end's, slot + 2). The
