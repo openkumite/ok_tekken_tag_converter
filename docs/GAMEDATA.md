@@ -496,7 +496,7 @@ in order once their frame has come), `camera`, `body`, `face`, `hands` (the file
 `fade_in`, `skip_fade`, `max_frames`, `unknown` (Unknown's ending, which plays the movie `unknown_movie`). `theater`:
 `labels` (0x455E50: per character 8 costume labels or null), `music` (0x455D80: the music player's `{bgm, name}` to
 EXIT, 254), `extras` (the movies and the EMBU entries after the rows). The constants are the code's, read in
-BOWL_ENDINGS.md 7.5, not tables. **New** (format 21) `embu` (BOWL_ENDINGS.md 7.6): `casts` (0x437CE0: two of six
+BOWL_ENDINGS.md 7.5, not tables. **New** (format 68) the `body` clips carry the face track too: the face nodes' (`node_7`-`node_28`) rotation, scale and translation channels (BOWL_ENDINGS.md 7.3). **New** (format 21) `embu` (BOWL_ENDINGS.md 7.6): `casts` (0x437CE0: two of six
 `[character, costume]`), `arenas` (4 and 13, one per cast), `script` (0x519B90, the EMBU's dialect), `bgm` 1,
 `camera` (`endings/embu_camera.bin`: file 41 as on the disc, `u32` paths, their `u32` offsets, then each path as an
 ending's), `body` (`embu_K.glb`, clip `embu_K`, K the track the script names: file 42 part 0's 30, with the fingers as an ending's), `face`, `hands`,
