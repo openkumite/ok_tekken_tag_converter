@@ -20,10 +20,47 @@ pub struct Inf {
     pub p: [f32; 3],
     pub w: f32,
 }
+#[derive(Default)]
 pub struct Strip {
     pub tex0: u64,
     pub blend: bool,
     pub verts: Vec<([f32; 2], Vec<Inf>)>,
+    /// How the fighter draw (0x3439B0) draws it: the section's blend state before it ([`Draw`])
+    pub draw: Draw,
+    /// Each vertex's depth bias (+0xC, the float under its influence count; mm, 0 or negative: the VU0 programs
+    /// divide its depth by w less this, so it lies that much farther: Paul's trousers 80, his shoes 50 behind his
+    /// jacket's hem)
+    pub bias: Vec<f32>,
+}
+
+/// A strip's blend state record (`{1, 0x20000000, 0x9E, 1}`: ALPHA_2 and CLAMP_2 by A+D, and two words the fighter
+/// draw keeps for itself): how 0x3439B0 draws it.
+#[derive(Clone, Copy, Default, PartialEq, Debug)]
+pub struct Draw {
+    /// ALPHA_2: 0x44 ordinary blending, 0x48 additive (Cs x As + Cd), 0x89 multiplying (Cd x As); used when PRIM has ABE
+    pub alpha: u8,
+    /// CLAMP_2's region repeat masks (WMS / WMT 3: the texels `x & u`, `y & v`; 0: not repeated so)
+    pub repeat: [u16; 2],
+    /// The ALPHA qword's top word not 0: 0x3438B8 and VU0 program 0x186: an environment map (its texture
+    /// coordinates from the normal and the way to the eye, the colour 128)
+    pub env: bool,
+    /// The CLAMP qword's upper half, 0x3436B8 (its low word, VU0 program 0x4A) or 0x3437B8 (its high word, 0x0EA): a
+    /// highlight of light 0 by (R . L)^(2^n) x strength added to the lighting, or alone: (strength, n, alone)
+    pub spec: Option<(f32, u8, bool)>,
+}
+
+impl Draw {
+    /// The lighting the GS shows: 0 lit (the VU0 program's colour modulating the texture), 1 the texture as it is
+    /// (TEX0's TFX decal), 2 environment-mapped (decal), 3 lit with a highlight, 4 the highlight alone.
+    pub fn light(&self, tex0: u64) -> u8 {
+        match (self.env, self.spec) {
+            (true, _) => 2,
+            (_, Some((.., false))) => 3,
+            (_, Some((.., true))) => 4,
+            _ if tex0 >> 35 & 3 == 1 => 1,
+            _ => 0,
+        }
+    }
 }
 pub struct Model {
     pub nodes: Vec<Node>,
@@ -151,11 +188,12 @@ pub fn parse(c: &[u8]) -> Option<Model> {
         }
         let (mut o, end) = (so + 16, so.saturating_add(u32le(c, so + 4)? as usize).min(c.len()));
         let (mut pal, mut tex0, mut strips): (Vec<usize>, u64, Vec<Strip>) = (vec![], 0, vec![]);
+        let mut draw = Draw::default();
         while o + 16 <= end {
             let w = [u32le(c, o)?, u32le(c, o + 4)?, u32le(c, o + 8)?, u32le(c, o + 12)?];
             if w[2] == 0x412 && w[3] == 0 && w[1] >> 24 == 0x31 {
                 // GIF tag of a strip: ST, RGBAQ, XYZF2
-                let mut verts = Vec::new();
+                let (mut verts, mut bias) = (Vec::new(), Vec::new());
                 o += 16;
                 for _ in 0..w[0] & 0x7fff {
                     if o + 32 > end {
@@ -178,11 +216,29 @@ pub fn parse(c: &[u8]) -> Option<Model> {
                         });
                     }
                     verts.push((uv, inf));
+                    bias.push(f32::from_bits(u32le(c, o + 12)? & 0xffff_ff00));
                     o += 32 + 32 * n;
                 }
-                strips.push(Strip { tex0, blend: w[1] >> 15 & 0x40 != 0, verts });
+                strips.push(Strip { tex0, blend: w[1] >> 15 & 0x40 != 0, verts, draw, bias });
             } else if w == [1, 0x2000_0000, 0x9e, 1] {
-                o += 48; // ALPHA + CLAMP
+                // ALPHA (A+D), then CLAMP (packed): the upper words are the draw's own
+                let clamp = u32le(c, o + 32)? as u64 | (u32le(c, o + 36)? as u64) << 32;
+                let own = [u32le(c, o + 40)?, u32le(c, o + 44)?];
+                let mask = |wm: u64, m: u64| if wm & 3 == 3 { (m & 0x3ff) as u16 } else { 0 };
+                let spec = |w: u32, alone| Some((f32::from_bits(w), w as u8, alone));
+                draw = Draw {
+                    alpha: *c.get(o + 16)?,
+                    repeat: [mask(clamp, clamp >> 4), mask(clamp >> 2, clamp >> 24)],
+                    env: u32le(c, o + 28)? != 0,
+                    spec: if own[0] != 0 {
+                        spec(own[0], false)
+                    } else if own[1] != 0 {
+                        spec(own[1], true)
+                    } else {
+                        None
+                    },
+                };
+                o += 48;
             } else if w == [1, 0x1000_0000, 7, 2] {
                 tex0 = u32le(c, o + 16)? as u64 | (u32le(c, o + 20)? as u64) << 32;
                 o += 32;
@@ -250,7 +306,12 @@ pub fn parse_low(c: &[u8]) -> Option<Model> {
                 };
                 ([f(0), f(4)], inf)
             });
-            strips.push(Strip { tex0, blend: u32le(d, 4)? >> 15 & 0x40 != 0, verts: verts.collect() });
+            strips.push(Strip {
+                tex0,
+                blend: u32le(d, 4)? >> 15 & 0x40 != 0,
+                verts: verts.collect(),
+                ..Default::default()
+            });
         }
     }
     // shortcut: a model with parts metres from their node is not a person (Law's junks); those come
@@ -365,9 +426,25 @@ impl Model {
         let mut placed = vec![];
         for s in &strips {
             let t = tex::tex0(s.tex0);
-            let pic = *pic_of.entry((s.tex0 & 0x000f_ffe3_ffff_ffff, s.blend)).or_insert_with(|| {
-                let (w, h, px) = tex::image(ups, &t, s.blend).filter(|p| p.0 > 0 && p.1 > 0)?;
-                alts.push(tex::image(alt, &t, s.blend).filter(|a| (a.0, a.1) == (w, h) && a.2 != px).map(|a| a.2));
+            // (TCC 0: the vertex's alpha, 0x80, for every texel)
+            let (alpha, env) = (s.blend && t.alpha, s.draw.env);
+            let key = (s.tex0 & 0x000f_ffe3_ffff_ffff, alpha, env.then_some(s.draw.repeat));
+            let pic = *pic_of.entry(key).or_insert_with(|| {
+                let (w, h, px) = tex::image(ups, &t, alpha).filter(|p| p.0 > 0 && p.1 > 0)?;
+                if env {
+                    // an environment map's coordinates span its whole TW x TH, the GS repeating texels x & u, y & v
+                    // (CLAMP_2's region repeat): that picture, whole
+                    let m = |r: u16, n: usize| if r > 0 { r as usize } else { n - 1 };
+                    let (mu, mv) = (m(s.draw.repeat[0], t.tw), m(s.draw.repeat[1], t.th));
+                    let at = |x: usize, y: usize| ((y & mv) % h * w + (x & mu) % w) * 4;
+                    let px = (0..t.th * t.tw).flat_map(|k| {
+                        px.get(at(k % t.tw, k / t.tw)..).and_then(|p| p.first_chunk::<4>()).copied().unwrap_or([0; 4])
+                    });
+                    alts.push(None);
+                    pics.push((t.tw, t.th, px.collect(), [0.0, 0.0, 1.0, 1.0]));
+                    return Some((pics.len() - 1, [0.0; 2]));
+                }
+                alts.push(tex::image(alt, &t, alpha).filter(|a| (a.0, a.1) == (w, h) && a.2 != px).map(|a| a.2));
                 pics.push((w, h, px, [f32::MAX, f32::MAX, 0.0, 0.0]));
                 Some((pics.len() - 1, [t.tw as f32 / w as f32, t.th as f32 / h as f32]))
             });
@@ -375,7 +452,7 @@ impl Model {
             let st: Vec<[f32; 2]> = s.verts.iter().map(|v| [v.0[0] * k[0], v.0[1] * k[1]]).collect();
             let axis = |a: usize| st.iter().filter_map(move |c| c.get(a).copied());
             let off = [0, 1].map(|a| axis(a).fold(f32::MAX, f32::min).floor());
-            if let Some((.., r)) = pic.and_then(|p| pics.get_mut(p.0)) {
+            if let Some((.., r)) = pic.filter(|_| !env).and_then(|p| pics.get_mut(p.0)) {
                 for [u, v] in st.iter().map(|c| [c[0] - off[0], c[1] - off[1]]) {
                     *r = [r[0].min(u), r[1].min(v), r[2].max(u), r[3].max(v)];
                 }
@@ -417,15 +494,31 @@ impl Model {
             Some([px + x, py + y, w, h, mx, my])
         });
         let (aw, ah) = (atlas.w as f32, atlas.h as f32);
-        // the opaque strips and the blended ones, each a primitive with vertices of its own
-        type Part = (Vec<[f32; 3]>, Vec<[f32; 3]>, Vec<f32>, Vec<u8>, Vec<f32>, Vec<u32>);
-        let mut parts: [Part; 2] = Default::default();
+        // the opaque strips and the blended ones by their ALPHA (ordinary, additive, multiplying), each a primitive with
+        // vertices of its own; each vertex's depth bias and lighting (TEXCOORD_1: metres farther, [`Draw::light`]) and
+        // its highlight (TEXCOORD_2: strength, squarings) or, environment-mapped, its picture's size in the atlas
+        // (TEXCOORD_0 its corner)
+        type Part = (Vec<[f32; 3]>, Vec<[f32; 3]>, Vec<f32>, Vec<u8>, Vec<f32>, Vec<u32>, Vec<f32>, Vec<f32>);
+        let mut parts: [Part; 4] = Default::default();
         for (s, (pic, off, st)) in strips.iter().zip(&placed) {
             let at = pic.unwrap_or(pics.len() - 1);
             let (&(x, y), &(w, h, ..), (cx, cy)) = (atlas.place.get(at)?, pics.get(at)?, cuts.get(at)?);
-            let (pos, nrm, uv, jn, wt, idx) = parts.get_mut(s.blend as usize)?;
+            let kind = match (s.blend, s.draw.alpha) {
+                (false, _) => 0,
+                (_, 0x48) => 2,
+                (_, 0x89) => 3,
+                _ => 1,
+            };
+            let (pos, nrm, uv, jn, wt, idx, look, more) = parts.get_mut(kind)?;
+            let (env, light) = (s.draw.env && pic.is_some(), s.draw.light(s.tex0));
             let base = pos.len();
-            for ((_, inf), c) in s.verts.iter().zip(st) {
+            for (k, ((_, inf), c)) in s.verts.iter().zip(st).enumerate() {
+                look.extend([-s.bias.get(k).copied().unwrap_or(0.0) * SCALE as f32, f32::from(light)]);
+                more.extend(match (env, s.draw.spec) {
+                    (true, _) => [w as f32 / aw, h as f32 / ah],
+                    (_, Some((strength, n, _))) => [strength, f32::from(n)],
+                    _ => [0.0; 2],
+                });
                 let (p, nm, j, wv) = skin_vertex(&world, inf, |node| up.get(node).copied().unwrap_or(0));
                 pos.push(p);
                 nrm.push(nm);
@@ -434,7 +527,7 @@ impl Model {
                 let texel = |c: f32, o: f32, n: usize, r: &std::ops::Range<usize>| {
                     ((c - o) * n as f32).clamp(r.start as f32, r.end as f32) - r.start as f32
                 };
-                let (u, v) = (texel(c[0], off[0], w, cx), texel(c[1], off[1], h, cy));
+                let (u, v) = if env { (0.0, 0.0) } else { (texel(c[0], off[0], w, cx), texel(c[1], off[1], h, cy)) };
                 uv.extend([(x as f32 + u) / aw, (y as f32 + v) / ah]);
                 jn.extend(j.iter().flat_map(|x| x.to_le_bytes()));
                 wt.extend(wv);
@@ -444,11 +537,12 @@ impl Model {
         let mut g = Glb::default();
         let (mut nodes, mut roots, ibm) = self.skeleton(&mut g, &world, skeleton);
         let mut prims = vec![];
-        for (mat, (pos, nrm, uv, jn, wt, idx)) in parts.iter().enumerate().filter(|p| !p.1.5.is_empty()) {
+        for (mat, (pos, nrm, uv, jn, wt, idx, look, more)) in parts.iter().enumerate().filter(|p| !p.1.5.is_empty()) {
             let n = pos.len();
             let attrs = json!({"POSITION": g.ranged(pos.as_flattened(), 3, "VEC3"), "NORMAL": g.accessor(&glb::floats(nrm.as_flattened()), glb::F32, "VEC3", n),
                 "TEXCOORD_0": g.accessor(&glb::floats(uv), glb::F32, "VEC2", n), "JOINTS_0": g.accessor(jn, glb::U16, "VEC4", n),
-                "WEIGHTS_0": g.accessor(&glb::floats(wt), glb::F32, "VEC4", n)});
+                "WEIGHTS_0": g.accessor(&glb::floats(wt), glb::F32, "VEC4", n),
+                "TEXCOORD_1": g.accessor(&glb::floats(look), glb::F32, "VEC2", n), "TEXCOORD_2": g.accessor(&glb::floats(more), glb::F32, "VEC2", n)});
             let bytes: Vec<u8> = idx.iter().flat_map(|x| x.to_le_bytes()).collect();
             prims.push(json!({"attributes": attrs, "indices": g.accessor(&bytes, glb::U32, "SCALAR", idx.len()), "material": mat}));
         }
@@ -475,7 +569,9 @@ impl Model {
         let doc = json!({"scene": 0, "scenes": [{"nodes": roots}], "nodes": nodes,
             "meshes": [{"name": "part_0", "primitives": prims}],
             "materials": [{"name": "opaque", "pbrMetallicRoughness": pbr, "doubleSided": true, "alphaMode": "MASK", "alphaCutoff": 0.5},
-                          {"name": "blend", "pbrMetallicRoughness": pbr, "doubleSided": true, "alphaMode": "BLEND"}],
+                          {"name": "blend", "pbrMetallicRoughness": pbr, "doubleSided": true, "alphaMode": "BLEND"},
+                          {"name": "additive", "pbrMetallicRoughness": pbr, "doubleSided": true, "alphaMode": "BLEND"},
+                          {"name": "shade", "pbrMetallicRoughness": pbr, "doubleSided": true, "alphaMode": "BLEND"}],
             "skins": [skin],
             "images": [{"bufferView": png, "mimeType": "image/png"}], "textures": [texture],
             "samplers": [{"magFilter": 9729, "minFilter": 9729, "wrapS": 33071, "wrapT": 33071}]});
@@ -628,6 +724,31 @@ mod tests {
     }
 
     #[test]
+    fn blend_states_and_depth_biases_read() {
+        // the model's strip after a blend state: additive, its top words the draw's own (an environment map, a
+        // highlight of 0.5 squared 8 times), CLAMP_2 a region repeat of 32 x 16; its first vertex 80 mm farther
+        let mut c = model();
+        let so = u32le(&c, 0x34).unwrap() as usize;
+        let at = so + 16 + 176;
+        let words = [1u32, 0x2000_0000, 0x9e, 1, 0x48, 0, 0x43, 0x8000_0000, 0x1f00_00ff, 0, 0x3f00_0008, 0];
+        let rec: Vec<u8> = words.iter().flat_map(|w| w.to_le_bytes()).collect();
+        c.splice(at..at, rec);
+        let v = at + 48 + 16 + 12;
+        c[v..v + 4].copy_from_slice(&((-80f32).to_bits() & 0xffff_ff00 | 1).to_le_bytes());
+        let size = (c.len() - so) as u32;
+        c[so + 4..so + 8].copy_from_slice(&size.to_le_bytes());
+        let m = parse(&c).unwrap();
+        let s = &m.sections[0][0];
+        let d = s.draw;
+        assert_eq!((d.alpha, d.repeat, d.env), (0x48, [15, 31], true));
+        assert_eq!(d.spec.map(|(k, n, alone)| ((k * 2.0).round(), n, alone)), Some((1.0, 8, false)));
+        assert_eq!((s.bias[0], s.bias[1]), (-80.0, 0.0));
+        assert_eq!(d.light(0), 2);
+        assert_eq!(Draw { env: false, ..d }.light(0), 3);
+        assert_eq!(Draw::default().light(1 << 35), 1);
+    }
+
+    #[test]
     fn parse_reads_nodes_and_strips() {
         let c = model();
         let m = parse(&c).unwrap();
@@ -700,7 +821,7 @@ mod tests {
         };
         let tex0 = 0x100 | 2 << 14 | 0x14 << 20 | 4 << 26 | 4 << 30 | 0x200 << 37;
         // the strip again in a second section (as the legs are): in the same primitive
-        let section = || vec![Strip { tex0, blend: false, verts: verts().into() }];
+        let section = || vec![Strip { tex0, blend: false, verts: verts().into(), ..Default::default() }];
         let m = Model { nodes: (0..99).map(node).collect(), sections: vec![section(), section()], wings: None };
         let mut clut = vec![0u8; 64];
         clut[4..8].copy_from_slice(&[255, 0, 0, 0x80]);

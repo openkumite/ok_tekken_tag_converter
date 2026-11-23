@@ -667,7 +667,11 @@ mod tests {
         // node 18 (hair) hangs from the head 100 mm along x
         let mut nodes: Vec<Node> = (0..19).map(|_| Node { parent: 0, pos: [0.0; 3], rot: [0.0; 3] }).collect();
         nodes[18] = Node { parent: 2, pos: [100.0, 0.0, 0.0], rot: [0.0; 3] };
-        let m = Model { nodes, sections: vec![vec![Strip { tex0: 0, blend: false, verts }]], wings: None };
+        let m = Model {
+            nodes,
+            sections: vec![vec![Strip { tex0: 0, blend: false, verts, ..Default::default() }]],
+            wings: None,
+        };
         let s = shadow(&m, 345);
         assert_eq!(s["models"], json!([345]));
         assert_eq!(s["joints"][2], "head");
