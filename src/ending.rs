@@ -130,12 +130,13 @@ pub fn endings(elf: &[u8]) -> Result<Value> {
 pub fn body_clips(name: &str, d: &[u8]) -> Vec<Vec<u8>> {
     let parts = archive::pack(d).unwrap_or_default();
     let tracks = parts.first().and_then(|p| archive::pack(p)).unwrap_or_default();
+    let faces = parts.get(1).and_then(|p| archive::pack(p)).unwrap_or_default();
     let hands = parts.get(2).and_then(|p| archive::pack(p)).unwrap_or_default();
     tracks
         .iter()
         .enumerate()
         .filter_map(|(k, t)| {
-            let mut fingers = vec![];
+            let mut fingers = faces.get(k).map(|f| face(f)).unwrap_or_default();
             for side in 0..2 {
                 fingers.extend(hands.get(2 * k + side).map(|h| hand(h, side == 1)).unwrap_or_default());
             }
@@ -149,7 +150,7 @@ pub fn body_clips(name: &str, d: &[u8]) -> Vec<Vec<u8>> {
 /// joint's) replaces the node's turn, its bind position kept (0x34A180 at weight 1 in a scene, 0x3634F4). hand_A
 /// takes (-x, -y, z) as the body does (0x3DD788); hand_B mirrors by joint (table 0x522CC0): its first (x - pi, -y,
 /// -z), the next two as hand_A, then (x, -y, -z), (x, -y, -z), (-x, -y, -z) a finger.
-fn hand(t: &[u8], b: bool) -> Vec<(String, Vec<[f32; 4]>)> {
+fn hand(t: &[u8], b: bool) -> Vec<(String, anim::Keys)> {
     if u16le(t, 2) != Some(15) {
         return vec![];
     }
@@ -171,9 +172,54 @@ fn hand(t: &[u8], b: bool) -> Vec<(String, Vec<[f32; 4]>)> {
                     Some(glb::quat(&glb::joint(r, [0.; 3])))
                 })
                 .collect();
-            (format!("node_{}", if b { 64 } else { 39 } + j), q)
+            (format!("node_{}", if b { 64 } else { 39 } + j), anim::Keys::Rotation(q))
         })
         .collect()
+}
+
+/// A face track (33 triples a frame, BOWL_ENDINGS.md 7.3) as the face nodes 7-28's keys (0x3DD918, table 0x522C60):
+/// a triple's turn (0x3DD788, as the hands': (-x, -y, z), 65536 a turn) replaces the node's; a scale (0x3DD800: u16 /
+/// 4096 a row of the node's bind turn) and an offset (0x3DD890: s16 x fighter +0x500, 4096, / 40960 mm, the node's
+/// place under the head) replace its scale and place. The eyes (13, 14) take their turn and their rows' scale (t3, t4;
+/// the VU0 code's blend with the last frame is at weight 1 in a scene).
+// shortcut: node 14's place from t3 times the fighter's eye vector (0x46AFD0 + 16 x +0x20, set as the eyes aim) is
+// left at its bind place; node 13's rows scale in its parent's axes (0x34A9F0), taken in its own.
+pub fn face(t: &[u8]) -> Vec<(String, anim::Keys)> {
+    if u16le(t, 2) != Some(33) {
+        return vec![];
+    }
+    let frames = (u16le(t, 0).unwrap_or(0) as usize).min(t.len().saturating_sub(4) / 198);
+    let at = |f: usize, j: usize, i: usize| u16le(t, 4 + 2 * (3 * (33 * f + j) + i)).unwrap_or(0);
+    let k = std::f64::consts::TAU / 65536.0;
+    let turn = |j: usize| {
+        let keys = (0..frames).map(|f| {
+            let [x, y, z] = [0, 1, 2].map(|i| at(f, j, i) as i16 as f64 * k);
+            glb::quat(&glb::joint([-x, -y, z], [0.; 3]))
+        });
+        anim::Keys::Rotation(keys.collect())
+    };
+    let scale =
+        |j: usize| anim::Keys::Scale((0..frames).map(|f| [0, 1, 2].map(|i| at(f, j, i) as f32 / 4096.0)).collect());
+    let place = |j: usize| {
+        anim::Keys::Translation(
+            (0..frames).map(|f| [0, 1, 2].map(|i| at(f, j, i) as i16 as f32 / 10.0 / 1000.0)).collect(),
+        )
+    };
+    // (node, its keys by triple)
+    let mut out: Vec<(usize, anim::Keys)> = vec![];
+    for (n, j) in [(7, 0), (21, 7), (22, 8), (25, 9), (26, 10), (17, 19), (18, 20), (13, 5), (14, 6)] {
+        out.push((n, turn(j)));
+    }
+    for (n, s, p) in [(8, 29, 31), (9, 30, 32), (10, 1, 2), (11, 25, 27), (12, 26, 28), (15, 21, 23), (16, 22, 24)] {
+        out.push((n, scale(s)));
+        out.push((n, place(p)));
+    }
+    for (n, p) in [(17, 17), (18, 18), (19, 13), (20, 14), (23, 11), (24, 12), (27, 15), (28, 16)] {
+        out.push((n, place(p)));
+    }
+    out.push((13, scale(3)));
+    out.push((14, scale(4)));
+    out.into_iter().map(|(n, keys)| (format!("node_{n}"), keys)).collect()
 }
 
 /// A fighter's hand poses (its pack's part 4, a track of 15 triples a pose: 0 open to 16 the fist, then its own; the
@@ -210,7 +256,10 @@ mod tests {
         let mut t = vec![1, 0, 15, 0];
         t.extend([0u8; 90]);
         t[8..10].copy_from_slice(&16384i16.to_le_bytes());
-        let (a, b) = (hand(&t, false), hand(&t, true));
+        let rot = |v: Vec<(String, anim::Keys)>| -> Vec<(String, Vec<[f32; 4]>)> {
+            v.into_iter().map(|(n, k)| (n, if let anim::Keys::Rotation(q) = k { q } else { vec![] })).collect()
+        };
+        let (a, b) = (rot(hand(&t, false)), rot(hand(&t, true)));
         assert_eq!((a[0].0.as_str(), b[14].0.as_str()), ("node_39", "node_78"));
         let h = std::f32::consts::FRAC_1_SQRT_2;
         let near = |q: [f32; 4], r: [f32; 4]| q.iter().zip(r).all(|(x, y)| (x - y).abs() < 1e-4);
@@ -218,7 +267,7 @@ mod tests {
         assert!(near(a[0].1[0], [0.0, 0.0, h, h]), "{:?}", a[0].1);
         assert!(near(b[0].1[0], [-h, h, 0.0, 0.0]) || near(b[0].1[0], [h, -h, 0.0, 0.0]), "{:?}", b[0].1);
         assert!(near(a[1].1[0], [0.0, 0.0, 0.0, 1.0]) && near(b[1].1[0], [0.0, 0.0, 0.0, 1.0]));
-        assert!(hand(&t[..50], false).iter().all(|(_, q)| q.is_empty()));
+        assert!(rot(hand(&t[..50], false)).iter().all(|(_, q)| q.is_empty()));
         // a fighter's poses: 30 finger nodes, a key a pose
         let (doc, _, _) = gltf::import_slice(hands_glb(&t).unwrap()).unwrap();
         let a = doc.animations().next().unwrap();
@@ -227,5 +276,35 @@ mod tests {
             (Some("hands"), 30)
         );
         assert!(hands_glb(&t[..50]).is_none());
+    }
+
+    /// The face: node 7 turned by triple 0, node 10 scaled by triple 1 and placed by triple 2 (tenths of a mm), one
+    /// node a name in the clip.
+    #[test]
+    fn a_face_track_turns_scales_and_places() {
+        let mut t = vec![1, 0, 33, 0];
+        t.extend([0u8; 198]);
+        let put = |t: &mut Vec<u8>, j: usize, v: [i16; 3]| {
+            for (i, x) in v.iter().enumerate() {
+                t[4 + 6 * j + 2 * i..6 + 6 * j + 2 * i].copy_from_slice(&x.to_le_bytes());
+            }
+        };
+        put(&mut t, 0, [0, 0, 16384]);
+        put(&mut t, 1, [8192, 4096, 4096]);
+        put(&mut t, 2, [1019, -480, 849]);
+        let f = face(&t);
+        let of = |n: &str| f.iter().filter(|e| e.0 == n).map(|e| &e.1).collect::<Vec<_>>();
+        let h = std::f32::consts::FRAC_1_SQRT_2;
+        assert!(
+            matches!(of("node_7")[..], [anim::Keys::Rotation(q)] if (q[0][2] - h).abs() < 1e-4 && (q[0][3] - h).abs() < 1e-4)
+        );
+        assert!(matches!(of("node_10")[..], [anim::Keys::Scale(s), anim::Keys::Translation(p)]
+            if s[0] == [2.0, 1.0, 1.0] && (p[0][0] - 0.1019).abs() < 1e-6 && (p[0][1] + 0.048).abs() < 1e-6));
+        assert!(face(&t[..100]).iter().all(|(_, k)| k.is_empty()));
+        let glb = anim::clip_glb_with("x", &[[0; anim::CHANNELS]], &f);
+        let (doc, _, _) = gltf::import_slice(glb).unwrap();
+        let named: Vec<_> =
+            doc.nodes().filter_map(|n| n.name().map(str::to_string)).filter(|n| n == "node_10").collect();
+        assert_eq!(named.len(), 1);
     }
 }

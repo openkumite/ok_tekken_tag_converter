@@ -450,7 +450,14 @@ then 0x34A710 squares them up). hand_A takes (-x, -y, z) as a motion's joints do
 -z). A fighter's own hands (+0x3074 = 0) come from its character's track (0x3672D0, frame +0x306C); 1-49 none.
 **The face** (0x3DD918, 0x364298): nodes 7-28 under the head, by table 0x522C60 a mix of turns, scales (0x3DD800,
 1/4096) and offsets (0x3DD890, x fighter +0x500 / 40960) from the 33 triples, over a per-character rest table
-(0x3B87F8, 12 bytes a node), the eyes aimed through VU0 code (nodes 13, 14) [M]: not exported further.
+(0x3B87F8, 12 bytes a node: the model's own node turns, filled at its load), the eyes aimed through VU0 code (nodes 13, 14)
+[M]. By node (triples t0-t32): turns (as the hands', (-x, -y, z)) 7 t0, 21 t7, 22 t8, 25 t9, 26 t10, 17 t19, 18 t20, 13
+t5, 14 t6; the bind turn with its rows scaled (u16 / 4096) and a place (s16 x fighter +0x500 / 40960 mm; +0x500 is 4096:
+tenths of a mm, in the glb's own axes) 8 t29 / t31, 9 t30 / t32, 10 t1 / t2, 11 t25 / t27, 12 t26 / t28, 15 t21 / t23,
+16 t22 / t24; places 17 t17, 18 t18, 19 t13, 20 t14, 23 t11, 24 t12, 27 t15, 28 t16; the eyes' rows scaled by t3 (13)
+and t4 (14), 14 placed by t3 times a vector the eyes' aim sets (0x46AFD0 + 16 x fighter +0x20). All at weight +0xB090 (1
+in a scene). **Exported** (format 68) in the body clips: the face nodes' rotation, scale and translation channels
+(14's place not)
 
 Every track is sampled at the camera's frame (gp-0x63A0), clamped at its end: all frame-locked. Ending files are
 47-122. Scene 0 (file 41) is a set of 22 camera paths. **Scene 1** (files 41 / 42) is the **EMBU** exhibition

@@ -187,8 +187,29 @@ pub fn clip_glb(name: &str, frames: &[Frame]) -> Vec<u8> {
     clip_glb_with(name, frames, &[])
 }
 
-/// [`clip_glb`] with more nodes' rotations (`extra`: node name, a rotation a frame from frame 0; an ending's fingers).
-pub fn clip_glb_with(name: &str, frames: &[Frame], extra: &[(String, Vec<[f32; 4]>)]) -> Vec<u8> {
+/// One more node's keys, a frame each from frame 0: rotations (x, y, z, w), or translations (metres) or scales.
+pub enum Keys {
+    Rotation(Vec<[f32; 4]>),
+    Translation(Vec<[f32; 3]>),
+    Scale(Vec<[f32; 3]>),
+}
+
+impl Keys {
+    /// Its keys.
+    pub fn len(&self) -> usize {
+        match self {
+            Keys::Rotation(k) => k.len(),
+            Keys::Translation(k) | Keys::Scale(k) => k.len(),
+        }
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+}
+
+/// [`clip_glb`] with more nodes' keys (`extra`: node name and keys; an ending's fingers and face), a node a name.
+pub fn clip_glb_with(name: &str, frames: &[Frame], extra: &[(String, Keys)]) -> Vec<u8> {
     let mut g = Glb::default();
     let n = frames.len();
     let times: Vec<f32> = (0..n).map(|i| i as f32 / 60.0).collect();
@@ -207,13 +228,26 @@ pub fn clip_glb_with(name: &str, frames: &[Frame], extra: &[(String, Vec<[f32; 4
     samplers.push(json!({"input": input, "output": g.accessor(&glb::floats(&t), glb::F32, "VEC3", n)}));
     channels.push(json!({"sampler": samplers.len() - 1, "target": {"node": 0, "path": "translation"}}));
     let mut nodes: Vec<Value> = nodes.into_iter().map(|n| n.0).collect();
-    for (node, q) in extra.iter().filter(|e| !e.1.is_empty()) {
-        let times: Vec<f32> = (0..q.len()).map(|i| i as f32 / 60.0).collect();
+    let named = nodes.len();
+    for (node, keys) in extra {
+        let n = keys.len();
+        if n == 0 {
+            continue;
+        }
+        let times: Vec<f32> = (0..n).map(|i| i as f32 / 60.0).collect();
         let input = g.ranged(&times, 1, "SCALAR");
-        let q: Vec<f32> = q.iter().flatten().copied().collect();
-        samplers.push(json!({"input": input, "output": g.accessor(&q16(&q), glb::I16, "VEC4", times.len())}));
-        channels.push(json!({"sampler": samplers.len() - 1, "target": {"node": nodes.len(), "path": "rotation"}}));
-        nodes.push(json!({"name": node}));
+        let (output, path) = match keys {
+            Keys::Rotation(k) => (g.accessor(&q16(&k.concat()), glb::I16, "VEC4", n), "rotation"),
+            Keys::Translation(k) => (g.accessor(&glb::floats(&k.concat()), glb::F32, "VEC3", n), "translation"),
+            Keys::Scale(k) => (g.accessor(&glb::floats(&k.concat()), glb::F32, "VEC3", n), "scale"),
+        };
+        let at = (named..nodes.len()).find(|&i| nodes.get(i).is_some_and(|v| v["name"] == node.as_str()));
+        let at = at.unwrap_or_else(|| {
+            nodes.push(json!({"name": node}));
+            nodes.len() - 1
+        });
+        samplers.push(json!({"input": input, "output": output}));
+        channels.push(json!({"sampler": samplers.len() - 1, "target": {"node": at, "path": path}}));
     }
     let all: Vec<usize> = (0..nodes.len()).collect();
     let clip = json!({"name": name, "samplers": samplers, "channels": channels});
