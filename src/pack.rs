@@ -82,8 +82,9 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 /// `signs`; 61: weather `snow`; 62: front_end `practice.combo` and the COMBO TRAINING rows, `chain.result.backdrop`,
 /// `select.quick.faces.frame` and `names`, `command_buttons_lit.png`, `ranking.arena`, `003_110_p84.png`, TRAINING
 /// DUMMY's `icons`; 64: front_end `survival_results`; 67: an arena's pictures kept apart by TEX0's TCC; 68: the endings' face track in the body clips;
-/// 70: the characters' effect sheets magnified bilinearly).
-pub const FORMAT: i64 = 70;
+/// 70: the characters' effect sheets magnified bilinearly; 71: the fighters' face poses, `characters/face_NNN.glb`
+/// and movesets/index.json `face`).
+pub const FORMAT: i64 = 71;
 /// What a pack's manifest names it.
 pub const KIND: &str = "ttt";
 
@@ -316,12 +317,19 @@ pub fn convert(ctx: &Ctx, src: &dyn DiscFile, research: bool) -> Result<Value> {
                             assets.write(&format!("characters/{f}"), &g)?;
                             hands = fight::hands(&a.elf, s, &f)?;
                         }
+                        // its face poses (part 5) and the poses it blinks and reacts with (FIGHT_DATA.md 3.2)
+                        let mut face = Value::Null;
+                        if let (Some(g), Some(s)) = (pack.as_ref().and_then(|p| ending::face_glb(p.get(5)?)), slot) {
+                            let f = format!("face_{i:03}.glb");
+                            assets.write(&format!("characters/{f}"), &g)?;
+                            face = fight::face(&a.elf, s, &f)?;
+                        }
                         // its motions' root scale (player +0x4FC, 0x3AF7D0): the model's +0xC percent as 4096 = 1, cut
                         let scale = pack
                             .as_ref()
                             .and_then(|p| crate::f32le(p.iter().find(|c| c.starts_with(b"PS2TagA"))?, 0xC))
                             .map(|f| (f * 4096.0 / 100.0) as i16);
-                        characters.push(json!({"id": i, "name": name, "body": body, "costume": costume, "moveset": set, "file": file, "hands": hands, "motion_scale": scale}));
+                        characters.push(json!({"id": i, "name": name, "body": body, "costume": costume, "moveset": set, "file": file, "hands": hands, "face": face, "motion_scale": scale}));
                         // its shadow: the low-detail model, part 8
                         if let Some(low) = pack.as_ref().and_then(|p| model::parse_low(p.get(8)?)) {
                             shadows.push(effects::shadow(&low, i));

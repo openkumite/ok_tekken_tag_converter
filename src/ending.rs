@@ -232,6 +232,15 @@ pub fn hands_glb(t: &[u8]) -> Option<Vec<u8>> {
     (poses > 0).then(|| anim::clip_glb_with("hands", &vec![[0; anim::CHANNELS]; poses], &fingers))
 }
 
+/// A fighter's face poses (its pack's part 5, a track of 33 triples a pose; the fight reads pose +0x3084 of it,
+/// 0x364298) as clip `face` of a key a pose, the face nodes' keys as [`face`] makes them (the body's channels at rest).
+/// None without a pose.
+pub fn face_glb(t: &[u8]) -> Option<Vec<u8>> {
+    let nodes = face(t);
+    let poses = nodes.first().map_or(0, |f| f.1.len());
+    (poses > 0).then(|| anim::clip_glb_with("face", &vec![[0; anim::CHANNELS]; poses], &nodes))
+}
+
 /// Part `k` (1: the face, 2: the hands) of a scene's motion pack, as on the disc.
 pub fn part(d: &[u8], k: usize) -> Option<&[u8]> {
     archive::pack(d)?.get(k).copied()
@@ -276,6 +285,22 @@ mod tests {
             (Some("hands"), 30)
         );
         assert!(hands_glb(&t[..50]).is_none());
+    }
+
+    #[test]
+    fn face_poses_as_a_clip() {
+        // two poses of 33 triples: a key a pose on the face nodes 7-28
+        let mut t = vec![2, 0, 33, 0];
+        t.extend([0u8; 2 * 33 * 6]);
+        let (doc, _, _) = gltf::import_slice(face_glb(&t).unwrap()).unwrap();
+        let a = doc.animations().next().unwrap();
+        let nodes: std::collections::BTreeSet<String> = a
+            .channels()
+            .filter_map(|c| c.target().node().name().map(String::from))
+            .filter(|n| n.starts_with("node_"))
+            .collect();
+        assert_eq!((a.name(), nodes.len()), (Some("face"), 22));
+        assert!(face_glb(&t[..100]).is_none() && face_glb(&[1, 0, 15, 0]).is_none());
     }
 
     /// The face: node 7 turned by triple 0, node 10 scaled by triple 1 and placed by triple 2 (tenths of a mm), one
