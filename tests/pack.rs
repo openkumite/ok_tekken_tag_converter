@@ -356,6 +356,11 @@ fn openkumite(pack: &Hashed) {
             .all(|e| written.contains_key(&format!("assets/characters/{}", e["glb"].as_str().unwrap()))
                 && e["model_record"].is_u64())
     );
+    // the motions' root scale (player +0x4FC): Paul 100 %, Xiaoyu 98, True Ogre 103, as 4096 = 1
+    let scale = |m: u64| {
+        index["models"].as_array().unwrap().iter().find(|e| e["model_record"] == m).unwrap()["motion_scale"].clone()
+    };
+    assert_eq!([scale(345), scale(480), scale(591)], [4096, 4014, 4218].map(serde_json::Value::from));
     assert_eq!(load("stages/index.json")[20]["name"], "Tekken Bowl");
     // every character file's shadow mesh; each arena's shadow (Paul's: alpha 0x30)
     let shadows = load("gamedata/shadows.json");

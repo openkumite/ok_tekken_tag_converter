@@ -82,7 +82,7 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 /// `signs`; 61: weather `snow`; 62: front_end `practice.combo` and the COMBO TRAINING rows, `chain.result.backdrop`,
 /// `select.quick.faces.frame` and `names`, `command_buttons_lit.png`, `ranking.arena`, `003_110_p84.png`, TRAINING
 /// DUMMY's `icons`; 64: front_end `survival_results`).
-pub const FORMAT: i64 = 65;
+pub const FORMAT: i64 = 66;
 /// What a pack's manifest names it.
 pub const KIND: &str = "ttt";
 
@@ -315,7 +315,12 @@ pub fn convert(ctx: &Ctx, src: &dyn DiscFile, research: bool) -> Result<Value> {
                             assets.write(&format!("characters/{f}"), &g)?;
                             hands = fight::hands(&a.elf, s, &f)?;
                         }
-                        characters.push(json!({"id": i, "name": name, "body": body, "costume": costume, "moveset": set, "file": file, "hands": hands}));
+                        // its motions' root scale (player +0x4FC, 0x3AF7D0): the model's +0xC percent as 4096 = 1, cut
+                        let scale = pack
+                            .as_ref()
+                            .and_then(|p| crate::f32le(p.iter().find(|c| c.starts_with(b"PS2TagA"))?, 0xC))
+                            .map(|f| (f * 4096.0 / 100.0) as i16);
+                        characters.push(json!({"id": i, "name": name, "body": body, "costume": costume, "moveset": set, "file": file, "hands": hands, "motion_scale": scale}));
                         // its shadow: the low-detail model, part 8
                         if let Some(low) = pack.as_ref().and_then(|p| model::parse_low(p.get(8)?)) {
                             shadows.push(effects::shadow(&low, i));
