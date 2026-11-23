@@ -132,7 +132,8 @@ This is the bind pose. Units are millimetres, Y is up.
 Section: `u32 ?`, `u32 size`, 8 bytes of zero, then records of 16-byte words until `size`:
 
 - **Matrix palette** `{n ≤ 20, 0, 0, 0}` + 20 x u64 node indices. Vertices index it from 1.
-- **Blend state** `{1, 0x20000000, 0x9E, 1}` + 2 quadwords (ALPHA, CLAMP).
+- **Blend state** `{1, 0x20000000, 0x9E, 1}` + 2 quadwords (ALPHA_2 by A+D, CLAMP_2 packed), whose unused upper
+  words the fighter draw keeps for itself (below, "How the PS2 draws a fighter").
 - **Texture** `{1, 0x10000000, 7, 2}` + the TEX0 value twice.
 - **Strip**: a GIF tag (`NLOOP` vertices, regs `0x412`; PRIM has ABE set for blended strips)
   followed by the vertices. One triangle strip per tag.
@@ -140,13 +141,32 @@ Section: `u32 ?`, `u32 size`, 8 bytes of zero, then records of 16-byte words unt
 Vertex (variable size):
 
 ```
-float s, t, 1.0;  u8 n (influences, 1..4) + 3 bytes
+float s, t, 1.0;  float bias (its low byte: u8 n, the influences, 1..4)
 u32 palette index [4]
 n x { float normal[3], 0;  float position[3] * weight, weight }
 ```
 
 Positions and normals are in the node's local space and already multiplied by the weight,
 so the skinned point is `Σ M_node · (p·w, w)`.
+
+**How the PS2 draws a fighter** (verified in the executable and VU0 programs; **new** in the pack, format 69). The
+pass's GS state is 0x521CE0 (context 2: TEX1_2 0x61, bilinear without mipmaps; TEST_2 0x5180B, alpha test As >=
+0x80 else the colour only, Z GEQUAL; CLAMP_2 5 until a blend state). 0x3439B0 sends each section's records and runs
+one of four VU0 programs (uploaded from 0x4F5F00; the select's from 0x4FA7E0) on each vertex, which skin it, light it
+and write ST, RGBAQ, XYZF2:
+
+| Blend state's | Routine, program | What it does |
+|---|---|---|
+| ALPHA's top word not 0 (0x80000000; 0x10000000, 0x40000000) | 0x3438B8, 0x186 | environment map: ST = 0.5 x (1 + the view's x, y of (to the eye + n̂)), n̂ the normalised summed normal, "to the eye" VU0 word 11 (the eye less player +0x590, normalised), the view VU0 252-254 (0x433400), 0.5 VU0 word 1.z (read in PCSX2); colour 128; its strips' TEX0 is decal, CLAMP_2 a region repeat of the texture |
+| CLAMP's upper low word w not 0 | 0x3436B8, 0x04A | lit on the normalised normal, light 0 plus (R . L0)^(2^(w & 0xFF)) x float(w), R the way to the eye reflected about n̂ |
+| CLAMP's upper high word w not 0 | 0x3437B8, 0x0EA | that highlight alone: light 0's colour x the above (the select's program draws nothing) |
+| neither | 0x3435C0, 0x000 | lit: min(ambient + Σ colour_k x max(0, n . L_k), 255) on the summed normal, not normalised |
+
+TEX0's TFX 1 (decal) shows the texture as it is. Each program divides the depth by `w - bias` (`z / w` the
+others): the bias, 0 or negative mm (the vertex's float under its count; clothes: Paul's trousers -80, shoes -50, belt
+-60), pushes the vertex back by that much in depth only. ALPHA 0x44 blends ordinarily, 0x48 adds Cs x As, 0x89
+multiplies by As (Law's satin: an environment-mapped opaque layer, the same strips x As, then + Cs x As); TCC 0 takes
+the vertex's alpha 0x80.
 
 Sections (verified in the executable): the offsets are `[pass][half][k]`, at `0x2C + 0x28·pass + 0x14·half + 4·k`.
 The loader (0x3AF624) relocates all 20. The fighter draw (0x343340, `a1` = pass) draws every section of the pass,
