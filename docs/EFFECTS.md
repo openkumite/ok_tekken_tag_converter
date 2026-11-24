@@ -49,6 +49,11 @@ turns light 2 towards a place (0x415808 +0x14..+0x1C, ints) and blends it and it
 with the base copy at +0xB0 / +0xE0 by a distance weight (0x352F50 with 0x4550B0, 0x4550B4) when 0x4550B8 is set
 [M]. The fighter's draw (0x357640) sends the block to VU1; that it lights as ambient + each colour x max(0, n.L),
 the GS modulating the texture by it (128 = 1, saturating at 255), is read in the data, not in the microcode [M].
+In an ending the block is not refilled from 0x416288: 0x353E60, as the arena loads, copies the scenes' light table's
+entry **0x455170 + 0x80 x arena** (+0x10, +0x20, +0x30 the directions, +0x40, +0x50, +0x60 the colours, +0x70 the
+ambient, four floats a vector) into it, and that stays (PCSX2: the block in ending 20 on arena 5 and ending 1 on
+arena 6 is that entry; arena 5's: yellow, orange and green-blue lights) [H]. Not exported: lit so by OpenKumite's
+three lights the actors come out far greener than PCSX2 shows them, so how the VU program uses the block is still open.
 
 Exported: `gamedata/shadows.json` (part 8 as the Tekken 3 converter's shadow meshes), `gamedata/stages.json` (each
 arena's shadow: light 0's direction, the alpha; since format 13 its `lights`, the table as it stands). Not: the
@@ -269,7 +274,13 @@ Cd x As: painted shadows, dirt) are in the stages since format 14, in materials 
   wolf node to a body node it follows): point 0 the wolf's root, points 1 and 2 its two hip nodes x (300, 0, 0)
   (0x51EAF0); read in PCSX2 against the nodes' places (fighter +0xDB0 + 0xC0 k, +0x30): her nodes 98, 112 and 113.
   The wolf's root follows her root's matrix moved (0, 150, -800) in its axes, x eased 1 / 12 and y, z 1 / 16 a
-  frame towards it, with a little noise (the sine table at 0x4FCE88, +0x3120 + rand() & 0x3F); not exported.
+  frame towards it, with a little noise (the sine table at 0x4FCE88, +0x3120 + rand() & 0x3F): from the round's first
+  frame (gp-0x62C8[side] 0, cleared by 0x34CB50) placed at once. The other wolf nodes take the turn of their body node in
+  its parent (0x87D0 + 0x40 x node) and keep their own place. Exported (format 79): the table as the skin's extras
+  `follow` (GAMEDATA.md); the easing and the offset are OpenKumite's code.
+- **Blades** [H] (read 2026-11-24, exported format 79): 0x34D108, for bodies 15 and 33 (Mokujin, Unknown), scales node
+  ids 120 and 123 to nothing unless the moveset (+0x28) is 26 (Kunimitsu's knife), 126 and 129 unless it is 4
+  (Yoshimitsu's sword): Unknown, whose own moveset is 28, holds neither. Exported as the skin's extras `moveset`.
   Exported: effects.json `characters` `aura` (GAMEDATA.md).
 
 ## 6. Not found or not read

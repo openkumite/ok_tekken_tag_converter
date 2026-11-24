@@ -126,6 +126,54 @@ pub fn cloth(model: &[u8], records: &[u8], held: &[i32]) -> Vec<Value> {
         .collect()
 }
 
+/// Each node past the shared skeleton with an id (+0x1C), and the id.
+fn ids(model: &[u8]) -> impl Iterator<Item = (usize, i32)> + '_ {
+    let count = u32le(model, 0x14).and_then(|e| e.checked_sub(0x7c)).map_or(0, |e| e as usize / 0x20).min(NODES);
+    (SKELETON..count).filter_map(move |i| Some((i, u32le(model, 0x7c + 0x20 * i + 0x1c)? as i32)).filter(|n| n.1 != -1))
+}
+
+/// Unknown's wolf as 0x34CC38 poses it each drawn frame: `[node, body node]`, each wolf node and the body node whose
+/// turn it takes (0x34CA70: its id's case in the table 0x51EA60), the body's root's for the wolf's root.
+pub fn wolf(model: &[u8]) -> Vec<[usize; 2]> {
+    const FOLLOWS: [(i32, usize); 16] = [
+        (57, 0),
+        (60, 1),
+        (63, 2),
+        (66, 5),
+        (69, 6),
+        (73, 29),
+        (74, 54),
+        (76, 31),
+        (77, 56),
+        (79, 34),
+        (80, 59),
+        (82, 38),
+        (83, 63),
+        (84, 79),
+        (88, 82),
+        (89, 91),
+    ];
+    ids(model).filter_map(|(i, id)| Some([i, FOLLOWS.iter().find(|f| f.0 == id)?.1])).collect()
+}
+
+/// Mokujin's and Unknown's blades (0x34D108, bodies 15 and 33): `[node, moveset]`, drawn only while the fighter
+/// fights with that moveset (+0x28), else scaled to nothing: ids 120 and 123 with 26 (Kunimitsu's), 126 and 129 with
+/// 4 (Yoshimitsu's).
+pub fn blades(model: &[u8]) -> Vec<[usize; 2]> {
+    ids(model)
+        .filter_map(|(i, id)| {
+            Some([
+                i,
+                match id {
+                    120 | 123 => 26,
+                    126 | 129 => 4,
+                    _ => return None,
+                },
+            ])
+        })
+        .collect()
+}
+
 /// The nodes every fighter shares: the first of its table.
 pub const SKELETON: usize = 98;
 /// A fighter's picture is repeated in its atlas as far as its strips reach, to this many texels either way at most.
@@ -424,20 +472,21 @@ impl Model {
     /// with another texture channel frame (Jin's mark, BOWL_ENDINGS.md 7.4), or none: the texels it changes go in the
     /// picture too, the texture's extras `mark` `[x, y, w, h, from x, from y]` (the rectangle, where its other texels are).
     /// A winged fighter's skeleton reaches its last wing node, and `wing_track` (its pack's part 1) goes in the skin's
-    /// extras `wings` ([`wing_frames`]). A fighter with swaying nodes (`cloth`, [`cloth`]) has all its nodes in its
-    /// skeleton, and them in the skin's extras `cloth`.
+    /// extras `wings` ([`wing_frames`]). A fighter with `more` of its nodes' extras (swaying nodes `cloth`, [`cloth`];
+    /// Unknown's wolf `follow`, [`wolf`]; blades `moveset`, [`blades`]) has all its nodes in its skeleton, and those in
+    /// the skin's extras.
     pub fn fighter_glb(
         &self,
         ups: &[tex::Upload],
         alt: &[tex::Upload],
         wing_track: &[u8],
-        cloth: &[Value],
+        more: &serde_json::Map<String, Value>,
     ) -> Option<Vec<u8>> {
         let n = self.nodes.len();
         // (an arena's background character: the 18 joints of `RIG` alone)
         let wings = self.wings.filter(|w| w.iter().all(|&i| i < 128));
         let skeleton = match wings {
-            _ if n == RIG.len() || !cloth.is_empty() => n,
+            _ if n == RIG.len() || !more.is_empty() => n,
             Some(w) => w.iter().max().map_or(SKELETON, |&m| (m + 1).max(SKELETON)),
             None => SKELETON,
         };
@@ -607,9 +656,11 @@ impl Model {
         if let Some(w) = wings.filter(|_| !wing_track.is_empty()) {
             glb::set(&mut skin, "extras", json!({"wings": {"nodes": w, "frames": wing_frames(wing_track)}}));
         }
-        if !cloth.is_empty() {
+        if !more.is_empty() {
             let mut extras = skin.get("extras").cloned().unwrap_or_else(|| json!({}));
-            glb::set(&mut extras, "cloth", json!(cloth));
+            for (k, v) in more {
+                glb::set(&mut extras, k, v.clone());
+            }
             glb::set(&mut skin, "extras", extras);
         }
         let png = g.view(&tex::png(atlas.w, atlas.h, &atlas.rgba));
@@ -907,7 +958,7 @@ mod tests {
             vec![([0.0; 2], two), ([0.0; 2], vec![inf(1, [0.0; 3], 1.0)]), ([0.0; 2], vec![inf(2, [0.0; 3], 1.0)])];
         let strip = Strip { tex0: 0, blend: false, verts, ..Default::default() };
         let m = Model { nodes: nodes.collect(), sections: vec![vec![strip]], wings: None };
-        let (doc, buffers, _) = gltf::import_slice(m.fighter_glb(&[], &[], &[], &[]).unwrap()).unwrap();
+        let (doc, buffers, _) = gltf::import_slice(m.fighter_glb(&[], &[], &[], &Default::default()).unwrap()).unwrap();
         let skin = doc.skins().next().unwrap();
         let joints: Vec<usize> = skin.joints().map(|j| j.index()).collect();
         let ibm: Vec<[[f32; 4]; 4]> =
@@ -943,7 +994,8 @@ mod tests {
         clut[4..8].copy_from_slice(&[255, 0, 0, 0x80]);
         let up = |dbp, psm, w, h, data| tex::Upload { set: 0, dbp, dbw: 128, psm, w, h, data };
         let ups = [up(0x100, 0x14, 16, 16, vec![0x11; 128]), up(0x200, 0, 8, 2, clut)];
-        let (doc, buffers, images) = gltf::import_slice(m.fighter_glb(&ups, &[], &[], &[]).unwrap()).unwrap();
+        let (doc, buffers, images) =
+            gltf::import_slice(m.fighter_glb(&ups, &[], &[], &Default::default()).unwrap()).unwrap();
         // as OpenKumite reads it: the first mesh, the first skin, the first image
         let skin = doc.skins().next().unwrap();
         let joints: Vec<_> = skin.joints().map(|j| j.name().unwrap().to_string()).collect();
@@ -972,7 +1024,8 @@ mod tests {
         let mut other = vec![0x11; 128];
         (other[3 * 8 + 1], other[4 * 8 + 2]) = (0x01, 0x10);
         let alt = [up(0x100, 0x14, 16, 16, other), ups[1].clone()];
-        let (doc, _, images) = gltf::import_slice(m.fighter_glb(&ups, &alt, &[], &[]).unwrap()).unwrap();
+        let (doc, _, images) =
+            gltf::import_slice(m.fighter_glb(&ups, &alt, &[], &Default::default()).unwrap()).unwrap();
         let extras = doc.textures().next().unwrap().extras().as_ref().unwrap().get().to_string();
         let mark: serde_json::Value = serde_json::from_str(&extras).unwrap();
         let [x, y, w, h, sx, sy] = serde_json::from_value::<[usize; 6]>(mark["mark"].clone()).unwrap();
@@ -984,12 +1037,12 @@ mod tests {
         // fewer nodes than the skeleton, or a skeleton node hanging from one past it: not a fighter
         assert!(
             Model { nodes: (0..97).map(node).collect(), sections: vec![], wings: None }
-                .fighter_glb(&ups, &[], &[], &[])
+                .fighter_glb(&ups, &[], &[], &Default::default())
                 .is_none()
         );
         let mut bad = Model { nodes: (0..99).map(node).collect(), sections: vec![], wings: None };
         bad.nodes[7].parent = 98;
-        assert!(bad.fighter_glb(&ups, &[], &[], &[]).is_none());
+        assert!(bad.fighter_glb(&ups, &[], &[], &Default::default()).is_none());
     }
 
     #[test]

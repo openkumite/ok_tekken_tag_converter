@@ -8,6 +8,7 @@
 use ok_converter_common::disc::Disc;
 use ok_converter_common::io::{Ctx, DiscFile, Entry, ReadSeek, Vfs};
 use ok_tekken_tag_converter::pack;
+use serde_json::json;
 use std::collections::BTreeMap;
 use std::hash::{DefaultHasher, Hasher};
 use std::sync::Mutex;
@@ -498,6 +499,18 @@ fn openkumite(pack: &Hashed) {
     assert_eq!(joints.len(), 134);
     let extras: serde_json::Value = serde_json::from_str(skin.extras().as_ref().unwrap().get()).unwrap();
     assert_eq!((extras["cloth"].as_array().map(Vec::len), &extras["cloth"][0]["node"]), (Some(36), &98.into()));
+    assert!(extras["follow"].is_null() && extras["moveset"].is_null());
+    // (format 78) Unknown's wolf: 16 nodes from 98 (her root's follower), the hips 112 and 113 her thighs'; her
+    // blades: Kunimitsu's on hand A, Yoshimitsu's on hand B
+    let (unknown, ..) = gltf::import_slice(pack.read("assets/characters/model_693.glb").unwrap()).unwrap();
+    let wolf = unknown.skins().next().unwrap();
+    let extras: serde_json::Value = serde_json::from_str(wolf.extras().as_ref().unwrap().get()).unwrap();
+    let follow = extras["follow"].as_array().unwrap();
+    assert_eq!(
+        (follow.len(), &follow[0], &follow[14], &follow[15]),
+        (16, &json!([98, 0]), &json!([112, 82]), &json!([113, 91]))
+    );
+    assert_eq!(extras["moveset"], json!([[116, 26], [117, 26], [118, 4], [119, 4]]));
     for name in [
         "root",
         "chest",

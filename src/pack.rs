@@ -86,8 +86,9 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 /// and movesets/index.json `face`; 72: the arenas' textures bilinear without mipmaps, as their TEX1 draws them; 73:
 /// front_end `select.models.heights`; 74: the fighters' pictures cut through CLAMP_2's clamps; 75:
 /// `select.models.scales` and `ops`; 76: Law's junks (an arena's models whose vertices lie between nodes: a joint for
-/// each), Law-A's leaves after the lanterns' frames; 77: Unknown's aura, effects.json `characters` `aura`; 78: the clips' animation extras `angles`).
-pub const FORMAT: i64 = 78;
+/// each), Law-A's leaves after the lanterns' frames; 77: Unknown's aura, effects.json `characters` `aura`; 78: the clips' animation extras `angles`;
+/// 79: Unknown's wolf and Mokujin's and Unknown's blades, the skin's extras `follow` and `moveset`).
+pub const FORMAT: i64 = 79;
 /// What a pack's manifest names it.
 pub const KIND: &str = "ttt";
 
@@ -300,15 +301,26 @@ pub fn convert(ctx: &Ctx, src: &dyn DiscFile, research: bool) -> Result<Value> {
                 }
                 // Roger's and True Ogre's ids 3, 6, 9 hang on their swayed slots 18-20 (0x34D038, player flag 0x2000)
                 let held: &[i32] = if matches!(body, 17 | 20) { &[3, 6, 9] } else { &[] };
+                let tag_a = pack.as_ref().and_then(|p| p.iter().find(|c| c.starts_with(b"PS2TagA")));
                 let cloth = pack
                     .as_ref()
-                    .and_then(|p| Some(model::cloth(p.iter().find(|c| c.starts_with(b"PS2TagA"))?, p.get(10)?, held)))
+                    .zip(tag_a)
+                    .and_then(|(p, f)| Some(model::cloth(f, p.get(10)?, held)))
                     .unwrap_or_default();
+                let mut more = serde_json::Map::new();
+                more.insert("cloth".into(), json!(cloth));
+                if let (Some(f), true) = (tag_a, body == 33) {
+                    more.insert("follow".into(), json!(model::wolf(f)));
+                }
+                if let (Some(f), true) = (tag_a, matches!(body, 15 | 33)) {
+                    more.insert("moveset".into(), json!(model::blades(f)));
+                }
+                more.retain(|_, v| v.as_array().is_some_and(|a| !a.is_empty()));
                 match m.fighter_glb(
                     &ups,
                     &marked,
                     pack.as_ref().and_then(|p| p.get(1).copied()).unwrap_or_default(),
-                    &cloth,
+                    &more,
                 ) {
                     Some(glb) => {
                         let file = format!("model_{i:03}.glb");
@@ -408,7 +420,7 @@ pub fn convert(ctx: &Ctx, src: &dyn DiscFile, research: bool) -> Result<Value> {
                 if research {
                     out.write(&file, &m.glb(&own))?;
                 }
-                if let (Some(n), Some(glb)) = (listed, m.fighter_glb(&own, &[], &[], &[])) {
+                if let (Some(n), Some(glb)) = (listed, m.fighter_glb(&own, &[], &[], &Default::default())) {
                     assets.write(&format!("stages/stage_{n:02}_p{}.glb", k - 1), &glb)?;
                 }
                 people.push(json!({"id": k - 1, "file": file}));
