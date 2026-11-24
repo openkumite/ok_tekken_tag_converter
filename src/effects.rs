@@ -106,7 +106,8 @@ pub fn stages(
             let row = DUST + 12 * a - VADDR;
             let dust = json!({"count": u32le(elf, row)?, "scale": f32le(elf, row + 4)?,
                 "colour": elf.get(row + 8..row + 11)?});
-            let (people, walk) = people(elf, a, a);
+            // (0x3D85D8 in a fight: an arena's own set, none on arenas 21 and 22; theirs are endings')
+            let (people, walk) = if a < 21 { people(elf, a, a) } else { Default::default() };
             let scene: Vec<f64> = (0..28)
                 .map(|k| f32le(elf, SCENE_LIGHTS + 0x80 * a + 0x10 + 4 * k - VADDR).map(f64::from))
                 .collect::<Option<_>>()?;

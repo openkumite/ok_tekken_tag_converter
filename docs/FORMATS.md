@@ -387,7 +387,8 @@ person is gone at the end, else the script starts again where it stood at first)
 least twice in all, going `back` steps first; 0 on; -1 for ever, the motion simply looping when there is
 no going back and one motion), `i8 back, i16 wait` (unseen first), `i16 start` (frame), `i16 frames` (to
 play; else to the end), each when not negative. As a motion ends the person moves on by the table's
-entry for it. Arenas 7 and 21 draw each person with the next character (0x3D86D8). A character file's
+entry for it. Arenas 7 and 21 draw each person with the next character (0x3D86D8). In a fight 0x3D85D8 takes
+the arena's own set, none on arenas 21 and 22 (their sets are endings'), so stages.json gives those two no `people`. A character file's
 `f32` at +4 / 1000 scales its root's motion and the table's distances. Law's junks (stored as characters,
 arena 1's models 8 and 9; Eddy's 8) have vertices metres from their nodes, between two of them: the PS2 blends the
 place each node gives it, which no rest pose makes meet, so since format 76 each such vertex has a joint per node

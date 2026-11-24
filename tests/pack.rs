@@ -395,6 +395,8 @@ fn openkumite(pack: &Hashed) {
                 .iter()
                 .all(|m| written.contains_key(&format!("assets/stages/stage_10_m{m}.glb")))
     }));
+    // arenas 21 and 22 fight with no one (0x3D85D8): their sets are endings'
+    assert!((21..23).all(|a| stages["stages"][a]["people"].as_array().is_some_and(Vec::is_empty)));
     // Paul's scripted spectators: motions 10 and 11, the first step's twice (its repeat 2), the script round again
     let paul = &stages["stages"][0]["people"];
     let scripted = paul.as_array().unwrap().iter().find(|p| !p["script"].as_array().unwrap().is_empty()).unwrap();
