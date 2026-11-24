@@ -110,6 +110,18 @@ fn chain(elf: &[u8], i: u32) -> Result<Vec<&[u8]>> {
     Ok(c)
 }
 
+/// Move `m`'s timed properties [frame, op, arg] (its record's +0x20 list), none without one.
+pub(crate) fn timed(elf: &[u8], m: usize) -> Result<Vec<[u32; 3]>> {
+    let r = bytes(elf, MOVES + 52 * m, 52, "the moves")?;
+    Ok(match Some(w(r, 0x20)).filter(|&v| v != !0) {
+        Some(p) => until(elf, PROPS, p, 4, "timed property list", |e| h(e, 0) == 0)?
+            .iter()
+            .map(|e| [h(e, 0) as u32, b(e, 3) as u32, b(e, 2) as u32])
+            .collect(),
+        None => vec![],
+    })
+}
+
 /// moves.json: the 7351 move records. `anims`: each motion's file in the pack; `frames`: each motion's length.
 pub fn moves(elf: &[u8], anims: &[Option<String>], frames: &[u8]) -> Result<Value> {
     let mut out = Vec::with_capacity(MOVE_COUNT);
@@ -1105,6 +1117,8 @@ mod tests {
             elf[MOVES + 52 * i + 0x1c..][..8].fill(0xff);
         }
         let v = moves(&elf, &[None, None, None, Some("anims/0003.glb".into())], &[0, 0, 0, 37]).unwrap();
+        // (the select's ops of a move, as its properties; none without a list)
+        assert_eq!((timed(&elf, 3).unwrap(), timed(&elf, 4).unwrap()), (vec![[4, 0x0c, 5], [6, 2, 3]], vec![]));
         let m = &v["moves"][3];
         assert_eq!(
             (m["index"].as_u64(), m["anim"].as_str(), m["frames"].as_u64()),

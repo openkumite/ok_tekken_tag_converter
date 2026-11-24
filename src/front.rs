@@ -2,6 +2,7 @@
 //! arcade ladder and unlocks read, as roster.json `front_end` (docs/GAMEDATA.md "front_end"). The pictures are the
 //! 2D files' images as `assets/pictures/FFF_NNN.png`, the names `textures/` has; `front_end` names them.
 
+use crate::fight;
 use crate::moves::{self, VADDR};
 use crate::tex::{self, Upload};
 use crate::{u8_at, u16_at, u32_at};
@@ -277,17 +278,19 @@ fn raw_string(elf: &[u8], pointer: u32) -> String {
     out
 }
 
-/// The select's 3D characters (FRONTEND.md 9): per character id the clips of its moveset's aliases 0 (standing, looped)
-/// and 3 (the pick's pose), None where its set has none (Mokujin's and Unknown's stub). `clips`: each move's clip.
-fn select_motions(elf: &[u8], clips: &[Option<String>]) -> Result<Vec<Option<[String; 2]>>> {
+/// The select's 3D characters (FRONTEND.md 9): per character id the moves of its moveset's aliases 0 (standing,
+/// looped) and 3 (the pick's pose), None where its set has none (Mokujin's and Unknown's stub).
+fn select_moves(elf: &[u8]) -> Result<Vec<Option<[usize; 2]>>> {
     let sets = moves::roster(elf)?;
-    let clip = |set: usize, alias: usize| -> Result<Option<String>> {
-        let v = u16_at(elf, moves::ALIASES + 2 * (set * moves::ALIAS_COUNT + alias), "the movesets")? as usize;
-        Ok(clips.get(v).cloned().flatten())
+    let alias = |set: usize, alias: usize| -> Result<usize> {
+        Ok(u16_at(elf, moves::ALIASES + 2 * (set * moves::ALIAS_COUNT + alias), "the movesets")? as usize)
     };
     (0..moves::BODIES)
         .map(|c| match sets.get(c).map(|s| s.1).filter(|&set| set < moves::MOVESETS) {
-            Some(set) => Ok(clip(set, 0)?.zip(clip(set, 3)?).map(|(a, b)| [a, b])),
+            // (7350: a missing alias)
+            Some(set) => {
+                Ok(Some([alias(set, 0)?, alias(set, 3)?]).filter(|m| m.iter().all(|&v| v < moves::MOVE_COUNT - 1)))
+            }
             None => Ok(None),
         })
         .collect()
@@ -320,6 +323,7 @@ pub fn front_end(elf: &[u8], ups: &[Upload], clips: &[Option<String>]) -> Result
         menu.push(json!({"mode": u8_at(elf, a(r) + 4, what)?, "label": string(elf, u32_at(elf, a(r), what)?),
             "locked": u8_at(elf, a(r) + 5, what)? != 0, "colour": u8_at(elf, a(r) + 6, what)?}));
     }
+    let select = select_moves(elf)?;
     let titles: Vec<String> =
         (0..9).map(|m| u32_at(elf, a(0x51EC18 + 12 * m), what).map(|p| string(elf, p))).collect::<Result<_>>()?;
     let quick: Vec<[u32; 2]> = (0..9)
@@ -509,12 +513,20 @@ pub fn front_end(elf: &[u8], ups: &[Upload], clips: &[Option<String>]) -> Result
             "selectable": set(0x51E850)?, "copy_pool": set(0x51E8A0)?, "portraits": portraits,
             // (0x3AE6E0: the camera, the projection's entry 24 of table 0x507FE0; 0x3AEF88: each model's place {x, y, z,
             // yaw} by slot (side + 2 * member) from 0x437D40, 1 ON 1's (mode 5) from 0x437D80, its y less the body's
-            // height by character (+0x2A) from 0x437DE8; 0x3AE7C8: arena 22's light table (0x363630(0x16)); 0x3AEA40:
-            // alias 0 looped, a pick plays alias 3, then alias 0)
+            // height by character (+0x2A) from 0x437DE8; on the select (screen 5) 0x34EF20 scales the body's root matrix
+            // +0x508 by the character's 0x437DA0 (0x3AE6C0, 4096 = 1); 0x3AE7C8: arena 22's light table
+            // (0x363630(0x16)); 0x3AEA40: alias 0 looped, a pick plays alias 3, then alias 0)
             "models": {"camera": {"eye": [0, -1152, 4608], "pitch": -128, "yaw": -2048, "h": s16(0x507FE0 + 10 * 24)?},
                 "places": places(0x437D40, 4)?, "places_one_on_one": places(0x437D80, 2)?, "one_on_one_mode": 5, "light": 0x16,
                 "heights": (0..34).map(|k| s16(0x437DE8 + 2 * k)).collect::<Result<Vec<_>>>()?,
-                "motions": select_motions(elf, clips)?}},
+                "scales": (0..34).map(|k| s16(0x437DA0 + 2 * k)).collect::<Result<Vec<_>>>()?,
+                "motions": select.iter().map(|m| {
+                    let clip = |v: usize| clips.get(v).cloned().flatten();
+                    m.and_then(|[a, b]| Some([clip(a)?, clip(b)?]))
+                }).collect::<Vec<_>>(),
+                // (the two moves' timed ops [frame, op, arg], the hands' and the face's among them: 0x3AEA40 steps
+                // them as a fight does, 0x372BD0)
+                "ops": select.iter().map(|m| m.map(|[a, b]| Ok::<_, anyhow::Error>([fight::timed(elf, a)?, fight::timed(elf, b)?])).transpose()).collect::<Result<Vec<_>>>()?}},
         // the VS / loading screen (0x3C45B0's machine, drawn by 0x3C3FB8): the fire 142_000 (ids 0xF5 / 0xF6) over the
         // screen; each side's portraits (0x3C3948: 188 x 256, their edges faded over `feather` by 0x3C3370, 2P's
         // mirrored by 0x3C3648) at [x, dx, y, dy] + step x [dx, dy], the step 1 a frame to `steps` (state 3), then held
