@@ -675,16 +675,20 @@ pub fn game_glb(
     }
     // each picture once: (TEX0's texture, size and palette pointers, TCC, bank) -> the picture, its part of TW x TH,
     // and how far the batches' coordinates reach in it (in pictures: low x, y, high x, y); TCC kept apart: arena 6's
-    // floor shades by a picture's alpha (0x89, TCC 1) that its added layer (0x48, TCC 0) takes opaque
-    let key = |b: &Batch| (b.tex0 & 0x000f_ffe7_ffff_ffff, b.bank);
+    // floor shades by a picture's alpha (0x89, TCC 1) that its added layer (0x48, TCC 0) takes opaque; a picture that
+    // shades so (Cd x As) apart too, with its alpha as the GS's ([`tex::gs_image`]): above 0x80 it brightens (arena
+    // 4's sky glow, 0x80-0xFC)
+    let key = |b: &Batch| (b.tex0 & 0x000f_ffe7_ffff_ffff, b.bank, b.mode == 2 && tex::tex0(b.tex0).alpha);
+    let read = |ups: &[tex::Upload], t: &tex::Tex0, gs: bool| {
+        if gs { tex::gs_image(ups, t) } else { tex::image(ups, t, t.alpha) }
+    };
     let st = |b: &Batch, i: usize| b.uv.get(i).copied().unwrap_or_default();
     let mut pics = BTreeMap::new();
     let models: Vec<Vec<Batch>> = objects.iter().map(|o| o.model.clone()).collect();
     for b in sky.iter().chain(&tiles).chain(cells.iter().flatten()).chain(models.iter().flatten()) {
         let pic = pics.entry(key(b)).or_insert_with(|| {
             let t = tex::tex0(b.tex0);
-            let (w, h, px) =
-                banks.get(b.bank).and_then(|u| tex::image(u, &t, t.alpha)).filter(|p| p.0 > 0 && p.1 > 0)?;
+            let (w, h, px) = banks.get(b.bank).and_then(|u| read(u, &t, key(b).2)).filter(|p| p.0 > 0 && p.1 > 0)?;
             Some((w, h, px, [t.tw as f32 / w as f32, t.th as f32 / h as f32], [f32::MAX, f32::MAX, f32::MIN, f32::MIN]))
         });
         for (.., k, r) in pic.iter_mut() {
@@ -712,9 +716,7 @@ pub fn game_glb(
         let mut px: std::borrow::Cow<[u8]> = px.into();
         for a in anims {
             let f: Vec<Vec<u8>> = (a.frames.iter())
-                .filter_map(|ups| {
-                    tex::image(ups.get(k.1)?, &t, t.alpha).filter(|f| (f.0, f.1) == (*w, *h)).map(|f| f.2)
-                })
+                .filter_map(|ups| read(ups.get(k.1)?, &t, k.2).filter(|f| (f.0, f.1) == (*w, *h)).map(|f| f.2))
                 .collect();
             let Some(first) = f.get(a.start as usize).filter(|_| f.len() == a.frames.len()) else { continue };
             if visible(first) == visible(&px) && f.iter().all(|f| visible(f) == visible(&px)) {
@@ -810,11 +812,14 @@ pub fn game_glb(
                 if let Some(name) = [None, Some("additive"), Some("shade")].get(b.mode as usize).copied().flatten() {
                     glb::set(&mut m, "name", json!(name));
                 }
-                match (env, fogged) {
-                    (0, false) => {}
-                    (0, true) => glb::set(&mut m, "extras", json!({"fog": 1})),
-                    (_, false) => glb::set(&mut m, "extras", json!({"env": env})),
-                    (_, true) => glb::set(&mut m, "extras", json!({"env": env, "fog": 1})),
+                // (`gs_alpha`: its picture's alpha the GS's, 128 is 1)
+                let extras: serde_json::Map<String, serde_json::Value> =
+                    [("env", env > 0, json!(env)), ("fog", fogged, json!(1)), ("gs_alpha", key(b).2, json!(1))]
+                        .into_iter()
+                        .filter_map(|(k, on, v)| on.then(|| (k.to_string(), v)))
+                        .collect();
+                if !extras.is_empty() {
+                    glb::set(&mut m, "extras", extras.into());
                 }
                 materials.push(m);
                 materials.len() - 1

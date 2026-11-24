@@ -87,8 +87,9 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 /// front_end `select.models.heights`; 74: the fighters' pictures cut through CLAMP_2's clamps; 75:
 /// `select.models.scales` and `ops`; 76: Law's junks (an arena's models whose vertices lie between nodes: a joint for
 /// each), Law-A's leaves after the lanterns' frames; 77: Unknown's aura, effects.json `characters` `aura`; 78: the clips' animation extras `angles`;
-/// 79: Unknown's wolf and Mokujin's and Unknown's blades, the skin's extras `follow` and `moveset`).
-pub const FORMAT: i64 = 79;
+/// 79: Unknown's wolf and Mokujin's and Unknown's blades, the skin's extras `follow` and `moveset`; 80: an arena's
+/// shading pictures with the GS's alpha, material extras `gs_alpha`; stages.json `scene_lights` and `fill`).
+pub const FORMAT: i64 = 80;
 /// What a pack's manifest names it.
 pub const KIND: &str = "ttt";
 

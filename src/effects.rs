@@ -11,6 +11,10 @@ use std::f64::consts::PI;
 
 /// The arenas' lights (0x54 bytes an arena: light 0's direction first, floats) and the shadow's alpha (u16, of 0x80).
 pub(crate) const LIGHTS: usize = 0x41_6288;
+/// The scenes' lights (0x80 bytes an arena, 0x353E60: +0x10, +0x20, +0x30 the directions, +0x40, +0x50, +0x60 the
+/// colours, +0x70 the ambient, four floats each) and light 2's grey by character (0x353420, floats).
+const SCENE_LIGHTS: usize = 0x45_5170;
+const FILL: usize = 0x45_50C0;
 const ALPHA: usize = 0x46_B280;
 /// The arenas' dust (12 bytes an arena: u32 particles, f32 scale, u8 r, g, b; 0x3A2758's kind 3).
 const DUST: usize = 0x43_7AC0;
@@ -66,7 +70,9 @@ pub fn shadow(m: &Model, record: usize) -> Value {
 /// `motions` played in turn (`stage_NN_mK`), and the frame of them the first one `start`s at; its `flare` (0x3A1C78:
 /// none on most arenas): the `sun` (metres, the arena's axes), the `strength` and the nine `discs` [picture of
 /// `pictures/effects/flare_K.png`, size, brightness]; its `weather` ([`weather`]) from `fx`: each arena's entries and
-/// their pictures' atlas cells; `scales`, each arena's people's models' scale of their motions and walks (`scales`).
+/// their pictures' atlas cells; `scales`, each arena's people's models' scale of their motions and walks (`scales`);
+/// `scene_lights`, the lights an ending on the arena gives its actors instead (as `lights`); and `fill`, each
+/// character's grey that light 2 turns to near the eye (EFFECTS.md 2).
 pub fn stages(
     elf: &[u8],
     fx: &BTreeMap<usize, (Vec<Entry>, Vec<Option<usize>>)>,
@@ -101,12 +107,18 @@ pub fn stages(
             let dust = json!({"count": u32le(elf, row)?, "scale": f32le(elf, row + 4)?,
                 "colour": elf.get(row + 8..row + 11)?});
             let (people, walk) = people(elf, a, a);
+            let scene: Vec<f64> = (0..28)
+                .map(|k| f32le(elf, SCENE_LIGHTS + 0x80 * a + 0x10 + 4 * k - VADDR).map(f64::from))
+                .collect::<Option<_>>()?;
+            let u = |k: usize| scene.get(4 * k..4 * k + 3).unwrap_or_default();
             Some(json!({"id": a, "shadow": {"toward": [x * s, y * s, z * s], "colour": [0, 0, 0], "alpha": alpha as f64 / 128.0},
-                "lights": {"toward": [v(0), v(1), v(2)], "colour": [v(3), v(4), v(5)], "ambient": v(6)}, "dust": dust, "people": people, "walk": walk, "scales": scales.get(&a), "objects": crate::objects::motion(elf, a), "flare": flare(a),
+                "lights": {"toward": [v(0), v(1), v(2)], "colour": [v(3), v(4), v(5)], "ambient": v(6)},
+                "scene_lights": {"toward": [u(0), u(1), u(2)], "colour": [u(3), u(4), u(5)], "ambient": u(6)}, "dust": dust, "people": people, "walk": walk, "scales": scales.get(&a), "objects": crate::objects::motion(elf, a), "flare": flare(a),
                 "weather": fx.get(&a).and_then(|(e, cells)| weather(elf, a, e, cells))}))
         })
         .collect();
-    json!({"stages": stages})
+    let fill: Vec<f32> = (0..34).filter_map(|c| f32le(elf, FILL + 4 * c - VADDR)).collect();
+    json!({"stages": stages, "fill": fill})
 }
 
 /// People set `set` of 0x114FC8 (an arena's own; 23-30 some endings', 0x3D85D8) on arena `arena`: stages.json's

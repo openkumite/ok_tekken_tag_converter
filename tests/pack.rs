@@ -378,6 +378,12 @@ fn openkumite(pack: &Hashed) {
         (&stages["stages"][1]["lights"]["colour"][0], &stages["stages"][0]["lights"]["ambient"][0]),
         (&serde_json::json!([255.0, 255.0, 255.0]), &serde_json::json!(38.400001525878906))
     );
+    // the scenes' (Lei's arena, ending 20: light 0 at 127.5, its ambient 27.5) and Bryan's grey (10)
+    assert_eq!(
+        (&stages["stages"][5]["scene_lights"]["colour"][0][0], &stages["stages"][5]["scene_lights"]["ambient"][0]),
+        (&serde_json::json!(127.5), &serde_json::json!(27.5))
+    );
+    assert_eq!((stages["fill"].as_array().unwrap().len(), &stages["fill"][12]), (34, &serde_json::json!(10.0)));
     // Eddy-A's background characters: 33, each a model and motions of its own files
     let people = stages["stages"][10]["people"].as_array().unwrap();
     assert_eq!(people.len(), 33);
