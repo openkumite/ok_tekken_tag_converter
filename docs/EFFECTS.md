@@ -255,6 +255,22 @@ Cd x As: painted shadows, dirt) are in the stages since format 14, in materials 
   over w as the hit effects' (0x433440). In a scene 0x378398 starts the beam the frame after op 16 and runs the type's
   routine (table 0x506230) with the op's count as its frame and the head's heading (0x378760: the head matrix's
   point (-100, 0, 0) from its origin) for the op's frames.
+- **Unknown's aura** [H] (read 2026-11-24, exported format 77): a fight's set-up (0x36D51C / 0x36D800 -> 0x3A5FA0)
+  makes, for each side whose team (0x440940: +0, +0x30 / +0x60, +0x90) holds Unknown (0x21), four tasks over her
+  special slots 20-22 / 23-25: 0x3A5910 (slot 21 + 3 x side: the haze; +0x54 0.4, +0x44 160, +0x4C 100) at the mean
+  of points 1 and 2, two 0x3A5B78 (slot 20: the blue flame; 0.5, 128, 100; one at point 1, one at point 2, their
+  counters from rand() % 24) and 0x3A5D98 (slot 22: the lightning ball; 1.4, 128, 200) at point 0. Each waits while
+  she is not drawn (+0x127 0), shows 2 frames after she is, and each frame (not paused, 0x3A9698) steps its counter
+  +0x16: its frame (+0x1E) the counter % 24 (the flames) or (counter >> 1) % 24. Drawn as the particles: added,
+  FIX the +0x44 (0x68: Cs x FIX + Cd), a quad of 0x90 0x400 x +0x54 over the 0x48 of 400 through the hits'
+  projection, +0x4C mm toward the eye (a GS dump of Unknown in practice: the flames' quads 282 and 265 pixels at
+  z 7454 / 7040, FIX 0x80; the haze's 219 at FIX 0xA0; the ball's 732). The points (0x1FAC760 + 0x30 x fighter,
+  read by 0x34CB88) are set while the wolf is posed (0x34CC38, Unknown only: 0x34CA70's table 0x51EA60 ties each
+  wolf node to a body node it follows): point 0 the wolf's root, points 1 and 2 its two hip nodes x (300, 0, 0)
+  (0x51EAF0); read in PCSX2 against the nodes' places (fighter +0xDB0 + 0xC0 k, +0x30): her nodes 98, 112 and 113.
+  The wolf's root follows her root's matrix moved (0, 150, -800) in its axes, x eased 1 / 12 and y, z 1 / 16 a
+  frame towards it, with a little noise (the sine table at 0x4FCE88, +0x3120 + rand() & 0x3F); not exported.
+  Exported: effects.json `characters` `aura` (GAMEDATA.md).
 
 ## 6. Not found or not read
 
