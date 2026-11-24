@@ -379,7 +379,7 @@ pub fn motion(elf: &[u8], arena: usize) -> Option<serde_json::Value> {
             "wind": crate::effects::wind(elf, arena)?}}));
     }
     if arena == 1 {
-        // (the leaves' copies after the table's objects, then their shadows')
+        // (the leaves' copies after the table's objects and the lanterns' ten frames (`objects`), then their shadows')
         let table = (crate::u32le(elf, ROWS - VADDR + 16 * arena)? as usize).checked_sub(VADDR)?;
         let (first, list) =
             (crate::u32le(elf, table + 8)?, (crate::u32le(elf, table + 12)? as usize).checked_sub(VADDR)?);
@@ -394,7 +394,7 @@ pub fn motion(elf: &[u8], arena: usize) -> Option<serde_json::Value> {
             (4..14).map(|k| Some(serde_json::json!([k, size(k)?, turn(k)?]))).collect::<Option<_>>()?;
         return Some(serde_json::json!({
             "lanterns": {"objects": lanterns, "gain": gp(0x7B68)?, "wind": crate::effects::wind(elf, arena)?},
-            "leaves": {"first": first, "count": 40, "templates": 4, "shadow": 19, "reach": f32le(elf, 0x52_1C00 - VADDR)?,
+            "leaves": {"first": first + 10, "count": 40, "templates": 4, "shadow": 19, "reach": f32le(elf, 0x52_1C00 - VADDR)?,
                 "rock": f32le(elf, 0x52_1C10 - VADDR)?, "flat": [gp(0x7BAC)?, gp(0x7BA8)?], "lift": [gp(0x7BB0)?, 800.0, 5000.0],
                 "spin": [gp(0x7B9C)?, gp(0x7B98)?, gp(0x7B94)?], "tumble": gp(0x7B90)?, "tilt": [gp(0x7B8C)?, gp(0x7B88)?, gp(0x7B84)?],
                 "drop": [500.0, gp(0x7B7C)?, gp(0x7B78)?, gp(0x7B74)?], "drift": f32le(elf, 0x52_1C20 - VADDR)?, "blow": 20.0,

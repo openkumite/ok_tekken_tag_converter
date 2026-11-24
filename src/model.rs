@@ -130,6 +130,8 @@ pub fn cloth(model: &[u8], records: &[u8], held: &[i32]) -> Vec<Value> {
 pub const SKELETON: usize = 98;
 /// A fighter's picture is repeated in its atlas as far as its strips reach, to this many texels either way at most.
 const REACH: usize = 1024;
+/// OpenKumite draws a skinned model with this many joints at most.
+const JOINTS: usize = 160;
 
 /// The 18 animated joints (the arcade engine's matrix slots) in the first 98 nodes, which every
 /// fighter shares: (name, nodes). Extra nodes of a slot are its twist copies and follow it. The names are Tekken
@@ -275,8 +277,8 @@ pub fn parse(c: &[u8]) -> Option<Model> {
 /// packets for VU1. A strip is UNPACK V4-32 of a GIF tag and five quadwords a vertex:
 ///   s, t, matrix A, matrix B (address 7 * node - 6, 0 = none) | normal A | normal B | position A, weight | position B, weight
 /// after an UNPACK V4-32 x4 with its material (GIF tag, ALPHA, CLAMP, TEX0).
-// shortcut: a vertex follows its heavier node only. The file has no rest pose in which its two
-// positions meet (a glTF skin needs one); to blend them, fit the rest rotations from the shared vertices.
+// shortcut: a person's vertex follows its heavier node only. The file has no rest pose in which its two
+// positions meet (a glTF skin needs one); to blend them, give them joints of their own as `fighter_glb` does the junks'.
 pub fn parse_low(c: &[u8]) -> Option<Model> {
     // 18 joints, and as many more as +8 says (a fighter's hair or cloth: the shadow's)
     let count = 18 + (u32le(c, 8)? as usize).min(16);
@@ -307,15 +309,19 @@ pub fn parse_low(c: &[u8]) -> Option<Model> {
         } else if num > 5 && (num - 1).is_multiple_of(5) {
             let verts = d.get(16..)?.as_chunks::<80>().0.iter().map(|v| {
                 let (u, f) = (|o: usize| u32le(v, o).unwrap_or(0), |o: usize| f32le(v, o).unwrap_or(0.0));
-                let k = (u(12) > 0 && f(76) > f(60)) as usize;
-                let (m, w) = (u(8 + 4 * k) as usize, f(60 + 16 * k));
                 let at = |o: usize| [f(o), f(o + 4), f(o + 8)];
-                let inf = if m > 0 && m / 7 + 1 < count && w > 0.0 {
-                    vec![Inf { node: m / 7 + 1, n: at(16 + 16 * k), p: at(48 + 16 * k).map(|x| x / w), w: 1.0 }]
-                } else {
-                    vec![]
-                };
-                ([f(0), f(4)], inf)
+                // the heavier first
+                let order = if u(12) > 0 && f(76) > f(60) { [1, 0] } else { [0, 1] };
+                let inf = order.into_iter().filter_map(|k| {
+                    let (m, w) = (u(8 + 4 * k) as usize, f(60 + 16 * k));
+                    (m > 0 && m / 7 + 1 < count && w > 0.0).then(|| Inf {
+                        node: m / 7 + 1,
+                        n: at(16 + 16 * k),
+                        p: at(48 + 16 * k).map(|x| x / w),
+                        w,
+                    })
+                });
+                ([f(0), f(4)], inf.collect::<Vec<_>>())
             });
             strips.push(Strip {
                 tex0,
@@ -325,10 +331,17 @@ pub fn parse_low(c: &[u8]) -> Option<Model> {
             });
         }
     }
-    // shortcut: a model with parts metres from their node is not a person (Law's junks); those come
-    // out wrongly posed, so they are left out until what moves them is decoded
-    let person = strips.iter().flat_map(|s| &s.verts).flat_map(|v| &v.1).all(|i| i.p.iter().all(|x| x.abs() < 4000.0));
-    (person && !strips.is_empty()).then_some(Model { nodes, sections: vec![strips], wings: None })
+    // a person follows its heavier node only (near enough); a model with parts metres from their node is not one
+    // (Law's junks: their sails stretch between nodes), and keeps both for `fighter_glb` to blend as the PS2 does
+    let person =
+        strips.iter().flat_map(|s| &s.verts).filter_map(|v| v.1.first()).all(|i| i.p.iter().all(|x| x.abs() < 4000.0));
+    if person {
+        for v in strips.iter_mut().flat_map(|s| &mut s.verts) {
+            v.1.truncate(1);
+            v.1.iter_mut().for_each(|i| i.w = 1.0);
+        }
+    }
+    (!strips.is_empty()).then_some(Model { nodes, sections: vec![strips], wings: None })
 }
 
 impl Model {
@@ -369,8 +382,14 @@ impl Model {
     }
 
     /// The first `count` nodes as glTF nodes in their bind pose (a node whose parent is not among them is a root),
-    /// the roots, and the inverse bind matrices' accessor.
-    fn skeleton(&self, g: &mut Glb, world: &[M4], count: usize) -> (Vec<Value>, Vec<usize>, usize) {
+    /// the roots, and the inverse bind matrices' accessor (then a translation for each of `extra`'s joints).
+    fn skeleton(
+        &self,
+        g: &mut Glb,
+        world: &[M4],
+        count: usize,
+        extra: &[(usize, [f64; 3])],
+    ) -> (Vec<Value>, Vec<usize>, usize) {
         let mut nodes: Vec<Value> = (self.nodes.iter().take(count).enumerate())
             .map(|(i, n)| {
                 let l = glb::joint(n.rot.map(|x| x as f64), [0.; 3]);
@@ -388,7 +407,9 @@ impl Model {
                 roots.push(i);
             }
         }
-        let ibm: Vec<f32> = (world.iter().take(count)).flat_map(|w| transposed(glb::inv(w))).collect();
+        let moved =
+            extra.iter().map(|&(_, [x, y, z])| [[1., 0., 0., x], [0., 1., 0., y], [0., 0., 1., z], [0., 0., 0., 1.]]);
+        let ibm: Vec<f32> = (world.iter().take(count).map(glb::inv)).chain(moved).flat_map(transposed).collect();
         let ibm = g.accessor(&glb::floats(&ibm), glb::F32, "MAT4", ibm.len() / 16);
         (nodes, roots, ibm)
     }
@@ -517,6 +538,8 @@ impl Model {
         // (TEXCOORD_0 its corner)
         type Part = (Vec<[f32; 3]>, Vec<[f32; 3]>, Vec<f32>, Vec<u8>, Vec<f32>, Vec<u32>, Vec<f32>, Vec<f32>);
         let mut parts: [Part; 4] = Default::default();
+        // joints past the skeleton: (node, the bind's translation)
+        let mut extra: Vec<(usize, [f64; 3])> = vec![];
         for (s, (pic, off, st)) in strips.iter().zip(&placed) {
             let at = pic.unwrap_or(pics.len() - 1);
             let (&(x, y), &(w, h, ..), (cx, cy)) = (atlas.place.get(at)?, pics.get(at)?, cuts.get(at)?);
@@ -536,7 +559,20 @@ impl Model {
                     (_, Some((strength, n, _))) => [strength, f32::from(n)],
                     _ => [0.0; 2],
                 });
-                let (p, nm, j, wv) = skin_vertex(&world, inf, |node| up.get(node).copied().unwrap_or(0));
+                let (p, nm, mut j, wv) = skin_vertex(&world, inf, |node| up.get(node).copied().unwrap_or(0));
+                // a vertex between nodes of a background thing (Law's junks' sails): the PS2 blends its place on each
+                // node, which no rest pose makes meet, so each is a joint of its own whose bind takes it to that place
+                for (f, j) in inf.iter().zip(&mut j).filter(|_| n == RIG.len() && inf.len() > 1) {
+                    let ([a, b, c], [x, y, z]) = (f.p, p);
+                    let t = [a as f64 * SCALE - x as f64, b as f64 * SCALE - y as f64, c as f64 * SCALE - z as f64];
+                    let k = extra.iter().position(|e| *e == (f.node, t)).unwrap_or(extra.len());
+                    if skeleton + k < JOINTS {
+                        if k == extra.len() {
+                            extra.push((f.node, t));
+                        }
+                        *j = (skeleton + k) as u16;
+                    }
+                }
                 pos.push(p);
                 nrm.push(nm);
                 // shortcut: a coordinate past REACH texels of repeats is clamped to their edge, upgrade with more
@@ -552,7 +588,7 @@ impl Model {
             idx.extend(strip_faces(pos, nrm, base));
         }
         let mut g = Glb::default();
-        let (mut nodes, mut roots, ibm) = self.skeleton(&mut g, &world, skeleton);
+        let (mut nodes, mut roots, ibm) = self.skeleton(&mut g, &world, skeleton, &extra);
         let mut prims = vec![];
         for (mat, (pos, nrm, uv, jn, wt, idx, look, more)) in parts.iter().enumerate().filter(|p| !p.1.5.is_empty()) {
             let n = pos.len();
@@ -566,7 +602,8 @@ impl Model {
         if prims.is_empty() {
             return None;
         }
-        let mut skin = json!({"joints": (0..skeleton).collect::<Vec<_>>(), "inverseBindMatrices": ibm});
+        let joints: Vec<usize> = (0..skeleton).chain(extra.iter().map(|e| e.0)).collect();
+        let mut skin = json!({"joints": joints, "inverseBindMatrices": ibm});
         if let Some(w) = wings.filter(|_| !wing_track.is_empty()) {
             glb::set(&mut skin, "extras", json!({"wings": {"nodes": w, "frames": wing_frames(wing_track)}}));
         }
@@ -599,7 +636,7 @@ impl Model {
     pub fn glb(&self, ups: &[tex::Upload]) -> Vec<u8> {
         let world = self.world();
         let mut g = Glb::default();
-        let (mut nodes, mut roots, ibm) = self.skeleton(&mut g, &world, self.nodes.len());
+        let (mut nodes, mut roots, ibm) = self.skeleton(&mut g, &world, self.nodes.len(), &[]);
         let (mut meshes, mut materials, mut images, mut textures) = (vec![], vec![], vec![], vec![]);
         let mut mat_of: HashMap<(u64, bool), (usize, [f32; 2])> = HashMap::new();
         for (si, strips) in self.sections.iter().enumerate() {
@@ -856,6 +893,36 @@ mod tests {
             "foot_B",
         ];
         assert_eq!(RIG.map(|r| r.0), t3);
+    }
+
+    #[test]
+    fn a_junks_vertex_between_nodes_is_where_each_node_puts_it() {
+        // an arena's 18-node model, node 1 2 m up, a vertex 0.85 on node 1 (1 m along x) and 0.15 on node 2 (3 m
+        // along z): two joints of its own, each binding it to that node's place for it
+        let nodes =
+            (0..18).map(|i| Node { parent: i - 1, pos: [0.0, if i == 1 { 2000.0 } else { 0.0 }, 0.0], rot: [0.; 3] });
+        let inf = |node, p, w| Inf { node, n: [0.0, 0.0, 1.0], p, w };
+        let two = vec![inf(1, [1000.0, 0.0, 0.0], 0.85), inf(2, [0.0, 0.0, 3000.0], 0.15)];
+        let verts =
+            vec![([0.0; 2], two), ([0.0; 2], vec![inf(1, [0.0; 3], 1.0)]), ([0.0; 2], vec![inf(2, [0.0; 3], 1.0)])];
+        let strip = Strip { tex0: 0, blend: false, verts, ..Default::default() };
+        let m = Model { nodes: nodes.collect(), sections: vec![vec![strip]], wings: None };
+        let (doc, buffers, _) = gltf::import_slice(m.fighter_glb(&[], &[], &[], &[]).unwrap()).unwrap();
+        let skin = doc.skins().next().unwrap();
+        let joints: Vec<usize> = skin.joints().map(|j| j.index()).collect();
+        let ibm: Vec<[[f32; 4]; 4]> =
+            skin.reader(|b| Some(&buffers[b.index()])).read_inverse_bind_matrices().unwrap().collect();
+        let prim = doc.meshes().next().unwrap().primitives().next().unwrap();
+        let r = prim.reader(|b| Some(&buffers[b.index()]));
+        let (p, jn) =
+            (r.read_positions().unwrap().next().unwrap(), r.read_joints(0).unwrap().into_u16().next().unwrap());
+        assert_eq!((joints.len(), &joints[18..], [jn[0], jn[1]]), (20, &[1, 2][..], [18, 19]));
+        // (column-major: the translation is the last column)
+        let local = |k: usize| [0, 1, 2].map(|a| p[a] + ibm[k][3][a]);
+        let near = |a: [f32; 3], b: [f32; 3]| a.iter().zip(b).all(|(x, y)| (x - y).abs() < 1e-5);
+        assert!(near(local(18), [1.0, 0.0, 0.0]) && near(local(19), [0.0, 0.0, 3.0]), "{p:?}");
+        // the vertex on one node keeps the node's own joint
+        assert_eq!(r.read_joints(0).unwrap().into_u16().nth(1).unwrap()[0], 1);
     }
 
     #[test]
