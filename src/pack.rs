@@ -85,8 +85,9 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 /// 70: the characters' effect sheets magnified bilinearly; 71: the fighters' face poses, `characters/face_NNN.glb`
 /// and movesets/index.json `face`; 72: the arenas' textures bilinear without mipmaps, as their TEX1 draws them; 73:
 /// front_end `select.models.heights`; 74: the fighters' pictures cut through CLAMP_2's clamps; 75:
-/// `select.models.scales` and `ops`).
-pub const FORMAT: i64 = 75;
+/// `select.models.scales` and `ops`; 76: Law's junks (an arena's models whose vertices lie between nodes: a joint for
+/// each), Law-A's leaves after the lanterns' frames).
+pub const FORMAT: i64 = 76;
 /// What a pack's manifest names it.
 pub const KIND: &str = "ttt";
 

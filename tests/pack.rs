@@ -333,12 +333,12 @@ fn openkumite(pack: &Hashed) {
     assert_eq!((&m["game"], &m["format"], m["fingerprint"].as_str().unwrap().len()), (&"ttt".into(), &8.into(), 32));
     let written = pack.0.lock().unwrap().clone();
     let count = |dir: &str| written.keys().filter(|k| k.starts_with(&format!("assets/{dir}/"))).count();
-    // (and Tekken Bowl's 114 motions, its ball, pin and pin deck; the arenas' background characters' 115 models and
-    // 294 motions; format 48: ending op 25's 5 props; format 52: each character's hand poses; format 71: the face poses
-    // of the 83 with a face track)
+    // (and Tekken Bowl's 114 motions, its ball, pin and pin deck; the arenas' background characters' 119 models (format
+    // 76: Law's two junks and Eddy's two models 8) and 294 motions; format 48: ending op 25's 5 props; format 52: each
+    // character's hand poses; format 71: the face poses of the 83 with a face track)
     assert_eq!(
         (count("characters"), count("motions"), count("stages")),
-        (127 * 2 + 83, 4231 + 114, 23 + 1 + 3 + 115 + 294 + 5)
+        (127 * 2 + 83, 4231 + 114, 23 + 1 + 3 + 119 + 294 + 5)
     );
     let roster = load("gamedata/roster.json");
     let entries = roster["selections"]["entries"].as_array().unwrap();
@@ -406,7 +406,7 @@ fn openkumite(pack: &Hashed) {
         (&1.into(), &10.into(), &serde_json::json!(-2000.0), &21.into())
     );
     assert_eq!(&stages["stages"][1]["scales"][0], &serde_json::json!(1.2));
-    // Law-A's lanterns (4-13, lattices of 1 m) and its 40 leaves from object 20
+    // Law-A's lanterns (4-13, lattices of 1 m) and its 40 leaves from object 30 (after the lanterns' frames 20-29)
     let law = &stages["stages"][1]["objects"];
     assert_eq!(
         (
@@ -414,7 +414,7 @@ fn openkumite(pack: &Hashed) {
             &law["lanterns"]["objects"][0][1],
             &law["leaves"]["first"]
         ),
-        (Some(10), &serde_json::json!(1000.0), &20.into())
+        (Some(10), &serde_json::json!(1000.0), &30.into())
     );
     // Eddy-A's lens flare: its sun 85.6 m ahead, strength 0.6, nine discs (the first a hexagon of 0.1 at 192)
     let flare = &stages["stages"][10]["flare"];

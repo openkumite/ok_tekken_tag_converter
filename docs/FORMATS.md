@@ -388,8 +388,10 @@ least twice in all, going `back` steps first; 0 on; -1 for ever, the motion simp
 no going back and one motion), `i8 back, i16 wait` (unseen first), `i16 start` (frame), `i16 frames` (to
 play; else to the end), each when not negative. As a motion ends the person moves on by the table's
 entry for it. Arenas 7 and 21 draw each person with the next character (0x3D86D8). A character file's
-`f32` at +4 / 1000 scales its root's motion and the table's distances. Law's junks (stored as characters)
-come out wrongly posed. OpenKumite's: GAMEDATA.md (format 20, the scripts since format 28).
+`f32` at +4 / 1000 scales its root's motion and the table's distances. Law's junks (stored as characters,
+arena 1's models 8 and 9; Eddy's 8) have vertices metres from their nodes, between two of them: the PS2 blends the
+place each node gives it, which no rest pose makes meet, so since format 76 each such vertex has a joint per node
+whose inverse bind takes it to that node's place (a person keeps its heavier node). OpenKumite's: GAMEDATA.md (format 20, the scripts since format 28).
 
 The four small files after an arena's geometry (`190 + 7n` ...) are camera paths:
 `u32 count`, then `f32 eye x, y, z, target x, y, z, field of view` per frame (y is down).
