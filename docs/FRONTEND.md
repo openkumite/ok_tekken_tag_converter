@@ -581,12 +581,18 @@ yaw -0x800, roll 0, eye (0, -1152, 4608)) and the projection entry 24 of table 0
 0); a pick (0x3CA6B8 -> 0x3AEC58, 0x3AE9D8) sets the alias to 3 with the pick's costume. 0x3AEF88 places a slot from
 table **0x437D40** (16 bytes `{x, y, z, yaw}`, 65536ths): 1P (400, 0) yaw 0xE800, 2P (-512, 0) yaw 0x1800, 1P's
 partner (896, 512) yaw 0xE000, 2P's (-960, 512) yaw 0x2000; mode 5 (1 ON 1 arcade) takes **0x437D80** (704, 128) and
-(-720, 128) for slots 0 and 1. The table's y is not what the struct holds after the load (2 and -40 were read for 112
-and 80): the body stands on the floor. 0x3AEA40 steps the motion: at its end alias 3 goes to alias 0 (0x363068(f, 5))
+(-720, 128) for slots 0 and 1. The struct's y is the table's less the body's height by character (+0x2A) from
+**0x437DE8** (34 s16: Paul 80, Xiaoyu 110, Nina 120, Kuma 160, Ogre -50, Ganryu 180, ...; 0x3AF1EC): the table's y
+112 / 80 gave 2 and -40 for Xiaoyu and Nina, 32 for Paul, -48 for True Ogre, -80 for Kuma as partner, -100 for Ganryu
+(PCSX2); the drawn root (+0x520) is it less the motion's root height. The x, z and yaw are the table's whoever stands
+there: two big ones, or a pick's swing, go into each other on the PS2 (seen: Paul and Paul, Jack-2 and True Ogre).
+The select's view (0x3AEA30 -> 0x3AE170 -> 0x3ADFF0, read in PCSX2 at 0x433400): the eye (0, 1152, -4608) in the
+drawing's axes (x, -y, -z), pitched 0x80 up, H x 1.25 = 1062.5 for x and y on the 640 x 448 screen. 0x3AEA40 steps the
+motion: at its end alias 3 goes to alias 0 (0x363068(f, 5))
 and alias 0 starts again. Aliases 0 and 3 are each moveset's select stance and pick pose (Xiaoyu: moves 6459, 110
 frames, and 6490, 86). A side shows its picks and the character under its cursor, the last two; none while the cursor
 is on a character it took (seen). `select.models`: `camera`, `places`, `places_one_on_one`, `one_on_one_mode`,
-`light`, `motions` (by character id: the two clips).
+`light`, `heights` (format 73: by character id, 0x437DE8), `motions` (by character id: the two clips).
 
 A cursor move: sound 3; a pick: sound 4, the last sound 5; cancel: sound 3. The PS2 starts 1P's cursor on Xiaoyu
 (seen; gp-0x6248). After the last pick 90 frames (gp-0x624C), counted only while 0x3AF448 says the models are in
