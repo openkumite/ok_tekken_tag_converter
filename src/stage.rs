@@ -614,7 +614,8 @@ pub fn glb(scenery: &[Batch], objects: &[Batch], banks: &[Vec<tex::Upload>]) -> 
     if !images.is_empty() {
         glb::set(&mut doc, "images", json!(images));
         glb::set(&mut doc, "textures", json!(textures));
-        glb::set(&mut doc, "samplers", json!([{"magFilter": 9729, "minFilter": 9987}]));
+        // (bilinear without mipmaps, as the arena's TEX1 draws them: 0x61, MXL 0)
+        glb::set(&mut doc, "samplers", json!([{"magFilter": 9729, "minFilter": 9729}]));
     }
     g.finish(doc)
 }
@@ -948,7 +949,7 @@ pub fn game_glb(
     }
     let mut doc = json!({"scene": 0, "scenes": [{"name": name, "nodes": roots, "extras": extras}], "nodes": nodes,
         "meshes": meshes, "materials": materials, "images": images, "textures": textures,
-        "samplers": [{"magFilter": 9729, "minFilter": 9987}]});
+        "samplers": [{"magFilter": 9729, "minFilter": 9729}]});
     if !channels.is_empty() {
         glb::set(&mut doc, "animations", json!([{"name": "objects", "samplers": samplers, "channels": channels}]));
     }

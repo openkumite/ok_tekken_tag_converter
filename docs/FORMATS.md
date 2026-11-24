@@ -325,7 +325,10 @@ gloss; uses the vertex alpha), `0x89` a darkening decal. `TEX0.TCC` says whether
 alpha counts.
 
 Textures are 4-bit and 8-bit sheets (for example 256x2048 PSMT4 at block 0) with 16-colour
-palettes of 8x2 pixels; `TEX0.TBP0` points inside a sheet at a page boundary.
+palettes of 8x2 pixels; `TEX0.TBP0` points inside a sheet at a page boundary. They are drawn bilinear without
+mipmaps: TEX1 0x61 (MXL 0, LCM 1, K 0: always level 0; every textured draw of PCSX2 GS dumps of the Bowl and arena 6).
+Exported so (format 72): the glTF sampler's `minFilter` LINEAR (9729), not a mipmapped one; with mipmaps the Bowl's
+lane reflection (env 8, its normals bevelled at each board's edges) was drawn from a small level, a blur a board wide.
 
 **Texture banks.** Part n of the geometry pack uses part n of the texture pack (empty parts
 aside). Every bank loads at the same GS addresses, so a `TEX0` only means something inside its
