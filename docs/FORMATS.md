@@ -166,7 +166,10 @@ TEX0's TFX 1 (decal) shows the texture as it is. Each program divides the depth 
 others): the bias, 0 or negative mm (the vertex's float under its count; clothes: Paul's trousers -80, shoes -50, belt
 -60), pushes the vertex back by that much in depth only. ALPHA 0x44 blends ordinarily, 0x48 adds Cs x As, 0x89
 multiplies by As (Law's satin: an environment-mapped opaque layer, the same strips x As, then + Cs x As); TCC 0 takes
-the vertex's alpha 0x80.
+the vertex's alpha 0x80. CLAMP_2's WMS / WMT 2 (REGION_CLAMP, most strips) hold a texel coordinate within [MIN, MAX]
+(1, CLAMP: within the texture): a strip of a sheet of pictures (Bryan's hair cards, four in a 128 x 1024 PSMT8 sheet,
+each a quarter of a page) never reads its neighbour's texels at its edges, as a repeat would (the bilinear filter's
+second texel, a seam across his crown); **new** in the pack (format 74): each picture cut through them.
 
 Sections (verified in the executable): the offsets are `[pass][half][k]`, at `0x2C + 0x28·pass + 0x14·half + 4·k`.
 The loader (0x3AF624) relocates all 20. The fighter draw (0x343340, `a1` = pass) draws every section of the pass,
