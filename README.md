@@ -38,7 +38,7 @@ A pack (about 2.2 GB, 15 234 files):
 | `gamedata/` | the fight data: 7 351 moves, cancel lists, hit records, reactions, hurt and push volumes, health, the fight camera, the 33 movesets' aliases | JSON ([docs/GAMEDATA.md](docs/GAMEDATA.md)) |
 | `assets/` | what OpenKumite reads (518 MB, 7 087 files): below | GLB, JSON, WAV, FLAC |
 
-`manifest.json`: `{"pack": "ttt", "format": 77, "source": {"image", "disc": "SLUS-20001", "version": "2.00"}}` and
+`manifest.json`: `{"pack": "ttt", "format": 78, "source": {"image", "disc": "SLUS-20001", "version": "2.00"}}` and
 the index of the files above: `models` (each fighter's `name`, `body`, `moveset`, `file`), `movesets` (the motions
 of each moveset, a fighter's own first) and `own` (how many of them are its own), `anims`, `stages` (each arena's
 `name`, `file`, `people`, `motions`, and `cast`: who stands where), `textures`, `sounds`, `music`, `video` (each
@@ -57,7 +57,7 @@ music, and the front end around it:
 |---|---|---|
 | `manifest.json` | `{"game": "ttt", "format": 8, "fingerprint"}`: the Tekken 3 converter's fingerprint (the same hash of the same canonical forms) over `characters/`, `motions/`, `gamedata/` | |
 | `characters/model_NNN.glb` | the 127 fighters of the roster (body and costume), NNN as `models/`: the main mesh skinned on the 98 nodes every fighter shares, the 18 animated joints named as Tekken 3's, one RGBA picture, no animation | 95 MB |
-| `motions/motion_NNNN.glb` | the 4 231 motions the characters' movesets play, each once: one clip `motion_NNNN`, no mesh; `bowl_NNN.glb` Tekken Bowl's 114 bowler motions (file 128), clips `bowl_NNN` | 82 MB |
+| `motions/motion_NNNN.glb` | the 4 231 motions the characters' movesets play, each once: one clip `motion_NNNN` (extras `angles`: the game's u16 channels), no mesh; `bowl_NNN.glb` Tekken Bowl's 114 bowler motions (file 128), clips `bowl_NNN` | 123 MB |
 | `stages/stage_NN.glb` | the 23 arenas by their number (`stages/index.json`: names): the scenery as a model around the fighters, the floor repeated; `bowl_ball.glb`, `bowl_pin.glb`, `bowl_deck.glb` the bowling hall's ball, pin and pin deck, apart (its object table's) | 44 MB |
 | `gamedata/` | the fight data again (a move's `anim` is its clip), `movesets/motions_NN.json` (the clips of each moveset), `roster.json` (with the front end's tables, `front_end`: the main menu, the select grid, the HUD's pictures and places, the arcade ladder's rules, the unlock schedule, the options); `sound.json` (sound ids -> banks, voices, hit sounds, footsteps, scripts, announcer), `music.json` (the BGM table, each arena's), `rounds.json` (the round flow's frames, start motions, win poses), `bowl.json` (Tekken Bowl: its tables and constants) | 17 MB |
 | `pictures/` | the front end's 252 pictures (title, fonts, faces, name plates, health-bar strips, portraits), named as `textures/`, in the palettes the code draws them with | 5 MB |

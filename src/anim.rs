@@ -182,7 +182,8 @@ pub fn glb(frames: &[Frame]) -> Vec<u8> {
 /// A motion as OpenKumite's clip `name` (`motion_NNNN`; an ending's track `ending_EE_K`; `bowl_NNN`), in a GLB of no
 /// mesh: its channels on the joints by name (the fighters' character glbs have the same), one key a frame at 60 fps;
 /// the rotations as normalised 16-bit integers, as the Tekken 3 converter writes them, and the root's position
-/// (metres) as its translation.
+/// (metres) as its translation; the animation's extras `angles`: an accessor of the frames' 57 channels as the game
+/// keeps them (u16, frame by frame), which the game turns its joints by exactly.
 pub fn clip_glb(name: &str, frames: &[Frame]) -> Vec<u8> {
     clip_glb_with(name, frames, &[])
 }
@@ -250,7 +251,9 @@ pub fn clip_glb_with(name: &str, frames: &[Frame], extra: &[(String, Keys)]) -> 
         channels.push(json!({"sampler": samplers.len() - 1, "target": {"node": at, "path": path}}));
     }
     let all: Vec<usize> = (0..nodes.len()).collect();
-    let clip = json!({"name": name, "samplers": samplers, "channels": channels});
+    let angles: Vec<u8> = frames.as_flattened().iter().flat_map(|v| v.to_le_bytes()).collect();
+    let angles = g.accessor(&angles, glb::U16, "SCALAR", n * CHANNELS);
+    let clip = json!({"name": name, "samplers": samplers, "channels": channels, "extras": {"angles": angles}});
     g.finish(json!({"scene": 0, "scenes": [{"nodes": all}], "nodes": nodes, "animations": [clip]}))
 }
 
@@ -288,6 +291,11 @@ mod tests {
         assert_eq!(chest[0], [0.0, 0.0, 0.0, 1.0]);
         assert!(chest[1].iter().zip([0.0, 0.0, h, h]).all(|(a, b)| (a - b).abs() < 1e-4), "{:?}", chest[1]);
         assert_eq!(a.channels().next().unwrap().sampler().input().count(), 2);
+        // the game's angles, as stored
+        let extras: Value = serde_json::from_str(a.extras().as_ref().unwrap().get()).unwrap();
+        let angles = doc.accessors().nth(extras["angles"].as_u64().unwrap() as usize).unwrap();
+        let read: Vec<u16> = gltf::accessor::Iter::<u16>::new(angles, get).unwrap().collect();
+        assert_eq!(read, f.as_flattened());
     }
 
     #[test]
