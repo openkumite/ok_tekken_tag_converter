@@ -4,6 +4,7 @@ use crate::glb::{self, Glb, M4};
 use crate::{f32le, tex, u16le, u32le};
 use serde_json::{Value, json};
 use std::collections::{BTreeMap, HashMap};
+use std::ops::Range;
 
 pub const SCALE: f64 = 0.001; // game units are millimetres
 /// No model has more nodes (the fighters have 98 to 160): a broken count cannot ask for more work.
@@ -41,6 +42,10 @@ pub struct Draw {
     pub alpha: u8,
     /// CLAMP_2's region repeat masks (WMS / WMT 3: the texels `x & u`, `y & v`; 0: not repeated so)
     pub repeat: [u16; 2],
+    /// CLAMP_2's clamps by axis (u, v): WMS / WMT 1 (CLAMP: the texture's edges, `[0, u16::MAX]`) or 2 (REGION_CLAMP:
+    /// `[MIN, MAX]`): the GS reads a texel past them at the edge, never repeats it (hair cards cut from a sheet of them
+    /// would take their neighbour's texels)
+    pub clamp: [Option<[u16; 2]>; 2],
     /// The ALPHA qword's top word not 0: 0x3438B8 and VU0 program 0x186: an environment map (its texture
     /// coordinates from the normal and the way to the eye, the colour 128)
     pub env: bool,
@@ -225,10 +230,16 @@ pub fn parse(c: &[u8]) -> Option<Model> {
                 let clamp = u32le(c, o + 32)? as u64 | (u32le(c, o + 36)? as u64) << 32;
                 let own = [u32le(c, o + 40)?, u32le(c, o + 44)?];
                 let mask = |wm: u64, m: u64| if wm & 3 == 3 { (m & 0x3ff) as u16 } else { 0 };
+                let range = |wm: u64, lo: u64, hi: u64| match wm & 3 {
+                    1 => Some([0, u16::MAX]),
+                    2 => Some([(lo & 0x3ff) as u16, (hi & 0x3ff) as u16]),
+                    _ => None,
+                };
                 let spec = |w: u32, alone| Some((f32::from_bits(w), w as u8, alone));
                 draw = Draw {
                     alpha: *c.get(o + 16)?,
                     repeat: [mask(clamp, clamp >> 4), mask(clamp >> 2, clamp >> 24)],
+                    clamp: [range(clamp, clamp >> 4, clamp >> 14), range(clamp >> 2, clamp >> 24, clamp >> 34)],
                     env: u32le(c, o + 28)? != 0,
                     spec: if own[0] != 0 {
                         spec(own[0], false)
@@ -420,15 +431,16 @@ impl Model {
         let strips: Vec<&Strip> = self.sections.iter().flatten().collect();
         // each texture in its palette once: (TEX0's texture, size and palette pointers, blended) -> picture (width,
         // height, pixels, how far its strips reach: low x, y, high x, y), the picture's part of TW x TH
-        let (mut pics, mut pic_of, mut alts) = (vec![], BTreeMap::new(), vec![]);
+        let (mut pics, mut pic_of, mut alts, mut clamps) = (vec![], BTreeMap::new(), vec![], vec![]);
         // each strip's picture (none: the white one), its coordinates in pictures, moved by whole pictures to
-        // start in the first one (the GS repeats a texture)
+        // start in the first one where the GS repeats the texture
         let mut placed = vec![];
         for s in &strips {
             let t = tex::tex0(s.tex0);
             // (TCC 0: the vertex's alpha, 0x80, for every texel)
             let (alpha, env) = (s.blend && t.alpha, s.draw.env);
-            let key = (s.tex0 & 0x000f_ffe3_ffff_ffff, alpha, env.then_some(s.draw.repeat));
+            let clamp = if env { [None; 2] } else { s.draw.clamp };
+            let key = (s.tex0 & 0x000f_ffe3_ffff_ffff, alpha, env.then_some(s.draw.repeat), clamp);
             let pic = *pic_of.entry(key).or_insert_with(|| {
                 let (w, h, px) = tex::image(ups, &t, alpha).filter(|p| p.0 > 0 && p.1 > 0)?;
                 if env {
@@ -441,17 +453,21 @@ impl Model {
                         px.get(at(k % t.tw, k / t.tw)..).and_then(|p| p.first_chunk::<4>()).copied().unwrap_or([0; 4])
                     });
                     alts.push(None);
+                    clamps.push(clamp);
                     pics.push((t.tw, t.th, px.collect(), [0.0, 0.0, 1.0, 1.0]));
                     return Some((pics.len() - 1, [0.0; 2]));
                 }
                 alts.push(tex::image(alt, &t, alpha).filter(|a| (a.0, a.1) == (w, h) && a.2 != px).map(|a| a.2));
+                clamps.push(clamp);
                 pics.push((w, h, px, [f32::MAX, f32::MAX, 0.0, 0.0]));
                 Some((pics.len() - 1, [t.tw as f32 / w as f32, t.th as f32 / h as f32]))
             });
             let k = pic.map_or([0.; 2], |p| p.1);
             let st: Vec<[f32; 2]> = s.verts.iter().map(|v| [v.0[0] * k[0], v.0[1] * k[1]]).collect();
             let axis = |a: usize| st.iter().filter_map(move |c| c.get(a).copied());
-            let off = [0, 1].map(|a| axis(a).fold(f32::MAX, f32::min).floor());
+            let off = [0, 1].map(|a| {
+                if clamp.get(a).is_some_and(Option::is_some) { 0.0 } else { axis(a).fold(f32::MAX, f32::min).floor() }
+            });
             if let Some((.., r)) = pic.filter(|_| !env).and_then(|p| pics.get_mut(p.0)) {
                 for [u, v] in st.iter().map(|c| [c[0] - off[0], c[1] - off[1]]) {
                     *r = [r[0].min(u), r[1].min(v), r[2].max(u), r[3].max(v)];
@@ -460,6 +476,7 @@ impl Model {
             placed.push((pic.map(|p| p.0), off, st));
         }
         pics.push((1, 1, vec![255; 4], [0.0, 0.0, 1.0, 1.0]));
+        clamps.push([None; 2]);
         // each picture cut to the texels its strips reach, repeated as far as they do (to REACH texels at most):
         // (the texels across, down)
         let span = |lo: f32, hi: f32, n: usize| {
@@ -467,14 +484,14 @@ impl Model {
             a..((hi * n as f32).ceil() as usize).clamp(a + 1, a + REACH.max(n))
         };
         let cuts: Vec<_> = pics.iter().map(|(w, h, _, r)| (span(r[0], r[2], *w), span(r[1], r[3], *h))).collect();
-        let mut cut: Vec<(usize, usize, Vec<u8>)> = (pics.iter().zip(&cuts))
-            .map(|((w, h, px, _), (x, y))| (x.len(), y.len(), tex::cut(*w, *h, px, x.clone(), y.clone())))
+        let mut cut: Vec<(usize, usize, Vec<u8>)> = (pics.iter().zip(&cuts).zip(&clamps))
+            .map(|(((w, h, px, _), (x, y)), c)| (x.len(), y.len(), clamped_cut(*w, *h, px, x.clone(), y.clone(), *c)))
             .collect();
         // the texels `alt` changes in a picture: their rectangle (x, y, w, h in the cut) as a picture of its own
         let mut marks = vec![];
         for (i, a) in alts.iter().enumerate().filter_map(|(i, a)| Some((i, a.as_ref()?))) {
             let (&(w, h, ..), (cx, cy), (cw, _, px)) = (pics.get(i)?, cuts.get(i)?, cut.get(i)?);
-            let (cw, other) = (*cw, tex::cut(w, h, a, cx.clone(), cy.clone()));
+            let (cw, other) = (*cw, clamped_cut(w, h, a, cx.clone(), cy.clone(), *clamps.get(i)?));
             let diff: Vec<(usize, usize)> = (0..px.len() / 4)
                 .filter(|&k| px.get(4 * k..4 * k + 4) != other.get(4 * k..4 * k + 4))
                 .map(|k| (k % cw, k / cw))
@@ -649,6 +666,30 @@ impl Model {
 
 /// A vertex in the bind pose from its influences (`world`: the nodes' bind matrices): its position (metres) and
 /// normal, and its joints (`joint`: a node's) and weights, the weights summing to one.
+/// The texels `x` x `y` of a `w` x `h` RGBA picture as CLAMP_2 reads them: on an axis with a clamp ([`Draw::clamp`])
+/// held within it and the picture, else repeated (as [`tex::cut`]).
+fn clamped_cut(
+    w: usize,
+    h: usize,
+    px: &[u8],
+    x: Range<usize>,
+    y: Range<usize>,
+    clamp: [Option<[u16; 2]>; 2],
+) -> Vec<u8> {
+    let at = |i: usize, n: usize, c: Option<[u16; 2]>| match c {
+        Some([lo, hi]) => i.min(usize::from(hi)).max(usize::from(lo)).min(n.saturating_sub(1)),
+        None => i % n.max(1),
+    };
+    let mut out = Vec::with_capacity(x.len() * y.len() * 4);
+    for y in y {
+        let row = at(y, h, clamp[1]) * w;
+        for x in x.clone() {
+            out.extend(px.get((row + at(x, w, clamp[0])) * 4..).and_then(|p| p.first_chunk::<4>()).unwrap_or(&[0; 4]));
+        }
+    }
+    out
+}
+
 fn skin_vertex(world: &[M4], inf: &[Inf], joint: impl Fn(usize) -> u16) -> ([f32; 3], [f32; 3], [u16; 4], [f32; 4]) {
     let (mut p, mut n) = ([0f64; 3], [0f64; 3]);
     let (mut j, mut w) = ([0u16; 4], [0f32; 4]);
@@ -746,6 +787,14 @@ mod tests {
         assert_eq!(d.light(0), 2);
         assert_eq!(Draw { env: false, ..d }.light(0), 3);
         assert_eq!(Draw::default().light(1 << 35), 1);
+        assert_eq!(d.clamp, [None; 2]);
+        // CLAMP_2 a region clamp across (MINU 4, MAXU 63) and a clamp down (Bryan's hair cards: a sheet of them)
+        c[at + 32..at + 36].copy_from_slice(&(2u32 | 1 << 2 | 4 << 4 | 63 << 14).to_le_bytes());
+        assert_eq!(parse(&c).unwrap().sections[0][0].draw.clamp, [Some([4, 63]), Some([0, u16::MAX])]);
+        // read through them: held at the region's and the picture's edges, never repeated
+        let px: Vec<u8> = (0..4 * 2).flat_map(|k| [k as u8, 0, 0, 255]).collect();
+        let cut = clamped_cut(4, 2, &px, 0..6, 1..3, [Some([1, 2]), Some([0, u16::MAX])]);
+        assert_eq!(cut.iter().step_by(4).copied().collect::<Vec<_>>(), [5, 5, 6, 6, 6, 6, 5, 5, 6, 6, 6, 6]);
     }
 
     #[test]

@@ -84,8 +84,8 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 /// DUMMY's `icons`; 64: front_end `survival_results`; 67: an arena's pictures kept apart by TEX0's TCC; 68: the endings' face track in the body clips;
 /// 70: the characters' effect sheets magnified bilinearly; 71: the fighters' face poses, `characters/face_NNN.glb`
 /// and movesets/index.json `face`; 72: the arenas' textures bilinear without mipmaps, as their TEX1 draws them; 73:
-/// front_end `select.models.heights`).
-pub const FORMAT: i64 = 73;
+/// front_end `select.models.heights`; 74: the fighters' pictures cut through CLAMP_2's clamps).
+pub const FORMAT: i64 = 74;
 /// What a pack's manifest names it.
 pub const KIND: &str = "ttt";
 
