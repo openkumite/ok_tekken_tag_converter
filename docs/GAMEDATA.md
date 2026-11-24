@@ -423,7 +423,7 @@ drawn at every level; the floor's count of levels, level 0's included); scene ex
 cell `cell` times `corner`, table 0x521700 +0xC), past `limits[k]` level k + 2 if the floor has it (from the last
 down), else level 1. The floor is laid as the game lays it (0x341218), when its floors' cells are one size and
 tile: node `floor` holds a window of `window` cells (table 0x521700 +0, +2) with no `floor_period`: cell (j, i), a
-node `floor_K` at ((N / 2 - j) x width, (i - M / 2) x depth) (**new** (format 43) x mirrored, as a fight's save state has its cells), shows cell (j mod n, i mod m) of each floor of n x m
+node `floor_K` at ((j - N / 2) x width, (i - M / 2) x depth) (**new** (format 82) no longer x mirrored: the ground's pictures run on across the cells, as a GS dump of arena 10 has them), shows cell (j mod n, i mod m) of each floor of n x m
 cells (**new** (format 42) a mesh `floor_cell_K` each, centred on its node, shared by the cells that show the same:
 the stage files no bigger than before); the
 engine moves each cell by whole windows into the window starting at the fight's cell, and draws none further than
