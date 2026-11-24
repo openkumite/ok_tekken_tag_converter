@@ -51,14 +51,24 @@ with the base copy at +0xB0 / +0xE0 by a distance weight (0x352F50 with 0x4550B0
 the GS modulating the texture by it (128 = 1, saturating at 255), is read in the data, not in the microcode [M].
 In an ending the block is not refilled from 0x416288: 0x353E60, as the arena loads, copies the scenes' light table's
 entry **0x455170 + 0x80 x arena** (+0x10, +0x20, +0x30 the directions, +0x40, +0x50, +0x60 the colours, +0x70 the
-ambient, four floats a vector) into it, and that stays (PCSX2: the block in ending 20 on arena 5 and ending 1 on
-arena 6 is that entry; arena 5's: yellow, orange and green-blue lights) [H]. Not exported: lit so by OpenKumite's
-three lights the actors come out far greener than PCSX2 shows them, so how the VU program uses the block is still open.
+ambient, four floats a vector) into it, and into the base copy +0x90.. / +0xC0.. / +0xF0 that the draw refreshes
+the block's lights 0, 1 and ambient from each frame (PCSX2: the block in ending 20 on arena 5 and ending 1 on
+arena 6 is that entry; arena 5's: yellow, orange and green-blue lights) [H]. The entry is used as a fight's: towards
+each light, the arenas' axes, 128 = 1 (PCSX2, ending 20, the entry written before the scene loads: all colours 0
+leaves Bryan black, the ambient alone 128 his plain texture, light 0 alone lights him from its side) [H]. Light 2 is
+not the entry's as it stands: each frame 0x353448 (gp-0x74D0 not 5: fights and scenes) blends it towards the head's
+facing (node 6, player +0x1230: its row 0, (1, 0, 0) tilted by gp-0x7A00 = -0.03 rad) and its colour towards a grey by
+character (0x4550C0 + 4 x player +0x2A, 128 = 1: Bryan 10, Lei 50), by w = max(0, 1 - d / 6000) (d the eye's
+(0x415808 +0x14, y and z negated) distance to the head, mm; 0x352F50 with 0x4550B0 / 0x4550B4) times 1, or
+1 - (c - pi/4) / (1 - pi/4) when the facing's dot c with light 0 is past pi/4 (gp-0x79FC, gp-0x79F8); the direction
+is not normalised again (PCSX2: Lei's light 2 at 0.65 of her grey 50 in a close-up) [H]. That is why the entry's
+green-blue light 2 hardly shows on Bryan's close-ups (his grey: 10). Exported (format 80): stages.json
+`scene_lights` (the entry, as `lights`) and `fill` (the 34 greys).
 
 Exported: `gamedata/shadows.json` (part 8 as the Tekken 3 converter's shadow meshes), `gamedata/stages.json` (each
 arena's shadow: light 0's direction, the alpha; since format 13 its `lights`, the table as it stands). Not: the
-shadow on objects, light 2's turn towards a place, the negated lights, the
-picture's 256-texel softness.
+shadow on objects, light 2's turn towards the face in a fight (in a scene: `scene_lights`, `fill`), the negated
+lights, the picture's 256-texel softness.
 
 ## 3. Effect files 4-9 (loaded at boot, 0x3B96C0; 0x345410 keeps their parts) [H]
 
@@ -325,6 +335,13 @@ Searched again (format 32) [H]:
   EMBU's op 7 (0x3A7FA8(a, b)) starts task 0x3A7EB0: channel a plays list b of table 0x519B00 (0x519990, 0x5199A8,
   0x5199C0, 0x5199D8, 0x5199F0, 0x519A08, 0x519A20, 0x519A68, 0x519AB0), the same way, without the lights.
   Exported (format 60): stages.json `weather.lightning`.
+- **Arena 4's sky glow** [H] (read 2026-11-24): channels 0-3 are the pictures of four bands of the sky (a quarter
+  each, 73-108 m up) drawn with ALPHA 0x89 (Cd x As) and TCC 1; their palettes' alpha equals their grey, 0x80 (x 1)
+  to 0xFC (x 1.97): frame 0 brightens the clouds behind it, frame 1 (all 0x80) leaves them. The pictures as the
+  arena loads them are every channel's frame 0 (the converter's uploads, compared). A fight holds 0-3 on frame 1
+  (cleared) and flashes frame 0 with a bolt; the EMBU arms no channel (PCSX2: records 0x8C9D30 all 0), so its sky
+  keeps the glow, brighter upper-left (EMBU counters 100-125). Exported (format 80): those materials' extras
+  `gs_alpha`, their pictures' alpha the GS's (before, it was doubled and clamped at 255, x 1 at most).
   rows' +0x30 / +0x34 of table 0x520FC0) moves matrices only; no UV scroll or palette cycling in a fight. Paul's
   train's routine 0x3D5998 only sets the pad's rumble and the train's sound by its distance (0x3758F0).
 - **The particles' depth**: arena effects (flag 4) are drawn only behind the farther fighter (0x346830 passes

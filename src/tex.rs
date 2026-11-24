@@ -149,16 +149,36 @@ pub fn tex0(t: u64) -> Tex0 {
 
 /// Colour `i` of a palette (or of a direct-colour image): PSMCT32 (alpha 0x80 = opaque) or PSMCT16.
 fn colour(c: &Upload, i: usize) -> [u8; 4] {
+    let [r, g, b, a] = gs_colour(c, i);
+    [r, g, b, if c.psm == 2 { a } else { (a as u32 * 2).min(255) as u8 }]
+}
+
+/// [`colour`] with a PSMCT32 alpha as the GS has it (0x80 = 1; up to 0xFF, nearly 2 as a blend's As).
+fn gs_colour(c: &Upload, i: usize) -> [u8; 4] {
     if c.psm == 2 {
         return u16le(&c.data, i * 2).map_or([0; 4], rgba16);
     }
-    let rgba = c.data.get(i * 4..).and_then(|b| b.first_chunk::<4>());
-    rgba.map_or([0; 4], |&[r, g, b, a]| [r, g, b, (a as u32 * 2).min(255) as u8])
+    c.data.get(i * 4..).and_then(|b| b.first_chunk::<4>()).copied().unwrap_or([0; 4])
 }
 
 /// The RGBA image a TEX0 selects from the uploads: (width, height, pixels). Indexed formats only
 /// (PSMT8 0x13, PSMT4 0x14), textures starting on a page boundary of an upload.
 pub fn image(ups: &[Upload], t: &Tex0, alpha: bool) -> Option<(usize, usize, Vec<u8>)> {
+    image_as(ups, t, alpha, colour)
+}
+
+/// [`image`] with its alpha as the GS has it ([`gs_colour`]): a picture a blend multiplies the frame by (ALPHA 0x89,
+/// Cd x As).
+pub fn gs_image(ups: &[Upload], t: &Tex0) -> Option<(usize, usize, Vec<u8>)> {
+    image_as(ups, t, true, gs_colour)
+}
+
+fn image_as(
+    ups: &[Upload],
+    t: &Tex0,
+    alpha: bool,
+    colour: fn(&Upload, usize) -> [u8; 4],
+) -> Option<(usize, usize, Vec<u8>)> {
     // (the GS draws no texture larger: a register of a broken file cannot ask for more)
     if t.tw > 1024 || t.th > 1024 {
         return None;
@@ -380,10 +400,11 @@ mod tests {
 
     #[test]
     fn uploads_image_and_pictures() {
-        // a 16 x 16 PSMT4 image of colour 1, then its 16-colour palette (8 x 2, PSMCT32) whose colour 1 is red
+        // a 16 x 16 PSMT4 image of colour 1, then its 16-colour palette (8 x 2, PSMCT32) whose colour 1 is red (alpha
+        // 0xFC: opaque, or ~2 as the GS blends with it)
         let mut d = gif(0x100, 0x14, 16, 16, &[0x11; 128]);
         let mut clut = vec![0u8; 64];
-        clut[4..8].copy_from_slice(&[255, 0, 0, 0x80]);
+        clut[4..8].copy_from_slice(&[255, 0, 0, 0xFC]);
         d.extend(gif(0x200, 0, 8, 2, &clut));
         let ups = uploads(&d);
         assert_eq!(ups.len(), 2);
@@ -399,6 +420,8 @@ mod tests {
         let (w, h, px) = image(&ups, &t, false).unwrap();
         assert_eq!((w, h, &px[..4], px.len()), (16, 16, &[255, 0, 0, 255][..], 1024));
         assert!(std::str::from_utf8(&png(w, h, &px)[1..4]).is_ok_and(|s| s == "PNG"));
+        assert_eq!(&image(&ups, &t, true).unwrap().2[..4], &[255, 0, 0, 255]);
+        assert_eq!(&gs_image(&ups, &t).unwrap().2[..4], &[255, 0, 0, 0xFC]);
         // no such texture; a size no texture has
         assert!(image(&ups, &tex0(0x300 | 0x14 << 20 | 4 << 26 | 4 << 30 | 0x200 << 37), false).is_none());
         assert!(image(&ups, &tex0(0x100 | 0x14 << 20 | 15 << 26 | 15 << 30 | 0x200 << 37), false).is_none());

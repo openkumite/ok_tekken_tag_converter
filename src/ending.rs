@@ -183,7 +183,8 @@ fn hand(t: &[u8], b: bool) -> Vec<(String, anim::Keys)> {
 /// place under the head) replace its scale and place. The eyes (13, 14) take their turn and their rows' scale (t3, t4;
 /// the VU0 code's blend with the last frame is at weight 1 in a scene).
 // shortcut: node 14's place from t3 times the fighter's eye vector (0x46AFD0 + 16 x +0x20, set as the eyes aim) is
-// left at its bind place; node 13's rows scale in its parent's axes (0x34A9F0), taken in its own.
+// left at its bind place; node 13's rows scale in its parent's axes (0x34A9F0), taken in its own. Neither shows in
+// Angel's close-up (ending 14, frame 750) against PCSX2; upgrade if an eye is seen off.
 pub fn face(t: &[u8]) -> Vec<(String, anim::Keys)> {
     if u16le(t, 2) != Some(33) {
         return vec![];
