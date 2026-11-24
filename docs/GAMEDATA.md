@@ -403,8 +403,12 @@ with their texture's alpha; each primitive has its own vertices. No animation.
 **A motion** has no mesh: nodes named as the joints and their twist copies, and one animation `motion_NNNN`, a key
 a frame at 60 fps: each joint's rotation (normalised 16-bit integers, as the Tekken 3 converter writes them; a twist
 copy takes its joint's) and the root's position in metres (`translation` of `root`: its absolute height, and its
-heading and distance as x and z, forward being -z), which replaces the root's own. Moves that share a motion share
-its file. Motions are stored once (80 MB): a file per moveset with every motion it plays would be 869 MB.
+heading and distance as x and z, forward being -z), which replaces the root's own. **New** (format 78) the
+animation's extras `angles`: an accessor (u16, SCALAR) of the frames' 57 channels as decoded (the root's heading,
+height and distance, then each joint's x, y, z, 65536 a turn), which the game turns the joints by (0x34ED90 ->
+0x3986D8: x and y negated, each angle's top 12 bits, Rz x Ry x Rx on its 4096 sine table 0x4FCE88). Moves that share
+a motion share its file. Motions are stored once (120 MB): a file per moveset with every motion it plays would be
+869 MB.
 
 **A stage** is laid out as the arcade converter's `write_game`: node `sky` is the scenery, which the game keeps
 centred on the fighters (scene extras `drum: "model"`, `drum_cull: false`: the strips' winding is not stored, both
