@@ -483,6 +483,10 @@ fn openkumite(pack: &Hashed) {
     let lens: Vec<usize> =
         chars["663"]["special"].as_array().unwrap().iter().map(|s| s.as_array().unwrap().len()).collect();
     assert_eq!(lens, [15, 8, 8]);
+    // (format 77) Unknown's aura: four particles of her special slots on the wolf's nodes, none for the others
+    let aura = chars["693"]["aura"].as_array().unwrap();
+    assert_eq!((aura.len(), &aura[3]["slot"], &aura[3]["points"][0][0]), (4, &2.into(), &98.into()));
+    assert!(chars["351"]["aura"].is_null());
     sound(&load, count("audio/sfx"), count("audio/music"));
     let rules = load("gamedata/rules.json");
     assert_eq!((&rules["dialect"], &rules["hurt_spheres"]["layout"][8]["gltf_joint"]), (&"ttt".into(), &"head".into()));
@@ -640,7 +644,8 @@ fn front_end(pack: &Hashed) {
         (&models["camera"]["h"], &models["places"][0], &models["motions"][7]),
         (&850.into(), &serde_json::json!([400, 112, 0, 0xE800]), &serde_json::json!(["motion_6459", "motion_6490"]))
     );
-    for m in models["motions"].as_array().unwrap().iter().flat_map(|m| m.as_array().unwrap()) {
+    // (null for Mokujin, who copies another)
+    for m in models["motions"].as_array().unwrap().iter().filter_map(|m| m.as_array()).flatten() {
         assert!(pack.exists(&format!("assets/motions/{}.glb", m.as_str().unwrap())), "{m}");
     }
     fn pictures<'a>(v: &'a serde_json::Value, out: &mut Vec<&'a str>) {

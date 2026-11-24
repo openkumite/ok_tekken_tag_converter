@@ -625,14 +625,37 @@ pub fn character(elf: &[u8], selection: usize, body: usize, part: &[u8]) -> Opti
         .collect();
     let special: Vec<Vec<usize>> =
         extra.iter().zip(firsts.iter().skip(mine.len())).map(|(s, &f)| (f..f + s.len()).collect()).collect();
-    let json = json!({
+    let mut json = json!({
         "light": light,
         "light_frames": 54,
         "sheet": {"cols": COLS, "rows": rows, "cell": cell},
         "burst": {"cell": 0, "size": 1.0, "level": round(level / 128.0), "blend": if add { "add" } else { "alpha" }, "random": false, "paths": paths},
         "special": special,
     });
+    if let Some(o) = json.as_object_mut().filter(|_| body == 33) {
+        o.insert("aura".into(), aura());
+    }
     Some((png, json))
+}
+
+/// Unknown's aura (0x3A5FA0, a fight's set-up, for each side with Unknown): four particles of her special slots, drawn
+/// while she is (+0x127), added at FIX `level` x 128, their cell on by one each `every` frames round the slot's 24
+/// (from a random one when `random`), `nearer` (metres, +0x4C) toward the eye; each at the mean of its `points`:
+/// [node, metres along the node's x]. 0x34CC38 keeps three points of the wolf as it poses it (0x34CA70, table
+/// 0x51EA60; 0x34CB88 reads them at 0x1FAC760 + 0x30 x fighter): its root, and its hips' two nodes x (300, 0, 0)
+/// (0x51EAF0); read in PCSX2 against the nodes' places (+0xDB0 + 0xC0 k): nodes 98, 112 and 113 of her skeleton.
+/// 0x3A5910: slot 1, between points 1 and 2, +0x54 0.4, +0x44 160; 0x3A5B78 (two): slot 0, point 1 or 2, 0.5, 128,
+/// from rand() % 24, a cell a frame; 0x3A5D98: slot 2, point 0, 1.4, 128, bias 200. The quad is a particle's: 0x90
+/// 0x400 x +0x54 over the 0x48 of 400 (`QUAD`'s, through the hits' projection).
+fn aura() -> Value {
+    let size = |s: f64| (s * 1024.0 / 400.0 * HIT_QUAD * 10000.0).round() / 10000.0;
+    let (root, a, b) = (json!([98, 0.0]), json!([112, 0.3]), json!([113, 0.3]));
+    json!([
+        {"slot": 1, "points": [a, b], "size": size(0.4), "level": 1.25, "nearer": 0.1, "every": 2, "random": false},
+        {"slot": 0, "points": [a], "size": size(0.5), "level": 1.0, "nearer": 0.1, "every": 1, "random": true},
+        {"slot": 0, "points": [b], "size": size(0.5), "level": 1.0, "nearer": 0.1, "every": 1, "random": true},
+        {"slot": 2, "points": [root], "size": size(1.4), "level": 1.0, "nearer": 0.2, "every": 2, "random": false},
+    ])
 }
 
 #[cfg(test)]

@@ -170,6 +170,14 @@ YOU WIN! (157, 360) colour 2 or YOU LOSE (152, 360) colour 12; two humans: the w
 printf (0x3C6C60): %H the left x, %V the foot (the glyphs' top 20 above, whatever the size), %S the size; the chrome
 font's advances at size 10 are table 0x51FF08 by glyph, an A is drawn 6 x size / 10 further left (0x3C69D8).
 
+**Its depth** (read 2026-11-24 in a GS dump of an arcade fight): the bars, plates, lamps, timer and top row are
+sprites of context 2 at Z gp-0x69C0 (0x3CDAD0) with TEST 0x5000D (ZTST GEQUAL; the streaks' 0x71001: GREATER) and
+ZBUF_2's depth writes, drawn after the fighters and their effects. In a fight 0x3C0098 sets that Z each frame to the
+hits' projection (0x433440) of the farther fighter's depth (player +0x620) plus 1000 mm: whatever lies nearer, a
+fighter's wings, Ogre's plume, True Ogre's fire, covers them (PCSX2: 2930 for fighters at 4565 mm, z 3350-3800;
+the bars over Ogre's far horn). The round's texts (READY, K.O.) are drawn over everything. The menus set it near
+0xFFFFF (0x354EB8, 0x355DE0: in front of everything).
+
 Counter-hit text and combo counters were not found in the fight HUD (practice has COMBO DISPLAY). [M]
 
 ## 5. Arcade (modes 0, 3, 5)
