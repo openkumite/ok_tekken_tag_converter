@@ -83,8 +83,9 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 /// `select.quick.faces.frame` and `names`, `command_buttons_lit.png`, `ranking.arena`, `003_110_p84.png`, TRAINING
 /// DUMMY's `icons`; 64: front_end `survival_results`; 67: an arena's pictures kept apart by TEX0's TCC; 68: the endings' face track in the body clips;
 /// 70: the characters' effect sheets magnified bilinearly; 71: the fighters' face poses, `characters/face_NNN.glb`
-/// and movesets/index.json `face`; 72: the arenas' textures bilinear without mipmaps, as their TEX1 draws them).
-pub const FORMAT: i64 = 72;
+/// and movesets/index.json `face`; 72: the arenas' textures bilinear without mipmaps, as their TEX1 draws them; 73:
+/// front_end `select.models.heights`).
+pub const FORMAT: i64 = 73;
 /// What a pack's manifest names it.
 pub const KIND: &str = "ttt";
 
