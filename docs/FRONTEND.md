@@ -584,7 +584,10 @@ partner (896, 512) yaw 0xE000, 2P's (-960, 512) yaw 0x2000; mode 5 (1 ON 1 arcad
 (-720, 128) for slots 0 and 1. The struct's y is the table's less the body's height by character (+0x2A) from
 **0x437DE8** (34 s16: Paul 80, Xiaoyu 110, Nina 120, Kuma 160, Ogre -50, Ganryu 180, ...; 0x3AF1EC): the table's y
 112 / 80 gave 2 and -40 for Xiaoyu and Nina, 32 for Paul, -48 for True Ogre, -80 for Kuma as partner, -100 for Ganryu
-(PCSX2); the drawn root (+0x520) is it less the motion's root height. The x, z and yaw are the table's whoever stands
+(PCSX2); the drawn root (+0x520) is it less the motion's root height (times the model's motion scale +0x500). On the
+select (screen 5) 0x34EF20 scales the body's root matrix +0x508 about the root by the character's **0x437DA0** (34
+s16, 4096 = 1, 0x3AE6C0: Paul 4352, King 4080, Kuma and True Ogre 2992, Ogre, Gun Jack, Jack-2 3808, P.Jack 3536,
+...; read in PCSX2: Kuma's matrix rows 2992 long, its root unscaled). The x, z and yaw are the table's whoever stands
 there: two big ones, or a pick's swing, go into each other on the PS2 (seen: Paul and Paul, Jack-2 and True Ogre).
 The select's view (0x3AEA30 -> 0x3AE170 -> 0x3ADFF0, read in PCSX2 at 0x433400): the eye (0, 1152, -4608) in the
 drawing's axes (x, -y, -z), pitched 0x80 up, H x 1.25 = 1062.5 for x and y on the 640 x 448 screen. 0x3AEA40 steps the
@@ -592,7 +595,11 @@ motion: at its end alias 3 goes to alias 0 (0x363068(f, 5))
 and alias 0 starts again. Aliases 0 and 3 are each moveset's select stance and pick pose (Xiaoyu: moves 6459, 110
 frames, and 6490, 86). A side shows its picks and the character under its cursor, the last two; none while the cursor
 is on a character it took (seen). `select.models`: `camera`, `places`, `places_one_on_one`, `one_on_one_mode`,
-`light`, `heights` (format 73: by character id, 0x437DE8), `motions` (by character id: the two clips).
+`light`, `heights` (format 73: by character id, 0x437DE8), `scales` (format 75: by character id, 0x437DA0, 4096 = 1),
+`motions` (by character id: the two clips; the PS2 plays these moves, read in PCSX2: Paul 6452, Xiaoyu 6459, Kuma
+6463), `ops` (format 75: by character id, the two moves' timed ops `[frame, op, arg]`: 0x3AEA40 sets +0x127 and steps
+them with 0x372BD0 as a fight does, so the hands and the face follow them; the stances' op 0x11 1 closes both hands
+to the character's pose 17 in a frame, read in PCSX2 at +0x806C).
 
 A cursor move: sound 3; a pick: sound 4, the last sound 5; cancel: sound 3. The PS2 starts 1P's cursor on Xiaoyu
 (seen; gp-0x6248). After the last pick 90 frames (gp-0x624C), counted only while 0x3AF448 says the models are in
