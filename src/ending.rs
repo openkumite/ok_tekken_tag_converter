@@ -182,9 +182,11 @@ fn hand(t: &[u8], b: bool) -> Vec<(String, anim::Keys)> {
 /// 4096 a row of the node's bind turn) and an offset (0x3DD890: s16 x fighter +0x500, 4096, / 40960 mm, the node's
 /// place under the head) replace its scale and place. The eyes (13, 14) take their turn and their rows' scale (t3, t4;
 /// the VU0 code's blend with the last frame is at weight 1 in a scene).
-// shortcut: node 14's place from t3 times the fighter's eye vector (0x46AFD0 + 16 x +0x20, set as the eyes aim) is
-// left at its bind place; node 13's rows scale in its parent's axes (0x34A9F0), taken in its own. Neither shows in
-// Angel's close-up (ending 14, frame 750) against PCSX2; upgrade if an eye is seen off.
+// Node 14's place is t3 times the fighter's eye vector (0x46AFD0 + 16 x +0x20: node 14's own bind place, stored by
+// 0x347844 at load), and node 13's rows scale in its parent's axes (0x34A9F0). Every ending's and EMBU's t3 and t4
+// are 4096, so both are the bind's there, as exported.
+// shortcut: the fight's face poses of Julia (models 480-489) and Lee (630-636) scale node 13's z (0.87, 1.3): there
+// node 14 keeps its bind place and 13 scales in its own axes; upgrade if their eyes are seen off in a fight.
 pub fn face(t: &[u8]) -> Vec<(String, anim::Keys)> {
     if u16le(t, 2) != Some(33) {
         return vec![];
