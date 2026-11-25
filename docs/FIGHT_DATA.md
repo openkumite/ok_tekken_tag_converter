@@ -1223,14 +1223,24 @@ node): it changes only what is drawn, never the bone slots (+0x630) the strikes 
 - On (fp): player +0xB132 (set by the fighter's setup at 0x3731D0, cleared by the scene setups 0x3AEB34 /
   0x3B53DC), the round machine gp-0x7268 at 1 or 2 (0x36E160: the fight and the K.O. time), the move's +0x24 bit 22
   (the engine's dialect maps it to Tekken 3's bit 30) and, for an attack (+0x2C != 0), frame >= max(+0x2D, +0x18 -
-  17). Off: the easing is 1 (0x352238) and there is no branch around the writes, so the neck and head are still
-  written every frame, aimed at once at the point (1000, 0, 80) of the motion's node 6 frame (turning on starts where
-  the face looks); only the eyes keep the motion's (0x352A54 / 0x352BFC skip their aim). gp-0x7210 / gp-0x720C /
-  0x3A9698 freeze the angles (the saved ones are written).
-- Neck: aimed from its base rotation (0x349EE0 of 90°, 90°, 0: x→y, y→z, z→x, the model's rest) with its origin
-  raised by eye A's height (z in the neck's frame): yaw = atan2(d.y, d.x), pitch = atan2(-d.z, |d.xy|); new local
-  rotation Rx(yaw) · Rz(pitch) · base (sceVu0 RotMatrixZ 0x34AB68, Y 0x34ACB8, X 0x34AC10, left-multiplied), the
-  motion's offset kept. The head the same from the turned neck: local Rz(yaw) · Ry(pitch) (0x349D70 of 0, pitch,
+  17). Off: the easing is 1 (0x352238) and the angles are aimed at once at the point (1000, 0, 80) of node 6's
+  frame (so turning on starts where the face looks), but the copy-back of the neck, head and eyes (worlds and
+  locals +0x8910 / +0x8950 / +0x8D10 / +0x8D50, 0x352DA4..0x352E94) runs only while on (`beqz fp` at 0x352D9C):
+  off, the pose solver's neck and head are drawn (below). gp-0x7210 / gp-0x720C / 0x3A9698 freeze the angles (the
+  saved ones are written).
+- Before the look: the drawing's node pass (jump table 0x522DF0, node → slot 0x437E70) gives node 5 slot 2's turn
+  (0x34A3B8, rotation only) and node 6 its bind (0, 0, 0); then the pose solver 0x347E28 (called at 0x347B70, before
+  the world matrices) splits it (0x3480A0..0x3484B0): the neck's local over its base B (0x349D70 of 90°, 0, 90°),
+  M = B^-1 · L5, is taken as Rz(c) · Ry(b) · Rx(a) (a = atan2(m21, m22), b = atan2(-m20, |m00, m10|), c =
+  atan2(m10, m00); of it and the other solution (a ± 180°, 180° - b, c ± 180°) the one with the smaller 8|a| + |b| +
+  |c|, each wrapped to ±180° by 0x34A570; |sin b| within 1e-5 of 1 takes the gimbal branch), the neck becomes
+  B · Rz(0.4 c) · Ry(0.6 b) · Rx(0.2 a) (gp-0x7990 / 0x7994 / 0x7998) and the head node5'^-1 · L5, so the head
+  looks where the motion's neck did. PCSX2 (Paul's 1+2, True Ogre's fire; and with 0x351E98 patched to return): the
+  locals +0x8910 / +0x8950 equal this to 1/1000 on every off frame, and the saved angles on every on frame.
+- Neck: aimed from the solver's neck (the +0x8910 copy at 0x3521CC) with its origin raised by eye A's height (z in
+  the neck's frame): yaw = atan2(d.y, d.x), pitch = atan2(-d.z, |d.xy|); new local rotation Rx(yaw) · Rz(pitch) ·
+  base (0x349EE0 of 90°, 90°, 0: x→y, y→z, z→x, the model's rest; sceVu0 RotMatrixZ 0x34AB68, Y 0x34ACB8, X
+  0x34AC10, left-multiplied), the motion's offset kept. The head the same from the turned neck: local Rz(yaw) · Ry(pitch) (0x349D70 of 0, pitch,
   yaw). Each: yaw within ±40°, pitch within -32.5°..15° (gp-0x7A88..0x7A3C); past ±160° the yaw stays at ±40° on the
   side it went round (state 3 / 4) and the pitch is 0; eased by 1/8 a frame (gp-0x6108: 2 while off, so 1 while on;
   0.125 / it); while on the pitch moves only when the eased yaw moved 5° or less and the aim is 5° or more off.
