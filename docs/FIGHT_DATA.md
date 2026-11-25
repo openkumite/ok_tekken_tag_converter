@@ -1223,9 +1223,10 @@ node): it changes only what is drawn, never the bone slots (+0x630) the strikes 
 - On (fp): player +0xB132 (set by the fighter's setup at 0x3731D0, cleared by the scene setups 0x3AEB34 /
   0x3B53DC), the round machine gp-0x7268 at 1 or 2 (0x36E160: the fight and the K.O. time), the move's +0x24 bit 22
   (the engine's dialect maps it to Tekken 3's bit 30) and, for an attack (+0x2C != 0), frame >= max(+0x2D, +0x18 -
-  17). Off: nothing is written back (the motion's head is drawn) and the target is the point (1000, 0, 80) of node
-  6's frame, eased at once, so turning on starts where the face looks. gp-0x7210 / gp-0x720C / 0x3A9698 freeze the
-  angles.
+  17). Off: the easing is 1 (0x352238) and there is no branch around the writes, so the neck and head are still
+  written every frame, aimed at once at the point (1000, 0, 80) of the motion's node 6 frame (turning on starts where
+  the face looks); only the eyes keep the motion's (0x352A54 / 0x352BFC skip their aim). gp-0x7210 / gp-0x720C /
+  0x3A9698 freeze the angles (the saved ones are written).
 - Neck: aimed from its base rotation (0x349EE0 of 90°, 90°, 0: x→y, y→z, z→x, the model's rest) with its origin
   raised by eye A's height (z in the neck's frame): yaw = atan2(d.y, d.x), pitch = atan2(-d.z, |d.xy|); new local
   rotation Rx(yaw) · Rz(pitch) · base (sceVu0 RotMatrixZ 0x34AB68, Y 0x34ACB8, X 0x34AC10, left-multiplied), the
