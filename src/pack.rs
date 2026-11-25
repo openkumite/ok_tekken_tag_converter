@@ -89,8 +89,9 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 /// each), Law-A's leaves after the lanterns' frames; 77: Unknown's aura, effects.json `characters` `aura`; 78: the clips' animation extras `angles`;
 /// 79: Unknown's wolf and Mokujin's and Unknown's blades, the skin's extras `follow` and `moveset`; 80: an arena's
 /// shading pictures with the GS's alpha, material extras `gs_alpha`; stages.json `scene_lights` and `fill`; 81: no
-/// `people` on arenas 21 and 22, whose sets only endings show).
-pub const FORMAT: i64 = 81;
+/// `people` on arenas 21 and 22, whose sets only endings show; 82: the floor window's cells no longer x mirrored;
+/// stages.json `shadow` along the scenes' light 0, none on arena 14).
+pub const FORMAT: i64 = 82;
 /// What a pack's manifest names it.
 pub const KIND: &str = "ttt";
 

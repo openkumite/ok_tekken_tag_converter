@@ -27,7 +27,8 @@ model": 18 joints in the arcade slot order, two-matrix vertices; nothing else dr
   objects flagged +0x148 & 1 / 2 (0x3422C0) are drawn again with it: the silhouette falls along the light onto
   them. That pass (0x356C28, pass 5) sets ALPHA **0x46** (Cv = Cd - Cd x As) and TEX0 0x0E_20A13940 (the picture,
   TFX decal, its alpha): the floor is **multiplied** by 1 - TA1 / 0x80 under the silhouette (arena 0: x 0.625).
-  Arena 14 (UNKNOWN) takes 0x342A38 instead (not read).
+  Arena 14 (UNKNOWN) takes 0x342A38 instead (not read): no shadow pass (GS dump: no ALPHA 0x46 strip, 0x1FC49F0 all
+  zero) [H].
 
 The shadow's length is not limited [H]: 0x34A5D0 makes the view's axes from the light alone (normalised; across
 it, `(z, 0, -x)` normalised), 0x342128 scales them by 1 / 5800 and adds 0.5: an orthographic projection with no
@@ -49,7 +50,9 @@ turns light 2 towards a place (0x415808 +0x14..+0x1C, ints) and blends it and it
 with the base copy at +0xB0 / +0xE0 by a distance weight (0x352F50 with 0x4550B0, 0x4550B4) when 0x4550B8 is set
 [M]. The fighter's draw (0x357640) sends the block to VU1; that it lights as ambient + each colour x max(0, n.L),
 the GS modulating the texture by it (128 = 1, saturating at 255), is read in the data, not in the microcode [M].
-In an ending the block is not refilled from 0x416288: 0x353E60, as the arena loads, copies the scenes' light table's
+In a fight too the blocks hold the scenes' entry below, not 0x416288's (PCSX2, arcade on arenas 0, 3, 10 and 14:
+both sides' blocks, and the shadow's projection 0x1FC49F0 along its light 0) [H]. In an ending the block is not
+refilled from 0x416288: 0x353E60, as the arena loads, copies the scenes' light table's
 entry **0x455170 + 0x80 x arena** (+0x10, +0x20, +0x30 the directions, +0x40, +0x50, +0x60 the colours, +0x70 the
 ambient, four floats a vector) into it, and into the base copy +0x90.. / +0xC0.. / +0xF0 that the draw refreshes
 the block's lights 0, 1 and ambient from each frame (PCSX2: the block in ending 20 on arena 5 and ending 1 on

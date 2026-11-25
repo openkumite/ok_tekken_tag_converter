@@ -384,6 +384,10 @@ fn openkumite(pack: &Hashed) {
         (&serde_json::json!(127.5), &serde_json::json!(27.5))
     );
     assert_eq!((stages["fill"].as_array().unwrap().len(), &stages["fill"][12]), (34, &serde_json::json!(10.0)));
+    // the shadow along the scenes' light 0 (Eddy-A's), turned up (arena 18's points down); none on arena 14
+    assert_eq!(stages["stages"][10]["shadow"]["toward"], stages["stages"][10]["scene_lights"]["toward"][0]);
+    assert!(stages["stages"][18]["shadow"]["toward"][1].as_f64().unwrap() > 0.99);
+    assert_eq!(stages["stages"][14]["shadow"]["alpha"], 0.0);
     // Eddy-A's background characters: 33, each a model and motions of its own files
     let people = stages["stages"][10]["people"].as_array().unwrap();
     assert_eq!(people.len(), 33);

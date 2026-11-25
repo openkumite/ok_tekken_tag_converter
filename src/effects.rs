@@ -100,8 +100,6 @@ pub fn stages(
             let f: Vec<f64> =
                 (0..21).map(|k| f32le(elf, LIGHTS + 0x54 * a + 4 * k - VADDR).map(f64::from)).collect::<Option<_>>()?;
             let v = |k: usize| f.get(3 * k..3 * k + 3).unwrap_or_default();
-            let (x, y, z) = (f.first()?, f.get(1)?, f.get(2)?);
-            let s = if *y < 0.0 { -1.0 } else { 1.0 };
             let alpha = u16le(elf, ALPHA + 2 * a - VADDR)?;
             let row = DUST + 12 * a - VADDR;
             let dust = json!({"count": u32le(elf, row)?, "scale": f32le(elf, row + 4)?,
@@ -112,6 +110,12 @@ pub fn stages(
                 .map(|k| f32le(elf, SCENE_LIGHTS + 0x80 * a + 0x10 + 4 * k - VADDR).map(f64::from))
                 .collect::<Option<_>>()?;
             let u = |k: usize| scene.get(4 * k..4 * k + 3).unwrap_or_default();
+            // (the shadow falls along the fighters' light 0, in a fight the scenes' entry (PCSX2: the projection
+            // 0x1FC49F0 on arenas 0 and 10), either way along the line; arena 14 draws none: 0x340E28 takes
+            // 0x342A38 there)
+            let (x, y, z) = (scene.first()?, scene.get(1)?, scene.get(2)?);
+            let s = if *y < 0.0 { -1.0 } else { 1.0 };
+            let alpha = if a == 14 { 0 } else { alpha };
             Some(json!({"id": a, "shadow": {"toward": [x * s, y * s, z * s], "colour": [0, 0, 0], "alpha": alpha as f64 / 128.0},
                 "lights": {"toward": [v(0), v(1), v(2)], "colour": [v(3), v(4), v(5)], "ambient": v(6)},
                 "scene_lights": {"toward": [u(0), u(1), u(2)], "colour": [u(3), u(4), u(5)], "ambient": u(6)}, "dust": dust, "people": people, "walk": walk, "scales": scales.get(&a), "objects": crate::objects::motion(elf, a), "flare": flare(a),
