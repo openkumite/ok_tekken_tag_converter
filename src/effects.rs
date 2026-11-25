@@ -722,6 +722,7 @@ mod tests {
             nodes,
             sections: vec![vec![Strip { tex0: 0, blend: false, verts, ..Default::default() }]],
             wings: None,
+            bind: None,
         };
         let s = shadow(&m, 345);
         assert_eq!(s["models"], json!([345]));
