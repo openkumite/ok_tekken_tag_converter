@@ -91,7 +91,7 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 /// shading pictures with the GS's alpha, material extras `gs_alpha`; stages.json `scene_lights` and `fill`; 81: no
 /// `people` on arenas 21 and 22, whose sets only endings show; 82: the floor window's cells no longer x mirrored;
 /// stages.json `shadow` along the scenes' light 0, none on arena 14).
-pub const FORMAT: i64 = 82;
+pub const FORMAT: i64 = 83;
 /// What a pack's manifest names it.
 pub const KIND: &str = "ttt";
 

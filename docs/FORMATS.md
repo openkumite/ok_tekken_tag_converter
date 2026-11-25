@@ -332,6 +332,10 @@ palettes of 8x2 pixels; `TEX0.TBP0` points inside a sheet at a page boundary. Th
 mipmaps: TEX1 0x61 (MXL 0, LCM 1, K 0: always level 0; every textured draw of PCSX2 GS dumps of the Bowl and arena 6).
 Exported so (format 72): the glTF sampler's `minFilter` LINEAR (9729), not a mipmapped one; with mipmaps the Bowl's
 lane reflection (env 8, its normals bevelled at each board's edges) was drawn from a small level, a blur a board wide.
+**New** (format 83) the sampler's `wrapS` / `wrapT` CLAMP_TO_EDGE (33071) along an axis every strip of the picture
+clamps (CLAMP's WMS / WMT 1 or 2, REGION_CLAMP: GS dump of arena 10, whose sky panels clamp their parts of a 512 x
+1024 sheet); before, every picture repeated, and bilinear filtering drew a line of the far edge's texels at each
+sky panel's edge.
 
 **Texture banks.** Part n of the geometry pack uses part n of the texture pack (empty parts
 aside). Every bank loads at the same GS addresses, so a `TEX0` only means something inside its

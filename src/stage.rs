@@ -22,6 +22,8 @@ const FLOOR_VERTICES: usize = 4 << 20;
 /// dirt decals), 3 ordinary blending (clouds, glass, soft edges).
 pub struct Batch {
     pub tex0: u64,
+    /// its CLAMP register: WMS (bits 0-1), WMT (2-3); 1 and 2 (REGION_CLAMP) clamp, 0 and 3 repeat
+    pub clamp: u64,
     /// the word the microcode dispatches on ([`colour`])
     pub flags: u32,
     pub mode: u8,
@@ -480,6 +482,7 @@ pub fn batches(d: &[u8]) -> Vec<Batch> {
         let tex0 = word(m + 48) as u64 | (word(m + 52) as u64) << 32;
         let mut b = Batch {
             tex0,
+            clamp: word(m + 32) as u64 | (word(m + 36) as u64) << 32,
             flags: word(p + 8),
             mode,
             floor: false,
@@ -620,6 +623,13 @@ pub fn glb(scenery: &[Batch], objects: &[Batch], banks: &[Vec<tex::Upload>]) -> 
     g.finish(doc)
 }
 
+/// An arena picture's sampler: bilinear without mipmaps (TEX1 0x61, MXL 0), clamped along s and / or t (CLAMP's
+/// WMS / WMT 1 or 2: the GS never wraps such a picture, so its filtering takes no texels from the far edge).
+fn sampler_of(s: bool, t: bool) -> Value {
+    let wrap = |c: bool| if c { 33071 } else { 10497 };
+    json!({"magFilter": 9729, "minFilter": 9729, "wrapS": wrap(s), "wrapT": wrap(t)})
+}
+
 /// The arena as OpenKumite's stages are laid out (the arcade converter's `write_game`), `name` its scene's name:
 ///
 /// - node `sky`: the scenery, which the game keeps centred on the fighters; scene extras `drum: "model"`, and
@@ -689,9 +699,19 @@ pub fn game_glb(
         let pic = pics.entry(key(b)).or_insert_with(|| {
             let t = tex::tex0(b.tex0);
             let (w, h, px) = banks.get(b.bank).and_then(|u| read(u, &t, key(b).2)).filter(|p| p.0 > 0 && p.1 > 0)?;
-            Some((w, h, px, [t.tw as f32 / w as f32, t.th as f32 / h as f32], [f32::MAX, f32::MAX, f32::MIN, f32::MIN]))
+            Some((
+                w,
+                h,
+                px,
+                [t.tw as f32 / w as f32, t.th as f32 / h as f32],
+                [f32::MAX, f32::MAX, f32::MIN, f32::MIN],
+                [true; 2],
+            ))
         });
-        for (.., k, r) in pic.iter_mut() {
+        for (.., k, r, clamped) in pic.iter_mut() {
+            // (the GS clamps it along an axis when every strip of it does: CLAMP's WMS / WMT 1 or 2)
+            let [s, t] = *clamped;
+            *clamped = [s && matches!(b.clamp & 3, 1 | 2), t && matches!(b.clamp >> 2 & 3, 1 | 2)];
             // (coordinates made from normals reach all of it: OpenKumite makes them in the picture's)
             let made = (colour(b, 0, None).1 > 0).then_some([-1.0, 2.0]);
             for c in (0..b.pos.len()).map(|i| st(b, i)).chain(made) {
@@ -702,9 +722,9 @@ pub fn game_glb(
     // the images: a white texel, then each picture cut to the texels its batches reach (all of it along an axis
     // they repeat it on): (image, its texture coordinates from the picture's)
     let mut images = vec![json!({"bufferView": g.view(&tex::png(1, 1, &[255; 4])), "mimeType": "image/png"})];
-    let (mut place, mut animated) = (BTreeMap::new(), vec![]);
+    let (mut place, mut animated, mut sampler) = (BTreeMap::new(), vec![], BTreeMap::new());
     for (k, pic) in &pics {
-        let Some((w, h, px, scale, r)) = pic else { continue };
+        let Some((w, h, px, scale, r, clamped)) = pic else { continue };
         // the texture channels over it: its frames, the first of them as it shows at first (the one as loaded is
         // overwritten at once); a picture they all leave the same stands so, one they change by frame is animated
         let t = tex::tex0(k.0);
@@ -754,6 +774,7 @@ pub fn game_glb(
         let base = tex::cut(*w, *h, &px, x.clone(), y.clone());
         images.push(json!({"bufferView": g.view(&tex::png(x.len(), y.len(), &base)), "mimeType": "image/png"}));
         place.insert(*k, (images.len() - 1, *scale, [fx, fy]));
+        sampler.insert(images.len() - 1, clamped[0] as usize | (clamped[1] as usize) << 1);
         // a channel's frames: the rectangle they change, each frame's texels there as an image after the others
         for (f, a) in &frames {
             let cuts: Vec<Vec<u8>> = f.iter().map(|px| tex::cut(*w, *h, px, x.clone(), y.clone())).collect();
@@ -786,7 +807,8 @@ pub fn game_glb(
             }
         }
     }
-    let textures: Vec<Value> = (0..images.len()).map(|i| json!({"source": i, "sampler": 0})).collect();
+    let textures: Vec<Value> =
+        (0..images.len()).map(|i| json!({"source": i, "sampler": sampler.get(&i).copied().unwrap_or(0)})).collect();
     // a material for each image, opaque (cut out by the texture's alpha) or blended; a primitive for each of a
     // mesh's materials, with vertices of its own
     let (mut materials, mut material) = (vec![], BTreeMap::new());
@@ -954,7 +976,7 @@ pub fn game_glb(
     }
     let mut doc = json!({"scene": 0, "scenes": [{"name": name, "nodes": roots, "extras": extras}], "nodes": nodes,
         "meshes": meshes, "materials": materials, "images": images, "textures": textures,
-        "samplers": [{"magFilter": 9729, "minFilter": 9729}]});
+        "samplers": ([0, 1, 2, 3].map(|k| sampler_of(k & 1 != 0, k & 2 != 0)))});
     if !channels.is_empty() {
         glb::set(&mut doc, "animations", json!([{"name": "objects", "samplers": samplers, "channels": channels}]));
     }
