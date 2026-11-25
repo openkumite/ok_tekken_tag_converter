@@ -147,7 +147,9 @@ n x { float normal[3], 0;  float position[3] * weight, weight }
 ```
 
 Positions and normals are in the node's local space and already multiplied by the weight,
-so the skinned point is `Σ M_node · (p·w, w)`.
+so the skinned point is `Σ M_node · (p·w, w)`. A vertex's places on its nodes meet in the file's own bind, not at the
+game's joint places (section 8: up to 33 mm apart there): **new** (format 84) the glb's inverse binds are the file's,
+its joints at the game's places, so each node takes the vertex to its own place for it as the PS2 does.
 
 **How the PS2 draws a fighter** (verified in the executable and VU0 programs; **new** in the pack, format 69). The
 pass's GS state is 0x521CE0 (context 2: TEX1_2 0x61, bilinear without mipmaps; TEST_2 0x5180B, alpha test As >=

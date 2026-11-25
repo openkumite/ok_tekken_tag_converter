@@ -67,12 +67,15 @@ impl Draw {
         }
     }
 }
+#[derive(Default)]
 pub struct Model {
     pub nodes: Vec<Node>,
     pub sections: Vec<Vec<Strip>>,
     /// True Ogre's and Devil's wings: the nodes whose +0x1C is 0x1F, 0x22, 0x25 (one wing: its root, middle and tip)
     /// and 0x20, 0x23, 0x26 (the other), the order of the six slots of table 0x46B010 (0x3565D8).
     pub wings: Option<[usize; 6]>,
+    /// The file's own bind (world matrices), kept by `place_joints`: where a vertex's places on its nodes meet.
+    pub bind: Option<Vec<M4>>,
 }
 
 /// A wing track (a fighter pack's part 1 for a winged fighter: `u16 frames, u16 triples` 6, then 6 s16 a wing node a
@@ -317,7 +320,7 @@ pub fn parse(c: &[u8]) -> Option<Model> {
         }
         sections.push(strips);
     }
-    Some(Model { nodes, sections, wings })
+    Some(Model { nodes, sections, wings, bind: None })
 }
 
 /// A background character of an arena, or a fighter's low-detail model (its shadow, pack part 8): 18 nodes, which
@@ -389,7 +392,7 @@ pub fn parse_low(c: &[u8]) -> Option<Model> {
             v.1.iter_mut().for_each(|i| i.w = 1.0);
         }
     }
-    (!strips.is_empty()).then_some(Model { nodes, sections: vec![strips], wings: None })
+    (!strips.is_empty()).then_some(Model { nodes, sections: vec![strips], wings: None, bind: None })
 }
 
 impl Model {
@@ -403,6 +406,9 @@ impl Model {
     /// place `places` for its offset): each slot's node and twist copies at its place, the clavicles' less node 2's
     /// offset (they hang from it); the head keeps its own (it takes its slot's turn only), the root its motion's.
     pub fn place_joints(&mut self, places: &[[i16; 3]]) {
+        if self.bind.is_none() {
+            self.bind = Some(self.world());
+        }
         let n2 = self.nodes.get(2).map_or([0.0; 3], |n| n.pos);
         for (s, (_, nodes)) in RIG.iter().enumerate().filter(|&(s, _)| s != 0 && s != 2) {
             let Some(p) = places.get(s) else { continue };
@@ -493,7 +499,9 @@ impl Model {
         if n < skeleton || (0..skeleton).any(|i| self.parent(i).is_some_and(|p| p >= skeleton)) {
             return None;
         }
-        let world = self.world();
+        // (skinned from the file's bind: a vertex's places on its nodes meet there, not at the game's joint places,
+        // so each node takes it to its own place, Σ M_node · (p·w, w), as the PS2 does)
+        let world = self.bind.clone().unwrap_or_else(|| self.world());
         let up: Vec<u16> = (0..n)
             .map(|i| std::iter::successors(Some(i), |&a| self.parent(a)).take(n).find(|&a| a < skeleton).unwrap_or(0))
             .map(|a| a as u16)
@@ -957,7 +965,7 @@ mod tests {
         let verts =
             vec![([0.0; 2], two), ([0.0; 2], vec![inf(1, [0.0; 3], 1.0)]), ([0.0; 2], vec![inf(2, [0.0; 3], 1.0)])];
         let strip = Strip { tex0: 0, blend: false, verts, ..Default::default() };
-        let m = Model { nodes: nodes.collect(), sections: vec![vec![strip]], wings: None };
+        let m = Model { nodes: nodes.collect(), sections: vec![vec![strip]], wings: None, bind: None };
         let (doc, buffers, _) = gltf::import_slice(m.fighter_glb(&[], &[], &[], &Default::default()).unwrap()).unwrap();
         let skin = doc.skins().next().unwrap();
         let joints: Vec<usize> = skin.joints().map(|j| j.index()).collect();
@@ -989,7 +997,8 @@ mod tests {
         let tex0 = 0x100 | 2 << 14 | 0x14 << 20 | 4 << 26 | 4 << 30 | 0x200 << 37;
         // the strip again in a second section (as the legs are): in the same primitive
         let section = || vec![Strip { tex0, blend: false, verts: verts().into(), ..Default::default() }];
-        let m = Model { nodes: (0..99).map(node).collect(), sections: vec![section(), section()], wings: None };
+        let m =
+            Model { nodes: (0..99).map(node).collect(), sections: vec![section(), section()], wings: None, bind: None };
         let mut clut = vec![0u8; 64];
         clut[4..8].copy_from_slice(&[255, 0, 0, 0x80]);
         let up = |dbp, psm, w, h, data| tex::Upload { set: 0, dbp, dbw: 128, psm, w, h, data };
@@ -1036,11 +1045,11 @@ mod tests {
         assert_eq!((px(sx, sy), px(sx + 1, sy), px(sx + 1, sy + 1), px(x, y)), (black, red, black, red));
         // fewer nodes than the skeleton, or a skeleton node hanging from one past it: not a fighter
         assert!(
-            Model { nodes: (0..97).map(node).collect(), sections: vec![], wings: None }
+            Model { nodes: (0..97).map(node).collect(), sections: vec![], wings: None, bind: None }
                 .fighter_glb(&ups, &[], &[], &Default::default())
                 .is_none()
         );
-        let mut bad = Model { nodes: (0..99).map(node).collect(), sections: vec![], wings: None };
+        let mut bad = Model { nodes: (0..99).map(node).collect(), sections: vec![], wings: None, bind: None };
         bad.nodes[7].parent = 98;
         assert!(bad.fighter_glb(&ups, &[], &[], &Default::default()).is_none());
     }
@@ -1093,7 +1102,7 @@ mod tests {
     fn joints_drawn_at_the_games_places() {
         // Jack-2's: the knee 390 down the thigh (his model's 440), the clavicle 432 from the chest (node 2 at 286)
         let node = |i: usize| Node { parent: 0, pos: [if i == 2 { 286.0 } else { 440.0 }, 0.0, 0.0], rot: [0.; 3] };
-        let mut m = Model { nodes: (0..98).map(node).collect(), sections: vec![], wings: None };
+        let mut m = Model { nodes: (0..98).map(node).collect(), sections: vec![], wings: None, bind: None };
         let mut places = vec![[0i16; 3]; 24];
         (places[2], places[3], places[13]) = ([522, 0, 0], [432, 0, -100], [390, 0, 0]);
         m.place_joints(&places);
@@ -1106,9 +1115,41 @@ mod tests {
     }
 
     #[test]
+    fn a_vertex_between_placed_joints_is_where_each_node_puts_it() {
+        // a chain 100 mm a link; a vertex half on node 84 (100 mm up it: node 85's origin), half on node 85 (at it);
+        // the shin's joints moved to the game's place: each node still takes the vertex to its own place for it
+        let node = |i: i32| Node { parent: i - 1, pos: [0.0, 100.0, 0.0], rot: [0.; 3] };
+        let inf = |node, p, w| Inf { node, n: [0.0, 0.0, 1.0], p, w };
+        let one = |x| ([0.0; 2], vec![inf(85, [x, 0.0, 0.0], 1.0)]);
+        let verts =
+            vec![([0.0; 2], vec![inf(84, [0.0, 100.0, 0.0], 0.5), inf(85, [0.0; 3], 0.5)]), one(10.0), one(20.0)];
+        let strip = Strip { tex0: 0, blend: false, verts, ..Default::default() };
+        let mut m = Model { nodes: (0..98).map(node).collect(), sections: vec![vec![strip]], ..Default::default() };
+        let mut places = vec![[0i16; 3]; 24];
+        places[13] = [390, 0, 0];
+        m.place_joints(&places);
+        let (doc, buffers, _) = gltf::import_slice(m.fighter_glb(&[], &[], &[], &Default::default()).unwrap()).unwrap();
+        let skin = doc.skins().next().unwrap();
+        let ibm: Vec<[[f32; 4]; 4]> =
+            skin.reader(|b| Some(&buffers[b.index()])).read_inverse_bind_matrices().unwrap().collect();
+        let prim = doc.meshes().next().unwrap().primitives().next().unwrap();
+        let p = prim.reader(|b| Some(&buffers[b.index()])).read_positions().unwrap().next().unwrap();
+        let local = |k: usize| [0, 1, 2].map(|a| p[a] + ibm[k][3][a]);
+        let near = |a: [f32; 3], b: [f32; 3]| a.iter().zip(b).all(|(x, y)| (x - y).abs() < 1e-5);
+        assert!(near(local(84), [0.0, 0.1, 0.0]) && near(local(85), [0.0; 3]), "{p:?}");
+        // the joints themselves stand at the game's places
+        assert_eq!(doc.nodes().nth(84).unwrap().transform().decomposed().0, [0.39, 0.0, 0.0]);
+    }
+
+    #[test]
     fn parents_in_a_loop_end() {
         let node = |parent| Node { parent, pos: [1000.0, 0.0, 0.0], rot: [0.; 3] };
-        let m = Model { nodes: vec![node(1), node(2), node(0), node(7), node(3)], sections: vec![], wings: None };
+        let m = Model {
+            nodes: vec![node(1), node(2), node(0), node(7), node(3)],
+            sections: vec![],
+            wings: None,
+            bind: None,
+        };
         let w = m.world();
         assert_eq!(w.len(), 5);
         assert_eq!((w[3][0][3], w[4][0][3]), (1.0, 2.0)); // a parent that is not there: a root
