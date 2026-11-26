@@ -495,7 +495,12 @@ the winner's partner (team entry +2 of the winner's side; body, aliases and volu
 x 0x400, z -0xC00 from the winner; in a solo match the loser is hidden (+0x127 = 0). 0x368528(winner, other,
 frame-counter parity) picks the pose from the winner's pad: 0x80 -> 0, 0x10 -> 1, 0x40 -> 2, 0x20 -> 3, nothing ->
 gp-0x74D8 & 1. Both play `alias 0x12A2 + pose` (4770-4773) of their own moveset (0x3685B8), so a tag team poses as
-a pair. Body 33 never uses pose 0: it takes 0x12A3 + gp-0x74D8 % 3. Camera mode 0xE (side 0 won) or 0xF.
+a pair. Costume slot 33 (player +0x2E, file 444: Xiaoyu's school uniform, costume 4) never uses pose 0, the
+handstand: it takes 0x12A3 + gp-0x74D8 % 3 (PCSX2, square held: costumes 0-3 do the handstand 0x12A2, costume 4
+0x12A5); no other costume or character has a rule. Then, when 0x3B5DB0 found the winner and the partner in its pair
+table (0x43AC38 for the win, 0x43B140 for the team lose; 0x1C bytes: two members `{character, costume (-1 any),
+alias, x, z, facing}` and a word, ended by character -1), each plays its member's alias at its x, z and facing
+instead (player +0xB12C; not exported yet). Camera mode 0xE (side 0 won) or 0xF.
 State 4 then lasts 300 frames (gp-0x725C), or until START (pad bit 0x800, from frame 2), or until gp-0x7258 is set
 (0x36E888): with camera mode 0xD at frame 75, 0x11 / 0x12 (the team lose) at 60, 0x10 as soon as a winning player
 (+0xB4 > 0; the winner and the partner posing beside it) reaches its motion's last frame (+0xC4 >= the length - 1).
