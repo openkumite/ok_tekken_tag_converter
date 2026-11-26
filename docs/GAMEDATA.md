@@ -458,7 +458,10 @@ this dialect: an id is played as sample `id - first_id` of the group whose range
   +0x2C, the roster's byte 6, not the body: Tiger, Eddy's fifth costume, has row 21).
 - `voice_rows.rows` (0x501808, 39): `row`, `counts` (types 2-5 = categories 0-3), `codes` (sound ids:
   `codes[sum(counts[:cat]) + index]`), **new** `cooldown` (10 frames; 6 for rows 21 and 35): a type-2 voice plays
-  only when the fighter's cooldown is out, and sets it.
+  only when the fighter's cooldown is out, and sets it; **new** (format 87) `attack` (entries, 0x3764D8) and `hurt`
+  [light, heavy] (entries, 0x376410).
+- **new** (format 87) `attack_voice`, `hurt_voice` (rules), `swing` (0x376680: `bodies`, `early`, `late` effect
+  entries) and `script_kind_3` (0x376578's `entries`): the voices and swings that draw from rand().
 - `entry_types` (**new**): what each entry type does (0x375B60). Type 6, Tekken 3's swing, plays nothing here.
 - `impact_rules`: Tekken 3's keys `blocked` (0x7010), `ko` (arm, leg), `auto`, `legs` (by damage band), `arms`
   (`rows` by band, column 0, or 0 / 1 by `rand()` in band 0; **new** `rows_of_bodies` for attacker bodies 5, 7, 10,
