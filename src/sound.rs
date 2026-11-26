@@ -11,7 +11,10 @@ use serde_json::{Value, json};
 // (address in memory - VADDR = offset in the file; entries)
 const GROUPS: (usize, usize) = (0x42ebd8 - VADDR, 62); // 16 bytes: u32 samples, u32 bank bytes, u16 kind, u16 first id, u16 count
 const VOICE_GROUP: usize = 23; // groups 23-61 are the 39 voice rows' banks
-const VOICES: usize = 0x501808 - VADDR; // a voice row's 16 bytes: u32 -> 4 x s16 counts then the ids; u16 cooldown at +0xC
+const VOICES: usize = 0x501808 - VADDR; // a voice row's 16 bytes: u32 -> 4 x s16 counts then the ids; u32 -> the attack
+// voices {s16 n, n entries}; u32 -> the hurt voices {s16 light, s16 heavy, the entries}; u16 cooldown at +0xC
+const SWINGS: (usize, usize) = (0x500ce8 - VADDR, 0x500cf8 - VADDR); // 4 entries (bodies 5 7 10 18, frame < 9), 3 entries
+const KIND3: usize = 0x501800 - VADDR; // 3 entries a script step of kind 3 picks from (0x376578)
 const HIT_ARMS: (usize, usize) = (0x500d30 - VADDR, 0x500d10 - VADDR); // 4 damage bands x 4 u16 entries: most bodies, bodies 5 7 10 18
 const FLOORS: (usize, usize) = (0x5007f8 - VADDR, 21); // u16 landing, step, step per arena
 const ROUND_NUMBERS: usize = 0x500458 - VADDR; // 9 u16 entries, by round
@@ -78,8 +81,18 @@ pub fn sound(elf: &[u8], banks: &[(usize, usize, usize)], characters: &[Value]) 
         let counts = words(elf, p, 4, what)?;
         let n: usize = counts.iter().map(|&c| c as usize).sum();
         ensure!(n <= 256, "voice row {row}: {n} voices");
+        let attack = (u32_at(elf, VOICES + 16 * row + 4, what)? as usize).wrapping_sub(VADDR);
+        let hurt = (u32_at(elf, VOICES + 16 * row + 8, what)? as usize).wrapping_sub(VADDR);
+        let (a, light, heavy) = (
+            u16_at(elf, attack, what)? as usize,
+            u16_at(elf, hurt, what)? as usize,
+            u16_at(elf, hurt + 2, what)? as usize,
+        );
+        ensure!(a <= 64 && light + heavy <= 64, "voice row {row}: {a} attack, {light} + {heavy} hurt voices");
+        let heavy_list = words(elf, hurt + 4 + 2 * light, heavy, what)?;
         rows.push(json!({"row": row, "counts": counts, "codes": words(elf, p.saturating_add(8), n, what)?,
-                         "cooldown": u16_at(elf, VOICES + 16 * row + 0xc, what)?}));
+                         "cooldown": u16_at(elf, VOICES + 16 * row + 0xc, what)?,
+                         "attack": words(elf, attack + 2, a, what)?, "hurt": [words(elf, hurt + 4, light, what)?, heavy_list]}));
     }
     let what = "the hit sounds";
     let arms = |at: usize| (0..4).map(|k| words(elf, at + 8 * k, 4, what)).collect::<Result<Vec<_>>>();
@@ -112,8 +125,13 @@ pub fn sound(elf: &[u8], banks: &[(usize, usize, usize)], characters: &[Value]) 
             "entries": groups},
         "voice_banks": {"note": "each character file's voice bank (the file before it in TEKKEN.BIN) and the voice row whose ids play from it", "characters": voice_banks},
         "voice_rows": {"address": "0x501808", "stride": 16, "by": "player +0x2C: the roster's byte 6, not the body",
-            "note": "entry types 2-5 are categories 0-3: id codes[sum(counts[:cat]) + index]. Types 2 and 3 play on the move's frame 1, type 2 only when the voice cooldown is out, and sets it to `cooldown`; type 5 at once (0x375B60). codes are sound ids",
+            "note": "entry types 2-5 are categories 0-3: id codes[sum(counts[:cat]) + index]. Types 2 and 3 play on the move's frame 1, type 2 only when the voice cooldown is out, and sets it to `cooldown`; type 5 at once (0x375B60). codes are sound ids; `attack` and `hurt` are entries (type << 12 | index)",
             "rows": rows},
+        "attack_voice": {"routine": "0x3764D8", "rule": "a move's start (+0x134) with damage (+0xCA), outside a chain (+0xE0) and the cooldown, no voice yet this frame: rand() & 1, then if set the row's attack[(rand() & 0xFF) * len >> 8], and the cooldown"},
+        "hurt_voice": {"routine": "0x376410", "rule": "struck this frame (+0x131), not silent, no voice yet this frame, the main loop's frame & 3 not 0: the row's hurt[the attacker's damage (+0xCA) >= 20][(rand() & 0xFF) * len >> 8]"},
+        "swing": {"routine": "0x376680", "rule": "a move's frame first active - 1, no script running: bodies (+0x2A) 5 7 10 18 before frame 9 early[(rand() >> 6) & 3], else late[(rand() & 0xFF) * 3 >> 8]; effect entries",
+            "bodies": [5, 7, 10, 18], "early": words(elf, SWINGS.0, 4, "the swings")?, "late": words(elf, SWINGS.1, 3, "the swings")?},
+        "script_kind_3": {"routine": "0x376578", "rule": "the opponent's side plays one of three by (rand() & 0xFF) * 3 >> 8", "entries": words(elf, KIND3, 3, "the script sounds")?},
         "entry_types": {"routine": "0x375B60 (jump table 0x500CC0), up to 3 entries a frame",
             "0": "nothing", "1": "hit sound (as 7)", "2": "voice category 0, frame 1, cooldown", "3": "voice category 1, frame 1",
             "4": "effect id on the fighter's side, each frame it is reached", "5": "voice category 3 at once",
