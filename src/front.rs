@@ -496,6 +496,11 @@ pub fn front_end(elf: &[u8], ups: &[Upload], clips: &[Option<String>]) -> Result
                 "names": {"size": 4, "colour": 19, "blink": [4, 2], "selected": [string(elf, 0x51F1A8), 10],
                     "texts": (0..34 * 8)
                         .map(|k| Ok(string(elf, u32_at(elf, a(u32_at(elf, a(0x415840) + 4 * k, what)? as usize), what)?)))
+                        .collect::<Result<Vec<_>>>()?,
+                    // (each record's byte 4, 0x3CF230: its body, whose face, portrait and name plate it shows; Tiger,
+                    // Panda, Tetsujin, Alex and Angel are bodies 34-38 of their host's costumes)
+                    "bodies": (0..34 * 8)
+                        .map(|k| u8_at(elf, a(u32_at(elf, a(0x415840) + 4 * k, what)? as usize) + 4, what))
                         .collect::<Result<Vec<_>>>()?}},
             "start_slots": [18, 27], "ordinal": {"text": string(elf, 0x5205C8), "x": [62, 480], "y": 350,
                 "second": string(elf, 0x5204B8), "second_after": 90},
