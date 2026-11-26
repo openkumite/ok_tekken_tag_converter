@@ -92,7 +92,7 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 /// `people` on arenas 21 and 22, whose sets only endings show; 82: the floor window's cells no longer x mirrored;
 /// stages.json `shadow` along the scenes' light 0, none on arena 14; 84: fighters skinned from the file's bind, where
 /// a vertex's places on its nodes meet); 85: `select.quick.names.bodies`).
-pub const FORMAT: i64 = 85;
+pub const FORMAT: i64 = 86;
 /// What a pack's manifest names it.
 pub const KIND: &str = "ttt";
 

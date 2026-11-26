@@ -591,7 +591,12 @@ pub fn front_end(elf: &[u8], ups: &[Upload], clips: &[Option<String>]) -> Result
                 "ready": banner(0x5004A0, 0xC0, 0xDC, 2, 10), "time_up": banner(0x5004B0, 0xBC, 0xDC, 12, 10),
                 "perfect": banner(0x5004C0, 0xAA, 0xDC, 11, 10), "double_ko": banner(0x5004D8, 0x72, 0xDC, 12, 10),
                 "ko": banner(0x5004F0, 0xF5, 0xDC, 12, 12), "draw": banner(0x500500, 0xE8, 0xDC, 12, 10),
-                "you_win": banner(0x500520, 0x9D, 0x168, 2, 10), "you_lose": banner(0x500558, 0x98, 0x168, 12, 10)}},
+                "you_win": banner(0x500520, 0x9D, 0x168, 2, 10), "you_lose": banner(0x500558, 0x98, 0x168, 12, 10)},
+            // (0x36F0D8, two humans, under YOU WIN! once the match is decided (settings +0x1F) but in TIME ATTACK: each
+            // side's own result, the left one ending at x 228 (measured, "%T%F%S%s"), the right one from 412, foot 130, size
+            // 5; 0x500510's WINNERS / LOSERS, WINNER / LOSER for a side alone (+0x402), in 0x5F5EC0's colour 2 / 12)
+            "winners": {"texts": (0..4).map(|k| Ok(string(elf, u32_at(elf, a(0x500510 + 4 * k), what)?))).collect::<Result<Vec<_>>>()?,
+                "colours": [u32_at(elf, a(0x5F5EC0), what)?, u32_at(elf, a(0x5F5EC4), what)?], "right": 228, "x": 412, "y": 130, "size": 5}},
         "arcade": {"fights": 8, "rivals": rivals, "fallback": fallback, "pairs": pairs, "rival_arena": 6,
             "boss": 33, "boss_arena": 14, "boss_rounds": 1, "early_fights": 3, "early_excluded": [14, 15, 20, 29],
             // (0x3BA560: CONTINUE? and the digit at (86, 360) in the chrome font's own colour, over the fight's scene and
