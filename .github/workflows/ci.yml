@@ -1,11 +1,13 @@
-# The checks of check.sh for pull requests and main: formatting, clippy, the tests and cargo deny on Linux, the tests
-# on macOS and Windows. main's ruleset requires them before a pull request merges.
+# The checks of check.sh for pull requests and main: formatting, clippy, the tests and cargo deny on Linux; main's
+# ruleset requires `check` before a pull request merges. The tests on macOS and Windows run by hand only (Actions, ci,
+# Run workflow); release.yml builds every platform.
 name: ci
 
 on:
   pull_request:
   push:
     branches: [main]
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -32,6 +34,7 @@ jobs:
       - run: sh check.sh push
 
   test:
+    if: github.event_name == 'workflow_dispatch'
     strategy:
       fail-fast: false
       matrix:
