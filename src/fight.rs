@@ -55,6 +55,9 @@ const FIGHTER_IDS: [(usize, std::ops::RangeInclusive<usize>); 2] =
 /// By character (+0x28, the 33 fighters): {s32 count, u32 list of (s16 alias, s16 frame)} (0x3D29E8).
 const START_FRAMES: (usize, usize) = (0x447480 - VADDR, 33);
 const TEAM_PAIRS: usize = 0x43a180 - VADDR; // 28 bytes: two {character, costume, alias, x, z, facing}, 2 x s16; -1 ends
+const WIN_PAIRS: usize = 0x43ac38 - VADDR; // as TEAM_PAIRS (0x3B5DB0 mode 0)
+const LOSE_PAIRS: usize = 0x43b140 - VADDR; // as TEAM_PAIRS (0x3B5DB0 mode 1)
+const WIN_NUDGES: (usize, usize) = (0x43b5c0 - VADDR, 39); // 12 bytes: s16 moveset, s16 moveset, s16 dx, s16 dz, u32 alias
 const REPLAY_SHOTS: (usize, usize) = (0x520c40 - VADDR, 42); // 10 x s16 (0x3D0748)
 const REPLAY_SEQUENCES: (usize, usize) = (0x520f88 - VADDR, 14); // 4 x s8 shot numbers, one a pass
 /// The life option every match uses (0x3B1488, the only writer of the option, sets 3).
@@ -729,10 +732,37 @@ fn followup_rules() -> Value {
     ])
 }
 
+/// A pair table (0x3B4F88): its rows up to a member of character -1.
+fn pairs(elf: &[u8], at: usize, what: &str) -> Result<Vec<Value>> {
+    let mut pairs = Vec::new();
+    for i in 0.. {
+        let v: [i16; 14] = s16s(elf, at + 28 * i, what)?;
+        let m = |m: &[i16]| match *m {
+            [character, costume, alias, x, z, facing, ..] if character != -1 => Some(
+                json!({"character": character, "costume": costume, "alias": alias, "x": x, "z": z, "facing": facing}),
+            ),
+            _ => None,
+        };
+        let (Some(a), Some(b)) = (m(&v), m(v.get(6..).unwrap_or_default())) else { break };
+        pairs.push(json!([a, b]));
+    }
+    Ok(pairs)
+}
+
 /// rounds.json: the round machine (0x36E198, docs/FIGHT_DATA.md sections 11 and 13), constants of the code written as
 /// data. Frames count from 1; aliases are Tekken Tag's.
-pub fn rounds() -> Value {
-    json!({
+pub fn rounds(elf: &[u8]) -> Result<Value> {
+    let nudges = (0..WIN_NUDGES.1)
+        .map(|i| {
+            let r = bytes(elf, WIN_NUDGES.0 + 12 * i, 12, "the win pose nudges")?;
+            Ok([0, 2, 4, 6]
+                .map(|o| i64::from(h(r, o) as i16))
+                .into_iter()
+                .chain([i64::from(w(r, 8))])
+                .collect::<Vec<_>>())
+        })
+        .collect::<Result<Vec<_>>>()?;
+    Ok(json!({
         "dialect": "ttt",
         "machine": {"routine": "0x36E198", "state": "gp-0x7268", "states": ["call", "fight", "ko_or_time_up", "result", "pose"]},
         "call": {"note": "state 0: inputs off; the fight (state 1) starts on fight_starts, whether the start motion ended or not",
@@ -753,8 +783,20 @@ pub fn rounds() -> Value {
             "pick": {"pad_bits": [[0x80, 0], [0x10, 1], [0x40, 2], [0x20, 3]], "else": "the frame counter gp-0x74D8 & 1"},
             "unknown_body": 33, "unknown_pick": "4771 + gp-0x74D8 % 3",
             "partner": "the loser's player becomes the winner's partner, at x 0x400, z -0xC00 from the winner, and poses the same alias; solo: the loser is hidden",
-            "frames": 300, "start_skips_from": 2},
-        "team_lose": {"routine": "0x36E6C8", "alias": 4780, "frames": 60, "when": "arcade (settings +0x1F), the match over and the human side lost: the loser's partner joins it"},
+            "frames": 300, "start_skips_from": 2,
+            // the slots' two by character, and costume unless -1, either way round: each poses its member's alias at
+            // its x, z, facing (0x3B4F88, 0x3685B8)
+            "pairs": pairs(elf, WIN_PAIRS, "the win pose pairs")?,
+            // without a pair: [winner's moveset, partner's, dx, dz, alias]: both posing the alias, the partner moved
+            // dx, dz; every row that holds (0x3B60F0)
+            "nudges": nudges,
+            // then both turned about the winner's place so that player 0 faces light 0 (0x3D7E10 mode 1)
+            "turn": "player 0's facing"},
+        "team_lose": {"routine": "0x36E6C8", "alias": 4780, "frames": 60, "when": "arcade (settings +0x1F), the match over and the human side lost: the loser's partner joins it",
+            "partner": "the winner's player becomes the loser's partner, at x 0x400, z 0 from the loser",
+            "pairs": pairs(elf, LOSE_PAIRS, "the team lose pairs")?,
+            // (0x3D7E10 mode 0)
+            "turn": "the mean of the two facings"},
         "result_flags": {"routine": "0x36F570", "address": "gp-0x7444", "time_up": 0x01, "ko": 0x02, "double_ko": 0x04, "perfect": 0x08, "great": 0x10, "draw": 0x20,
             "perfect_when": "the winning team's two members at their caps (+0x2C == +0x10) and gp-0x6A80[side] == 0",
             "great_score_at_most": 0xcc, "score_unit": "1/4096 of full health (+0x408, 0x36F408)",
@@ -762,7 +804,7 @@ pub fn rounds() -> Value {
         "round_time": {"routine": "0x36D640", "options_frames": [2160, 2820, 4260, 5640, 6960], "options_seconds": [30, 40, 60, 80, 99],
             "untimed_option": 5, "display": "(frames * 6 / 7 - 1) / 60: a displayed second is 70 frames", "default_option": null},
         "rounds_to_win": {"formula": "min(5, rounds option + 1)", "round_limit": "2 * wins - 1", "default_option": null},
-    })
+    }))
 }
 
 /// A camera list's value: (1, situation type) below 30, (2, camera motion) for 30-561, else (0, -1) (0x393A90).
@@ -833,18 +875,7 @@ pub fn camera(elf: &[u8], file12: &[u8]) -> Result<Value> {
         let t: Vec<&[i16]> = v.chunks(3).collect();
         team_shots.push(json!({"turn_from": t.first(), "turn_to": t.get(1), "target_from": t.get(2), "target_to": t.get(3), "eye_from": t.get(4), "eye_to": t.get(5)}));
     }
-    let mut pairs = Vec::new();
-    for i in 0.. {
-        let v: [i16; 14] = s16s(elf, TEAM_PAIRS + 28 * i, "the team intro's pairs")?;
-        let m = |m: &[i16]| match *m {
-            [character, costume, alias, x, z, facing, ..] if character != -1 => Some(
-                json!({"character": character, "costume": costume, "alias": alias, "x": x, "z": z, "facing": facing}),
-            ),
-            _ => None,
-        };
-        let (Some(a), Some(b)) = (m(&v), m(v.get(6..).unwrap_or_default())) else { break };
-        pairs.push(json!([a, b]));
-    }
+    let pairs = pairs(elf, TEAM_PAIRS, "the team intro's pairs")?;
     let start_frames = (0..START_FRAMES.1)
         .map(|c| {
             let r = bytes(elf, START_FRAMES.0 + 8 * c, 8, "the intros' start frames")?;

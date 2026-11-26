@@ -835,6 +835,13 @@ fn sound(load: &dyn Fn(&str) -> serde_json::Value, samples: usize, tracks: usize
     );
     let rounds = load("gamedata/rounds.json");
     assert_eq!(rounds["win_poses"]["aliases"], serde_json::json!([4770, 4771, 4772, 4773]));
+    // the pair tables (45 and 40 rows; Kuma and Heihachi's first) and the nudges (Eddy and Nina's first)
+    let (win, lose) =
+        (rounds["win_poses"]["pairs"].as_array().unwrap(), rounds["team_lose"]["pairs"].as_array().unwrap());
+    assert_eq!((win.len(), lose.len()), (45, 40));
+    let kuma = serde_json::json!({"character": 11, "costume": 0, "alias": 4775, "x": 600, "z": -500, "facing": 0});
+    assert_eq!(win[0][0], kuma);
+    assert_eq!(rounds["win_poses"]["nudges"][0], serde_json::json!([8, 5, -1024, 0, 4771]));
     // the AI: 5 x 8 profiles, Tekken 3's fields 4 bytes later (EASY / NORMAL level 0's cooldowns), King's reach
     let ai = load("gamedata/ai.json");
     let profiles = ai["profiles"]["entries"].as_array().unwrap();

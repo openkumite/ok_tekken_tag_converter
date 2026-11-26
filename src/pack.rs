@@ -93,7 +93,7 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 /// stages.json `shadow` along the scenes' light 0, none on arena 14; 84: fighters skinned from the file's bind, where
 /// a vertex's places on its nodes meet); 85: `select.quick.names.bodies`; 87: sound.json's
 /// voice rows' `attack` and `hurt`, `attack_voice`, `hurt_voice`, `swing`, `script_kind_3`).
-pub const FORMAT: i64 = 87;
+pub const FORMAT: i64 = 88;
 /// What a pack's manifest names it.
 pub const KIND: &str = "ttt";
 
@@ -709,7 +709,7 @@ pub fn convert(ctx: &Ctx, src: &dyn DiscFile, research: bool) -> Result<Value> {
         ("bowl", bowl::bowl(&a.elf, &lengths)?),
         ("sound", sound::sound(&a.elf, &banks, &characters)?),
         ("music", sound::music(&a.elf, &streams, select_loop)?),
-        ("rounds", fight::rounds()),
+        ("rounds", fight::rounds(&a.elf)?),
     ] {
         assets.write(&format!("gamedata/{name}.json"), serde_json::to_string(&v)?.as_bytes())?;
     }
