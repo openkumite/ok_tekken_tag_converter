@@ -1,5 +1,6 @@
 //! `ttt_convert pack DISC PACK [--skip endings,opening,movies,music]`: the pack (pack.rs) of the disc image DISC
-//! (.cue/.bin, .iso, .chd, or one in an archive) into the folder PACK (emptied first), without the parts named. `ttt_convert list DISC`: the files of its TEKKEN.BIN.
+//! (.cue/.bin, .iso, .chd, or one in an archive) into the folder PACK (emptied first), without the parts named.
+//! `ttt_convert list DISC`: the files of its TEKKEN.BIN.
 
 use anyhow::{Result, bail};
 use ok_converter_common::disc::Disc;
