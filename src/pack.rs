@@ -827,8 +827,8 @@ pub fn convert(ctx: &Ctx, src: &dyn DiscFile, research: bool, skip: &[&str]) -> 
         }
         false => json!({"pack": KIND, "format": FORMAT, "source": source}),
     };
-    if !skip.is_empty() {
-        manifest["skipped"] = json!(skip);
+    if let (false, Some(m)) = (skip.is_empty(), manifest.as_object_mut()) {
+        m.insert("skipped".into(), json!(skip));
     }
     out.write("manifest.json", serde_json::to_string_pretty(&manifest)?.as_bytes())?;
     out.checkpoint(&[])?;
@@ -855,7 +855,10 @@ mod tests {
     #[test]
     fn the_optional_parts() {
         let of = ["endings/ending_03_0.glb", "video/16.flac", "video/14.avi", "video/15.avi", "audio/music/02.flac"];
-        assert_eq!(of.map(optional), [Some("endings"), Some("endings"), Some("opening"), Some("movies"), Some("music")]);
+        assert_eq!(
+            of.map(optional),
+            [Some("endings"), Some("endings"), Some("opening"), Some("movies"), Some("music")]
+        );
         for p in ["endings/embu_0.glb", "audio/sfx/002/000.wav", "video/index.json", "motions/motion_0001.glb"] {
             assert_eq!(optional(p), None, "{p}");
         }

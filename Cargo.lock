@@ -602,6 +602,7 @@ dependencies = [
 [[package]]
 name = "ok_converter_common"
 version = "0.3.0"
+source = "git+https://github.com/openkumite/ok_converter_common?branch=main#da0edae4bc5250e3b93704973f1104d3388a575a"
 dependencies = [
  "anyhow",
  "chd",
