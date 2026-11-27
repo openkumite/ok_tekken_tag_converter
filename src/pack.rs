@@ -93,7 +93,7 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 /// stages.json `shadow` along the scenes' light 0, none on arena 14; 84: fighters skinned from the file's bind, where
 /// a vertex's places on its nodes meet); 85: `select.quick.names.bodies`; 87: sound.json's
 /// voice rows' `attack` and `hurt`, `attack_voice`, `hurt_voice`, `swing`, `script_kind_3`).
-pub const FORMAT: i64 = 88;
+pub const FORMAT: i64 = 89;
 /// What a pack's manifest names it.
 pub const KIND: &str = "ttt";
 

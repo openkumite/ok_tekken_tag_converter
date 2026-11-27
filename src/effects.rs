@@ -13,7 +13,7 @@ use std::f64::consts::PI;
 pub(crate) const LIGHTS: usize = 0x41_6288;
 /// The scenes' lights (0x80 bytes an arena, 0x353E60: +0x10, +0x20, +0x30 the directions, +0x40, +0x50, +0x60 the
 /// colours, +0x70 the ambient, four floats each) and light 2's grey by character (0x353420, floats).
-const SCENE_LIGHTS: usize = 0x45_5170;
+pub(crate) const SCENE_LIGHTS: usize = 0x45_5170;
 const FILL: usize = 0x45_50C0;
 const ALPHA: usize = 0x46_B280;
 /// The arenas' dust (12 bytes an arena: u32 particles, f32 scale, u8 r, g, b; 0x3A2758's kind 3).

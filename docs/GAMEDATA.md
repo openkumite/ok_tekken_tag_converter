@@ -210,7 +210,8 @@ and `attract` are not written (not decoded).
   AI's random), `eye_y`, `target_y`, `pitch_max`, `follow_easing`, `distance_per_h`.
 - **New** (format 27) `win_pose` (0x35BB58, per frame 0x35BD20): the win pose's camera: the eye at the winner's
   root + R (cos a, sin a), a = `arc_from` + rand(`arc_range`) - the arena's `light_yaw` (light 0's direction by
-  arena, 0x3D7DA8), R = H x `distance_per_h` + `radius_add`, at `eye_y` (on a variant arena the chest - 290); each
+  arena, 0x3D7DA8; **changed** (format 89) read from the scenes' entry 0x455170, which a fight's light block 0x1FC42A0
+  holds, not from 0x416288: PCSX2, arena 3 1785, arena 9 1780), R = H x `distance_per_h` + `radius_add`, at `eye_y` (on a variant arena the chest - 290); each
   frame 8 nearer while farther than H x `distance_per_h`, the view eased >> 5 (Tekken 3's camera A after, without
   its 5800 minimum); **new** (format 38) `world_turn` (0x417780, by arena) and `turn_step`: light 0 is turned by the
   far background's turn gp-0x7278, which follows the camera's parallax on those arenas (0x366C18).
