@@ -940,7 +940,9 @@ pub fn camera(elf: &[u8], file12: &[u8]) -> Result<Value> {
                 .collect::<Vec<_>>())
         })
         .collect::<Result<Vec<_>>>()?;
-    // the win pose's reference (0x3D7DA8): light 0's direction by arena, L = -atan2(-x, -z) put in [0, 2 pi) by
+    // the win pose's reference (0x3D7DA8): light 0's direction by arena (the side 0 block's 0x1FC42A0, which in a
+    // fight holds the scenes' entry 0x455170 + 0x80 x arena +0x10, not 0x416288's: EFFECTS.md 2; PCSX2-checked),
+    // L = -atan2(-x, -z) put in [0, 2 pi) by
     // 0x3D80E8 / 0x3D8088, * 65535 / 2 pi (gp-0x7B64 / -0x7B60) truncated; written L >> 4, 4096 a turn (0x35BC24).
     // (in a fight 0x353C88 also turns it by the background's turn gp-0x7278: `world_turn` below)
     // the arenas whose far background turns with the camera's parallax (0x417780, u32 by arena; 0x366C18), and light
@@ -950,7 +952,7 @@ pub fn camera(elf: &[u8], file12: &[u8]) -> Result<Value> {
         .collect::<Result<Vec<_>>>()?;
     let light_yaw = (0..crate::effects::ARENAS)
         .map(|a| {
-            let at = |k: usize| crate::f32le(elf, crate::effects::LIGHTS + 0x54 * a + 4 * k - VADDR);
+            let at = |k: usize| crate::f32le(elf, crate::effects::SCENE_LIGHTS + 0x80 * a + 0x10 + 4 * k - VADDR);
             let (x, z) = (at(0).context("the arena lights")?, at(2).context("the arena lights")?);
             let tau = std::f32::consts::TAU;
             let l = -(-x).atan2(-z);
