@@ -19,9 +19,12 @@ resource), one file of its table at a time. Another disc, or another version of 
 
 ## The library
 
-- `pack::convert(ctx, disc, research)`: the disc's data track (an `ok_converter_common::io::DiscFile`) into a pack
-  (any `Vfs`, emptied first); returns its manifest. It runs no other program and reads no file but the disc's.
-  Without `research` it writes `assets/` and a manifest of the source alone: what OpenKumite plays.
+- `pack::convert(ctx, disc, research, skip)`: the disc's data track (an `ok_converter_common::io::DiscFile`) into a
+  pack (any `Vfs`, emptied first); returns its manifest. It runs no other program and reads no file but the disc's.
+  Without `research` it writes `assets/` and a manifest of the source alone: what OpenKumite plays. `skip` (the
+  tool's `--skip`) leaves out of `assets/` what the game plays without (`pack::OPTIONAL`, `pack::optional`):
+  `endings` (the endings' scenes and Unknown's movie, 178 MB), `opening` (89 MB), `movies` (the arcade's, 30 MB),
+  `music` (209 MB); the manifest's `skipped` names them, the fingerprint is the same.
 - `pack::manifest(pack)`: a pack's manifest, checked.
 
 A pack (about 2.2 GB, 15 234 files):

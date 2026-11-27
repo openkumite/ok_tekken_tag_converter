@@ -5,7 +5,7 @@
 //! ```text
 //! manifest.json        {"pack": "ttt", "format": FORMAT, "source": {"image", "disc": "SLUS-20001", "version": "2.00"},
 //!                       "models", "movesets", "own", "anims", "stages", "textures", "sounds", "music", "video",
-//!                       "raw", "gamedata": the index of the files below (README.md)}
+//!                       "raw", "gamedata": the index of the files below (README.md); "skipped": what `skip` left out}
 //! models/NNN.glb       the fighters, skinned, with their textures (NNN: the file's number in TEKKEN.BIN)
 //! anims/NNNN.glb       the motions, one animation each, by joint name
 //! stages/NNN.glb       the arenas; NNN_pK.glb their background characters, NNN_mK.glb those characters' motions
@@ -44,7 +44,7 @@ use crate::{
     anim, assets, audio, bowl, effects, ending, fight, front, model, moves, movie, objects, sound, stage, tex, u32le,
 };
 use anyhow::{Context, Result, bail};
-use ok_converter_common::io::{Ctx, DiscFile, Sub, Vfs};
+use ok_converter_common::io::{Ctx, DiscFile, Sub, Vfs, Without};
 use ok_converter_common::psx;
 use serde_json::{Value, json};
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
@@ -155,11 +155,34 @@ fn arena(geometry: &[u8], textures: &[u8]) -> Option<Arena> {
     Some((scenery, objects, floors, banks))
 }
 
-/// Converts the Tekken Tag Tournament disc (its data track `src`) into a pack in `ctx.out`, emptied first; writes
-/// the manifest last and returns it. Without `research`, only `assets/` and the manifest (with the source alone):
-/// what OpenKumite plays, a third of the size.
-pub fn convert(ctx: &Ctx, src: &dyn DiscFile, research: bool) -> Result<Value> {
-    let out = ctx.out;
+/// What a conversion can leave out of `assets/` (`skip`; the manifest's "skipped") and about how many bytes each is:
+/// the game plays without them (no ending: the staff roll; no opening: the title; no music: silence).
+pub const OPTIONAL: [(&str, u64); 4] =
+    [("endings", 178_000_000), ("opening", 89_000_000), ("movies", 30_000_000), ("music", 209_000_000)];
+
+/// The part of [`OPTIONAL`] a file of `assets/` is in (the endings' scenes and Unknown's movie 16, the opening 14,
+/// the arcade's movie 15, the music streams); None: one the game needs.
+pub fn optional(path: &str) -> Option<&'static str> {
+    if path.starts_with("audio/music/") {
+        return Some("music");
+    }
+    if path.starts_with("endings/ending_") {
+        return Some("endings");
+    }
+    match path.strip_prefix("video/")?.split('.').next()? {
+        "14" => Some("opening"),
+        "15" => Some("movies"),
+        "16" => Some("endings"),
+        _ => None,
+    }
+}
+
+/// Converts the Tekken Tag Tournament disc (its data track `src`) into a pack in `ctx.out`, emptied first, the parts
+/// of [`OPTIONAL`] in `skip` left out; writes the manifest last and returns it. Without `research`, only `assets/`
+/// and the manifest (with the source alone): what OpenKumite plays, a third of the size.
+pub fn convert(ctx: &Ctx, src: &dyn DiscFile, research: bool, skip: &[&str]) -> Result<Value> {
+    let left_out = |p: &str| p.strip_prefix("assets/").and_then(optional).is_some_and(|o| skip.contains(&o));
+    let out = &Without { inner: ctx.out, left_out: &left_out };
     let mut a = Archive::open(src)?;
     out.remove_all("")?;
     let assets = Sub { inner: out, prefix: "assets".into() };
@@ -797,13 +820,16 @@ pub fn convert(ctx: &Ctx, src: &dyn DiscFile, research: bool) -> Result<Value> {
         arenas.len()
     ));
     let source = json!({"image": src.name(), "disc": "SLUS-20001", "version": "2.00"});
-    let manifest = match research {
+    let mut manifest = match research {
         true => {
             json!({"pack": KIND, "format": FORMAT, "source": source, "models": models, "movesets": movesets, "own": own,
             "anims": anims, "stages": stages, "textures": textures, "sounds": sounds, "music": music, "video": video, "raw": raw, "gamedata": gamedata})
         }
         false => json!({"pack": KIND, "format": FORMAT, "source": source}),
     };
+    if let (false, Some(m)) = (skip.is_empty(), manifest.as_object_mut()) {
+        m.insert("skipped".into(), json!(skip));
+    }
     out.write("manifest.json", serde_json::to_string_pretty(&manifest)?.as_bytes())?;
     out.checkpoint(&[])?;
     Ok(manifest)
@@ -824,6 +850,19 @@ pub fn manifest(pack: &dyn Vfs) -> Result<Value> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The optional parts: the endings' scenes and movie 16, the opening, the arcade's movie, the music; not the EMBU.
+    #[test]
+    fn the_optional_parts() {
+        let of = ["endings/ending_03_0.glb", "video/16.flac", "video/14.avi", "video/15.avi", "audio/music/02.flac"];
+        assert_eq!(
+            of.map(optional),
+            [Some("endings"), Some("endings"), Some("opening"), Some("movies"), Some("music")]
+        );
+        for p in ["endings/embu_0.glb", "audio/sfx/002/000.wav", "video/index.json", "motions/motion_0001.glb"] {
+            assert_eq!(optional(p), None, "{p}");
+        }
+    }
 
     #[test]
     fn leaves_of_packs_nested_without_end_stop() {

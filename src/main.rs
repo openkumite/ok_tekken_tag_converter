@@ -1,5 +1,6 @@
-//! `ttt_convert pack DISC PACK`: the pack (pack.rs) of the disc image DISC (.cue/.bin, .iso, .chd, or one in an
-//! archive) into the folder PACK (emptied first). `ttt_convert list DISC`: the files of its TEKKEN.BIN.
+//! `ttt_convert pack DISC PACK [--skip endings,opening,movies,music]`: the pack (pack.rs) of the disc image DISC
+//! (.cue/.bin, .iso, .chd, or one in an archive) into the folder PACK (emptied first), without the parts named.
+//! `ttt_convert list DISC`: the files of its TEKKEN.BIN.
 
 use anyhow::{Result, bail};
 use ok_converter_common::disc::Disc;
@@ -12,7 +13,7 @@ fn main() {
     let r = match args.first().map(String::as_str) {
         Some("pack") => pack_main(args.get(1..).unwrap_or_default()),
         Some("list") => list_main(args.get(1..).unwrap_or_default()),
-        _ => Err(anyhow::anyhow!("usage: ttt_convert pack DISC PACK\n       ttt_convert list DISC")),
+        _ => Err(anyhow::anyhow!("usage: ttt_convert pack DISC PACK [--skip PARTS]\n       ttt_convert list DISC")),
     };
     if let Err(e) = r {
         eprintln!("error: {e:#}");
@@ -20,11 +21,18 @@ fn main() {
     }
 }
 
-/// `pack DISC PACK`
+/// `pack DISC PACK [--skip PARTS]`
 fn pack_main(args: &[String]) -> Result<()> {
-    let [disc, out] = args else { bail!("usage: ttt_convert pack DISC PACK") };
+    let (args, skip) = match args {
+        [a @ .., flag, parts] if flag == "--skip" => (a, parts.split(',').collect()),
+        a => (a, Vec::new()),
+    };
+    let [disc, out] = args else { bail!("usage: ttt_convert pack DISC PACK [--skip endings,opening,movies,music]") };
+    if let Some(s) = skip.iter().find(|s| !pack::OPTIONAL.iter().any(|o| o.0 == **s)) {
+        bail!("--skip {s:?}: the parts a conversion can leave out are {:?}", pack::OPTIONAL.map(|o| o.0));
+    }
     let disc = Disc::open_path(Path::new(disc))?;
-    pack::convert(&Ctx { out: &StdFs(out.into()), log: &print_line, jobs: 1 }, disc.data()?, true)?;
+    pack::convert(&Ctx { out: &StdFs(out.into()), log: &print_line, jobs: 1 }, disc.data()?, true, &skip)?;
     Ok(())
 }
 
