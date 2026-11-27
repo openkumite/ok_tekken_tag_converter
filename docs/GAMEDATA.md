@@ -491,6 +491,11 @@ the frame counter's parity; the partner poses too; 300 frames), `team_lose` (ali
 (bits, perfect, great when the winner's score is at most 0xCC of 0x1000), `round_time` (frames by option, the
 untimed option 5, the displayed second of 70 frames), `rounds_to_win`. The default round-time and rounds options are
 null: no code was found that writes them. The pad bits are the game's pad word, not yet tied to buttons.
+**New** (format 88) `win_poses.pairs` (0x43AC38) and `team_lose.pairs` (0x43B140): `[[member, member]]`, a member
+`{character, costume (-1 any), alias, x, z, facing}` as the team intro's `pairs`: the two in the slots matched either way
+round pose their members' aliases at their places; `win_poses.nudges` (0x43B5C0): `[winner's moveset, partner's, dx, dz,
+alias]`, without a pair the partner moved by each row whose alias both pose; then the pose is turned about the
+winner's place so that player 0 (the team lose: the mean of the two facings) faces light 0 (FIGHT_DATA.md, win poses).
 
 ### `gamedata/endings.json` (**new**)
 

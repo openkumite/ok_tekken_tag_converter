@@ -499,8 +499,16 @@ a pair. Costume slot 33 (player +0x2E, file 444: Xiaoyu's school uniform, costum
 handstand: it takes 0x12A3 + gp-0x74D8 % 3 (PCSX2, square held: costumes 0-3 do the handstand 0x12A2, costume 4
 0x12A5); no other costume or character has a rule. Then, when 0x3B5DB0 found the winner and the partner in its pair
 table (0x43AC38 for the win, 0x43B140 for the team lose; 0x1C bytes: two members `{character, costume (-1 any),
-alias, x, z, facing}` and a word, ended by character -1), each plays its member's alias at its x, z and facing
-instead (player +0xB12C; not exported yet). Camera mode 0xE (side 0 won) or 0xF.
+alias, x, z, facing}` and a word, ended by character -1; player 0 matching the first member, else the second, costume
++0x26 & 7), each plays its member's alias at its x, z and facing instead (player +0xB12C; rounds.json `pairs`, format
+88). Without a pair 0x3B60F0 reads 0x43B5C0 (39 rows of `{s16 winner's moveset +0x28, s16 partner's, s16 dx, s16 dz,
+u32 alias}`): each row whose alias both play moves the partner by dx, dz (`nudges`). Before the poses the winner stands
+at x 0, z 0 and the partner at 0x400, -0xC00 (the team lose: the loser at 0, the partner at 0x400, 0), both facing 0;
+then 0x3D7E10 turns both about the origin by light 0's direction (0x3D7DA8, as the win camera has it) less player
+0's facing (the team lose: the two facings' mean). Seen in PCSX2 (+4, +0xC, +0x1A): Kuma (costume 0 or 2) and
+Heihachi pose 0x12A7 at the pair's places turned; Panda (costume 1) and Heihachi the normal pose, the partner at 0x400,
+-0xC00 turned; Eddy and Nina with triangle held 0x12A3, Nina at 0, -0xC00 (the nudge's -0x400). Camera mode 0xE (side
+0 won) or 0xF.
 State 4 then lasts 300 frames (gp-0x725C), or until START (pad bit 0x800, from frame 2), or until gp-0x7258 is set
 (0x36E888): with camera mode 0xD at frame 75, 0x11 / 0x12 (the team lose) at 60, 0x10 as soon as a winning player
 (+0xB4 > 0; the winner and the partner posing beside it) reaches its motion's last frame (+0xC4 >= the length - 1).
